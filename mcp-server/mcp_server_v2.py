@@ -28,6 +28,7 @@ import sys
 import json
 import asyncio
 import base64
+import re
 import hashlib
 import logging
 import secrets
@@ -85,6 +86,10 @@ EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMS = 3072
 BASE_URL = os.getenv("MCP_BASE_URL", "https://klunky.12432.net")
 OAUTH_CLIENT_SECRET_KEY = os.getenv("OAUTH_CLIENT_SECRET_KEY", "").strip()
+RAG_SEMANTIC_WEIGHT_DEFAULT = float(os.getenv("RAG_SEMANTIC_WEIGHT", "0.7"))
+RAG_FULLTEXT_WEIGHT_DEFAULT = float(os.getenv("RAG_FULLTEXT_WEIGHT", "0.3"))
+RAG_NEIGHBOR_DEFAULT = int(os.getenv("RAG_NEIGHBOR_DEFAULT", "1"))
+RAG_NEIGHBOR_MAX = int(os.getenv("RAG_NEIGHBOR_MAX", "3"))
 
 # ── OAuth Client Secrets (env-based, for SDK client_secret validation) ───
 # Keyed by client_id. The SDK compares these against the secret
@@ -267,6 +272,72 @@ async def _embed_query(text: str) -> list[float]:
         )
         resp.raise_for_status()
         return resp.json()["data"][0]["embedding"]
+
+
+_CASE_NUMBER_PATTERNS = [
+    re.compile(r"\b\d{2,4}-\d{1,2}-\d{3,6}-\d{2,4}\b"),
+    re.compile(r"\b\d{2,4}-\d{1,2}-\d{3,6}\b"),
+    re.compile(r"\b\d{2}:\d{2}-[a-z]{2}-\d{5}\b", re.IGNORECASE),
+]
+
+
+def _extract_case_number(text: str) -> Optional[str]:
+    if not text:
+        return None
+    for pattern in _CASE_NUMBER_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(0)
+    return None
+
+
+def _normalize_query(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _coerce_weights(semantic_weight: Optional[float], fulltext_weight: Optional[float]) -> tuple[float, float]:
+    sem = RAG_SEMANTIC_WEIGHT_DEFAULT if semantic_weight is None else float(semantic_weight)
+    ft = RAG_FULLTEXT_WEIGHT_DEFAULT if fulltext_weight is None else float(fulltext_weight)
+    sem = max(0.0, sem)
+    ft = max(0.0, ft)
+    total = sem + ft
+    if total <= 0:
+        return RAG_SEMANTIC_WEIGHT_DEFAULT, RAG_FULLTEXT_WEIGHT_DEFAULT
+    return sem / total, ft / total
+
+
+def _coerce_neighbor_window(expand_neighbors: Optional[int]) -> int:
+    if expand_neighbors is None:
+        value = RAG_NEIGHBOR_DEFAULT
+    else:
+        value = int(expand_neighbors)
+    return min(max(value, 0), RAG_NEIGHBOR_MAX)
+
+
+async def _get_chunk_window(
+    p: asyncpg.Pool,
+    document_id: str,
+    chunk_index: int,
+    window: int,
+) -> list[asyncpg.Record]:
+    if window <= 0:
+        return []
+    start_idx = max(0, chunk_index - window)
+    end_idx = chunk_index + window
+    return await p.fetch(
+        """
+        SELECT chunk_index, content
+        FROM core.document_chunks
+        WHERE document_id = $1::uuid
+          AND chunk_index BETWEEN $2 AND $3
+        ORDER BY chunk_index
+        """,
+        document_id,
+        start_idx,
+        end_idx,
+    )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1825,8 +1896,15 @@ async def search_filings(
 
 @mcp.tool(annotations=READ_ONLY)
 @logged_tool
-async def rag_query(question: str, domain: Optional[str] = None,
-                    case_number: Optional[str] = None, top_k: int = 15) -> str:
+async def rag_query(
+    question: str,
+    domain: Optional[str] = None,
+    case_number: Optional[str] = None,
+    top_k: int = 15,
+    semantic_weight: Optional[float] = None,
+    fulltext_weight: Optional[float] = None,
+    expand_neighbors: Optional[int] = None,
+) -> str:
     """PRIMARY TOOL for answering questions. ALWAYS USE THIS instead of execute_sql.
 
     Uses hybrid RAG (vector + full-text search) to find the most relevant context
@@ -1845,10 +1923,21 @@ async def rag_query(question: str, domain: Optional[str] = None,
         domain: Restrict to domain (legal, medical, paperless) or omit for all
         case_number: Filter to a specific case (partial match, e.g. "26-2-00762")
         top_k: Number of context chunks to retrieve (default 15)
+        semantic_weight: Optional weight for semantic results (default 0.7)
+        fulltext_weight: Optional weight for full-text results (default 0.3)
+        expand_neighbors: Include adjacent chunks for context (default 1, max 3)
     """
     top_k = min(max(top_k, 1), 30)
     p = await get_pool()
     try:
+        question = _normalize_query(question)
+        auto_case = _extract_case_number(question)
+        if not case_number and auto_case:
+            case_number = auto_case
+
+        semantic_weight, fulltext_weight = _coerce_weights(semantic_weight, fulltext_weight)
+        neighbor_window = _coerce_neighbor_window(expand_neighbors)
+
         vec = await _embed_query(question)
         vec_str = "[" + ",".join(str(v) for v in vec) + "]"
 
@@ -1922,13 +2011,13 @@ async def rag_query(question: str, domain: Optional[str] = None,
 
         for rank, r in enumerate(sem_rows):
             cid = r["chunk_id"]
-            chunk_scores[cid] = chunk_scores.get(cid, 0) + 1.0 / (rrf_k + rank + 1)
+            chunk_scores[cid] = chunk_scores.get(cid, 0) + semantic_weight / (rrf_k + rank + 1)
             if cid not in chunk_data:
                 chunk_data[cid] = dict(r)
 
         for rank, r in enumerate(ft_rows):
             cid = r["chunk_id"]
-            chunk_scores[cid] = chunk_scores.get(cid, 0) + 1.0 / (rrf_k + rank + 1)
+            chunk_scores[cid] = chunk_scores.get(cid, 0) + fulltext_weight / (rrf_k + rank + 1)
             if cid not in chunk_data:
                 chunk_data[cid] = dict(r)
 
@@ -1946,28 +2035,59 @@ async def rag_query(question: str, domain: Optional[str] = None,
             if doc_count >= 2:
                 continue
 
-            ctx = f"[{r['domain']}/{r['document_type']}] {r['title'] or r['filename']}"
-            if r.get("sender"):
-                ctx += f"\nFrom: {r['sender']} | Date: {_ser(r['date_sent'])} | Subject: {r['subject']}"
-            ctx += f"\n\n{r['content']}"
             contexts.append({
                 "source": r["title"] or r["filename"],
                 "type": r["document_type"],
                 "domain": r["domain"],
                 "rrf_score": round(score, 6),
-                "text": ctx,
+                "chunk_index": r["chunk_index"],
+                "text": r["content"],
+                "_header": (
+                    f"[{r['domain']}/{r['document_type']}] {r['title'] or r['filename']}"
+                    + (f"\nFrom: {r['sender']} | Date: {_ser(r['date_sent'])} | Subject: {r['subject']}"
+                       if r.get("sender") else "")
+                ),
                 "_doc_id": doc_id,
+                "_chunk_index": r["chunk_index"],
             })
 
-        # Remove internal field
+        if neighbor_window > 0:
+            for c in contexts:
+                doc_id = c.get("_doc_id")
+                chunk_index = c.get("_chunk_index")
+                if not doc_id or chunk_index is None:
+                    continue
+                window_rows = await _get_chunk_window(p, doc_id, int(chunk_index), neighbor_window)
+                if window_rows:
+                    combined = "\n\n".join(
+                        f"[chunk {r['chunk_index']}] {r['content']}" for r in window_rows
+                    )
+                    c["text"] = f"{c['_header']}\n\n{combined}"
+                    c["chunk_range"] = {
+                        "start": window_rows[0]["chunk_index"],
+                        "end": window_rows[-1]["chunk_index"],
+                    }
+                else:
+                    c["text"] = f"{c['_header']}\n\n{c['text']}"
+        else:
+            for c in contexts:
+                c["text"] = f"{c['_header']}\n\n{c['text']}"
+
+        # Remove internal fields
         for c in contexts:
             c.pop("_doc_id", None)
+            c.pop("_chunk_index", None)
+            c.pop("_header", None)
 
         return json.dumps({
             "question": question,
             "context_chunks": contexts,
             "count": len(contexts),
-            "search_method": "hybrid_rrf (semantic + fulltext)",
+            "search_method": (
+                f"hybrid_rrf (semantic={semantic_weight:.2f}, fulltext={fulltext_weight:.2f}, "
+                f"neighbors={neighbor_window})"
+            ),
+            "case_number": case_number,
             "instruction": "Use the above context chunks to answer the question. Cite sources. Pay close attention to email sender, date, and subject to distinguish replies from original messages.",
         })
     except Exception as e:
