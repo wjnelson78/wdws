@@ -20,6 +20,77 @@
     "require_case_exists": true
   },
   {
+    "id": "legal-stuart-gibson",
+    "query": "Stuart Gibson court filings",
+    "expected": {
+      "domain": "legal",
+      "case_number": "24-2-01033-31",
+      "document_type": "court_filing"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-brian-baseggio",
+    "query": "Brian Baseggio case documents",
+    "expected": {
+      "domain": "legal",
+      "case_number": "24-2-01034-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-prisma-wellness",
+    "query": "Prisma Wellness litigation",
+    "expected": {
+      "domain": "legal",
+      "case_number": "23-2-09435-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-unum-group",
+    "query": "Unum Group case status",
+    "expected": {
+      "domain": "legal",
+      "case_number": "23-2-07759-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-ftcu-nelson",
+    "query": "FTCU v Nelson court case",
+    "expected": {
+      "domain": "legal",
+      "case_number": "19-2-03310-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-trevor-haward",
+    "query": "Trevor Haward case timeline",
+    "expected": {
+      "domain": "legal",
+      "case_number": "24-2-07413-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
+    "id": "legal-ftcu-2025",
+    "query": "Nelson vs FTCU 2025 case",
+    "expected": {
+      "domain": "legal",
+      "case_number": "25-2-00238-31"
+    },
+    "min_results": 2,
+    "require_case_exists": true
+  },
+  {
     "id": "legal-email-attachments",
     "query": "emails with attachments about settlement",
     "expected": {
@@ -29,12 +100,47 @@
     "min_results": 3
   },
   {
+    "id": "legal-employment-discrimination",
+    "query": "employment discrimination evidence",
+    "expected": {
+      "domain": "legal"
+    },
+    "min_results": 3
+  },
+  {
+    "id": "legal-court-orders",
+    "query": "court order ruling",
+    "expected": {
+      "domain": "legal",
+      "document_type": "court_filing"
+    },
+    "min_results": 2
+  },
+  {
     "id": "medical-records-general",
     "query": "medical records from 2024",
     "expected": {
       "domain": "medical"
     },
     "min_results": 2,
+    "min_domain_docs": 1
+  },
+  {
+    "id": "medical-imaging-report",
+    "query": "imaging report radiology",
+    "expected": {
+      "domain": "medical"
+    },
+    "min_results": 1,
+    "min_domain_docs": 1
+  },
+  {
+    "id": "paperless-documents",
+    "query": "paperless document upload",
+    "expected": {
+      "domain": "paperless"
+    },
+    "min_results": 1,
     "min_domain_docs": 1
   }
 ]

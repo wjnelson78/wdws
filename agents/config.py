@@ -63,6 +63,7 @@ CLOUDFLARE_TUNNEL_NAME = os.getenv("CLOUDFLARE_TUNNEL_NAME", "tukwila-colo-tunne
 
 # ── Alerts ───────────────────────────────────────────────────
 ALERT_EMAIL = os.getenv("ALERT_EMAIL", "william@seattleseahawks.me")
+SCORECARD_EMAIL = os.getenv("SCORECARD_EMAIL", ALERT_EMAIL)
 OPENAI_BALANCE_THRESHOLD = float(os.getenv("OPENAI_BALANCE_THRESHOLD", "5.0"))
 
 # ── Microsoft Graph API (Email) ──────────────────────────────

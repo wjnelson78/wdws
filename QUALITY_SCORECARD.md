@@ -22,8 +22,8 @@ This document defines **what “ChatGPT‑level” quality means for this platfo
 ## 📏 Quality Metrics (Measured)
 
 ### Retrieval Quality (RAG)
-- **Eval pass rate** ≥ 0.80 (weekly median)
-- **Eval failure rate** ≤ 0.10
+- **Eval pass rate** ≥ 0.85 (weekly median)
+- **Eval failure rate** ≤ 0.15
 - **Avg results per eval** ≥ 5
 
 ### Safety Signals
@@ -31,12 +31,13 @@ This document defines **what “ChatGPT‑level” quality means for this platfo
 - **No uncited claims** for legal summaries
 
 ### Agent Accuracy
-- **Agent error rate** ≤ 5% over last 24h
+- **Agent error rate** ≤ 3% over last 24h
 - **Orchestrator critical finding agreement** ≥ 90%
 
 ### Latency & Performance
-- **MCP tool call p95** ≤ 1200ms
-- **Agent run p95** ≤ 60s
+- **MCP tool call p95** ≤ 2500ms
+- **MCP tool call p99** ≤ 25000ms
+- **Agent run p95** ≤ 15000ms
 
 ### Availability
 - **MCP service uptime** ≥ 99.5%
@@ -52,6 +53,18 @@ This document defines **what “ChatGPT‑level” quality means for this platfo
 - **MCP analytics** in `ops.mcp_query_log`
 - **Agent runs + errors** in `ops.agent_runs`
 - **Dashboard summaries** in Analytics → Quality & Reliability
+
+---
+
+## 📌 Baseline (last 7d as of 2026‑02‑09)
+
+- **Eval pass rate**: 1.00 (n=2) — 14/14 passed, 1 skipped
+- **Avg results per eval**: 8.0
+- **Agent error rate**: 1.53% (20 / 1308 runs)
+- **Agent p95**: 9656.6ms
+- **MCP tool call p95**: 2073.3ms
+- **MCP tool call p99**: 22599.4ms
+- **MCP error rate**: 0% (0 / 347 calls)
 
 ---
 

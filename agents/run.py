@@ -42,6 +42,7 @@ from agent_timeline import TimelineAgent
 from agent_query_insight import QueryInsightAgent
 from agent_code_doctor import CodeDoctorAgent
 from agent_quality_eval import QualityEvalAgent
+from agent_scorecard import ScorecardAgent
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -62,6 +63,7 @@ ALL_AGENTS = [
     TimelineAgent(),         # P5 — chronology
     QueryInsightAgent(),     # P5 — analytics
     QualityEvalAgent(),     # P5 — evals + safety checks
+    ScorecardAgent(),       # P5 — weekly scorecard
 ]
 
 AGENT_MAP = {a.agent_id: a for a in ALL_AGENTS}
