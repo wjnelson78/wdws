@@ -5035,8 +5035,11 @@ async function openConversation(id){
     }
     el.innerHTML=msgs.map((m,i,arr)=>{
       const isLastAssistant=m.role==='assistant'&&!arr.slice(i+1).some(x=>x.role==='assistant');
+      const avatar = m.role==='assistant' 
+        ? '<img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>'
+        : '';
       return `<div class="chat-msg-wrap ${m.role}">
-        <div class="chat-msg-name">${m.role==='assistant'?'🤖 Athena AI':currentUser}</div>
+        <div class="chat-msg-name">${avatar}${m.role==='assistant'?'Athena AI':currentUser}</div>
         <div class="chat-msg ${m.role}">${m.role==='assistant'?renderMarkdown(m.content):esc(m.content)}</div>
         ${isLastAssistant?retryBarHTML():''}
       </div>`;
@@ -5194,7 +5197,7 @@ async function sendChat(){
     const rLabel=resp.model_label||modelLabel;
     const aWrap=document.createElement('div');
     aWrap.className='chat-msg-wrap assistant';
-    aWrap.innerHTML=`<div class="chat-msg-name">🤖 Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
+    aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
     const aDiv=document.createElement('div');
     aDiv.className='chat-msg assistant';
     aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
@@ -5213,7 +5216,7 @@ async function sendChat(){
     thinkDiv.remove();
     const errWrap=document.createElement('div');
     errWrap.className='chat-msg-wrap assistant';
-    errWrap.innerHTML=`<div class="chat-msg-name">🤖 Athena AI</div>`;
+    errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI</div>`;
     const errDiv=document.createElement('div');
     errDiv.className='chat-msg assistant';
     errDiv.style.borderColor='var(--red)';
@@ -5286,7 +5289,7 @@ async function retryChat(btnEl){
       const rLabel=resp.model_label||modelLabel;
       const aWrap=document.createElement('div');
       aWrap.className='chat-msg-wrap assistant';
-      aWrap.innerHTML=`<div class="chat-msg-name">🤖 Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
+      aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
       const aDiv=document.createElement('div');
       aDiv.className='chat-msg assistant';
       aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
@@ -5298,7 +5301,7 @@ async function retryChat(btnEl){
       thinkDiv.remove();
       const errWrap=document.createElement('div');
       errWrap.className='chat-msg-wrap assistant';
-      errWrap.innerHTML=`<div class="chat-msg-name">🤖 Athena AI</div>`;
+      errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI</div>`;
       const errDiv=document.createElement('div');
       errDiv.className='chat-msg assistant';
       errDiv.style.borderColor='var(--red)';

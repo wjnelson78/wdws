@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a8a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <clipPath id="circle-clip">
+      <circle cx="128" cy="128" r="120"/>
+    </clipPath>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="128" fill="url(#grad)"/>
+  
+  <!-- Main content within circle -->
+  <g clip-path="url(#circle-clip)">
+    <!-- Face base -->
+    <circle cx="128" cy="110" r="70" fill="#f8fafc" opacity="0.95"/>
+    
+    <!-- Head shape -->
+    <ellipse cx="128" cy="105" rx="55" ry="65" fill="#fef3c7" opacity="0.9"/>
+    
+    <!-- Eyes -->
+    <ellipse cx="108" cy="95" rx="8" ry="12" fill="#1e3a8a"/>
+    <ellipse cx="148" cy="95" rx="8" ry="12" fill="#1e3a8a"/>
+    <circle cx="110" cy="93" r="3" fill="#f8fafc" opacity="0.9"/>
+    <circle cx="150" cy="93" r="3" fill="#f8fafc" opacity="0.9"/>
+    
+    <!-- Smile -->
+    <path d="M 108 115 Q 128 125, 148 115" 
+          stroke="#1e3a8a" 
+          stroke-width="3" 
+          fill="none" 
+          stroke-linecap="round"/>
+    
+    <!-- Hair -->
+    <path d="M 73 85 Q 70 60, 90 50 Q 110 45, 128 48 Q 145 45, 165 50 Q 185 60, 183 85 L 180 90 Q 178 70, 165 65 Q 145 58, 128 60 Q 110 58, 90 65 Q 78 70, 75 90 Z" 
+          fill="#6b4423" 
+          opacity="0.9"/>
+    
+    <!-- Shoulders/clothing -->
+    <path d="M 53 180 Q 90 150, 128 155 Q 166 150, 203 180 L 203 256 L 53 256 Z" 
+          fill="#1e293b"/>
+  </g>
+</svg>
