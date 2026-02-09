@@ -3729,7 +3729,11 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 
   <div id="analytics-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
 
-  <div class="section-title" style="margin-top:24px">✅ Quality & Reliability</div>
+  <div class="section-title" style="margin-top:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    ✅ Quality & Reliability
+    <button class="btn btn-outline btn-sm" onclick="triggerQualityEval()">▶ Run Eval</button>
+    <span id="quality-trigger-status" style="font-size:.75rem;color:var(--muted)"></span>
+  </div>
   <div id="quality-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
   <div id="reliability-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
   <div class="section-title" style="margin-top:16px">🧪 Recent Eval Runs</div>
@@ -5706,6 +5710,18 @@ async function loadAnalytics(){
   } catch(e){
     $('analytics-summary').innerHTML='<div class="empty-state red">Error: '+esc(e.message)+'</div>';
     console.error('loadAnalytics',e);
+  }
+}
+
+async function triggerQualityEval(){
+  const statusEl = $('quality-trigger-status');
+  if (statusEl) statusEl.textContent = 'Triggering…';
+  try {
+    await api('/api/agents/quality-eval/trigger', {method:'POST'});
+    if (statusEl) statusEl.textContent = 'Eval triggered';
+    setTimeout(loadAnalytics, 4000);
+  } catch(e){
+    if (statusEl) statusEl.textContent = 'Failed to trigger';
   }
 }
 
