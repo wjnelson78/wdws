@@ -34,6 +34,11 @@ DATABASE_URL = _require("DATABASE_URL")
 OPENAI_API_KEY = _require("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("AGENT_LLM_MODEL", "gpt-4o")
 OPENAI_EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
+AGENT_LLM_MODEL_HIGH = os.getenv("AGENT_LLM_MODEL_HIGH", OPENAI_MODEL)
+AGENT_LLM_MODEL_LOW = os.getenv("AGENT_LLM_MODEL_LOW", OPENAI_MODEL)
+AGENT_LLM_ROUTING_ENABLED = os.getenv("AGENT_LLM_ROUTING_ENABLED", "true").lower() in (
+    "1", "true", "yes", "on"
+)
 
 # ── Agent defaults ───────────────────────────────────────────
 LOG_LEVEL = os.getenv("AGENT_LOG_LEVEL", "INFO")
@@ -66,4 +71,5 @@ GRAPH_SENDER_EMAIL = os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me"
 
 # ── OpenAI Codex (Code Doctor) ───────────────────────────────
 CODEX_MODEL = os.getenv("CODEX_MODEL", "gpt-5.2-codex")
+AGENT_LLM_MODEL_CODEX = os.getenv("AGENT_LLM_MODEL_CODEX", CODEX_MODEL)
 

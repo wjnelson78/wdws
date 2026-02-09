@@ -23,7 +23,9 @@ import httpx
 from openai import AsyncOpenAI
 
 from config import (
-    DATABASE_URL, OPENAI_API_KEY, OPENAI_MODEL, LOG_LEVEL
+    DATABASE_URL, OPENAI_API_KEY, OPENAI_MODEL, LOG_LEVEL,
+    AGENT_LLM_MODEL_HIGH, AGENT_LLM_MODEL_LOW,
+    AGENT_LLM_MODEL_CODEX, AGENT_LLM_ROUTING_ENABLED,
 )
 from reliability import retry_with_backoff, get_circuit_breaker, CircuitBreakerOpenError
 
@@ -64,9 +66,70 @@ def _is_codex_model(model: str) -> bool:
     """Check if model uses the Responses API (gpt-5.x-codex variants)."""
     return bool(model and "codex" in model.lower())
 
+_HIGH_RISK_KEYWORDS = re.compile(
+    r"\b(legal|court|filing|motion|deposition|case|deadline|compliance|medical|diagnosis|hipaa|privilege)\b",
+    re.IGNORECASE,
+)
+_LOW_RISK_TASKS = {"classification", "triage", "routing", "summary", "summarize", "messaging", "status"}
+_HIGH_RISK_TASKS = {"analysis", "legal", "medical", "compliance", "timeline", "investigation"}
+_CODE_TASKS = {"code", "coding", "refactor", "fix", "code-review", "patch"}
+
+
+def _infer_risk(system: str, user: str, task_type: str) -> str:
+    if task_type in _HIGH_RISK_TASKS:
+        return "high"
+    if task_type in _LOW_RISK_TASKS:
+        return "low"
+    text = f"{system}\n{user}" if system or user else ""
+    if _HIGH_RISK_KEYWORDS.search(text):
+        return "high"
+    return "normal"
+
+
+def _codex_effort_for_risk(risk: str) -> str:
+    if risk == "high":
+        return "high"
+    if risk == "low":
+        return "low"
+    return "medium"
+
+
+def _select_model(
+    system: str,
+    user: str,
+    model: Optional[str],
+    task_type: str,
+    risk: str,
+) -> str:
+    if model:
+        return model
+    if not AGENT_LLM_ROUTING_ENABLED:
+        return OPENAI_MODEL
+
+    task_key = (task_type or "general").lower().strip()
+    if task_key in _CODE_TASKS:
+        return AGENT_LLM_MODEL_CODEX
+
+    chosen_risk = risk
+    if chosen_risk in (None, "", "auto"):
+        chosen_risk = _infer_risk(system, user, task_key)
+
+    if chosen_risk == "high":
+        return AGENT_LLM_MODEL_HIGH
+    if chosen_risk == "low":
+        return AGENT_LLM_MODEL_LOW
+    return OPENAI_MODEL
+
 @retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
-async def llm_chat(system: str, user: str, model: str = None,
-                   temperature: float = 0.3, max_tokens: int = 2000) -> str:
+async def llm_chat(
+    system: str,
+    user: str,
+    model: str = None,
+    temperature: float = 0.3,
+    max_tokens: int = 2000,
+    task_type: str = "general",
+    risk: str = "auto",
+) -> str:
     """Quick LLM call with system + user prompt. Returns assistant text.
     Includes retry logic and circuit breaker for reliability."""
     breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
@@ -74,7 +137,10 @@ async def llm_chat(system: str, user: str, model: str = None,
     try:
         async with breaker:
             client = get_llm()
-            mdl = model or OPENAI_MODEL
+            mdl = _select_model(system, user, model, task_type, risk)
+            if _is_codex_model(mdl):
+                effort = _codex_effort_for_risk(risk if risk != "auto" else _infer_risk(system, user, task_type))
+                return await codex_generate(system, user, model=mdl, effort=effort, max_tokens=max_tokens)
             kwargs = dict(
                 model=mdl,
                 messages=[
@@ -94,14 +160,23 @@ async def llm_chat(system: str, user: str, model: str = None,
         return f"[AI temporarily unavailable - circuit breaker open. Using fallback response.]"
 
 @retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
-async def llm_json(system: str, user: str, model: str = None) -> dict:
+async def llm_json(
+    system: str,
+    user: str,
+    model: str = None,
+    task_type: str = "general",
+    risk: str = "auto",
+) -> dict:
     """LLM call that returns parsed JSON. Includes retry logic and circuit breaker."""
     breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
     
     try:
         async with breaker:
             client = get_llm()
-            mdl = model or OPENAI_MODEL
+            mdl = _select_model(system, user, model, task_type, risk)
+            if _is_codex_model(mdl):
+                effort = _codex_effort_for_risk(risk if risk != "auto" else _infer_risk(system, user, task_type))
+                return await codex_json(system, user, model=mdl, effort=effort)
             # Reasoning models (o1, o3, etc.) don't support response_format or max_tokens
             if _is_reasoning_model(mdl):
                 json_prompt = user + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences."
@@ -402,7 +477,9 @@ class BaseAgent(ABC):
                     f"in channel #{m['channel_id']}:\n\n{question}\n\n"
                     f"Respond concisely as the {self.agent_name} agent. "
                     f"If you cannot help, say so and suggest which agent might.",
-                    max_tokens=500
+                    max_tokens=500,
+                    task_type="messaging",
+                    risk="low",
                 )
 
                 # Reply in chat
@@ -450,7 +527,9 @@ class BaseAgent(ABC):
                     f"Subject: {msg.get('subject', 'N/A')}\n"
                     f"Body: {json.dumps(body_data)}\n\n"
                     f"Respond concisely with what action you will take.",
-                    max_tokens=500
+                    max_tokens=500,
+                    task_type="messaging",
+                    risk="low",
                 )
 
                 # Post response to chat so it's visible
@@ -511,7 +590,9 @@ class BaseAgent(ABC):
                     f"If the question is completely outside your domain, respond with a "
                     f"one-line status summary for your area instead. "
                     f"Keep your response to 2-4 sentences maximum.",
-                    max_tokens=300
+                    max_tokens=300,
+                    task_type="messaging",
+                    risk="low",
                 )
 
                 await self.reply_chat(
@@ -646,17 +727,45 @@ class RunContext:
         """Get the shared DB pool."""
         return await get_pool()
 
-    async def ask_llm(self, user_prompt: str, system_prompt: str = None,
-                      temperature: float = 0.3, max_tokens: int = 2000) -> str:
+    async def ask_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str = None,
+        temperature: float = 0.3,
+        max_tokens: int = 2000,
+        model: str = None,
+        task_type: str = "general",
+        risk: str = "auto",
+    ) -> str:
         """Ask the LLM using the agent's instructions as system prompt."""
         sys = system_prompt or self.agent.instructions
-        return await llm_chat(sys, user_prompt, temperature=temperature,
-                             max_tokens=max_tokens)
+        return await llm_chat(
+            sys,
+            user_prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            task_type=task_type,
+            risk=risk,
+        )
 
-    async def ask_llm_json(self, user_prompt: str, system_prompt: str = None) -> dict:
+    async def ask_llm_json(
+        self,
+        user_prompt: str,
+        system_prompt: str = None,
+        model: str = None,
+        task_type: str = "general",
+        risk: str = "auto",
+    ) -> dict:
         """Ask the LLM and get parsed JSON back."""
         sys = system_prompt or self.agent.instructions
-        return await llm_json(sys, user_prompt)
+        return await llm_json(
+            sys,
+            user_prompt,
+            model=model,
+            task_type=task_type,
+            risk=risk,
+        )
 
     async def finding(self, severity: str, category: str, title: str,
                       detail: str = "", evidence: dict = None):
