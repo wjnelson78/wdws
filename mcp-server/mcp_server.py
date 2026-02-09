@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WDWS Unified MCP Server v2.0 — PostgreSQL-native with OAuth 2.0.
+Athena Cognitive Platform MCP Server v2.0 — PostgreSQL-native with OAuth 2.0.
 
 Single MCP server consolidating all domains:
   • Legal cases (court filings, emails, attachments)
@@ -51,7 +51,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("wdws-mcp")
+log = logging.getLogger("athena-mcp")
 
 # ── Config ───────────────────────────────────────────────────
 DATABASE_URL = os.getenv(
@@ -364,10 +364,10 @@ async def app_lifespan(app):
     """Initialize database pool and OAuth schema."""
     await get_pool()
     await _ensure_oauth_schema()
-    log.info("WDWS MCP Server v2.0 ready")
+    log.info("Athena MCP Server v2.0 ready")
     yield {}
     await close_pool()
-    log.info("WDWS MCP Server shutdown")
+    log.info("Athena MCP Server shutdown")
 
 
 oauth_provider = WDWSOAuthProvider()
@@ -386,7 +386,7 @@ auth_settings = AuthSettings(
 )
 
 mcp = FastMCP(
-    "WDWS",
+    "Athena Cognitive Platform",
     instructions=(
         "William Nelson's unified document intelligence server. "
         "Provides full CRUD access to legal cases, court filings, emails, "
@@ -2050,7 +2050,7 @@ async def system_health() -> str:
 
         return json.dumps({
             "status": "healthy",
-            "server": "WDWS Unified MCP Server v2.0",
+            "server": "Athena Cognitive Platform MCP Server v2.0",
             "database_time": _ser(db_time["ts"]),
             "postgres_version": db_time["ver"][:50],
             "pool_size": pool_size,
@@ -2130,7 +2130,7 @@ Use the search_medical_records tool."""
 # ══════════════════════════════════════════════════════════════
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="WDWS Unified MCP Server v2.0")
+    parser = argparse.ArgumentParser(description="Athena Cognitive Platform MCP Server v2.0")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
@@ -2139,10 +2139,10 @@ def main():
     if args.http:
         mcp.settings.host = args.host
         mcp.settings.port = args.port
-        log.info("Starting WDWS MCP Server v2.0 (HTTP/SSE + OAuth) on %s:%d", args.host, args.port)
+        log.info("Starting Athena MCP Server v2.0 (HTTP/SSE + OAuth) on %s:%d", args.host, args.port)
         mcp.run(transport="sse")
     else:
-        log.info("Starting WDWS MCP Server v2.0 (stdio)")
+        log.info("Starting Athena MCP Server v2.0 (stdio)")
         mcp.run(transport="stdio")
 
 

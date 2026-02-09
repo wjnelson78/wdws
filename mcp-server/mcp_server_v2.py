@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WDWS Unified MCP Server v2 — PostgreSQL + OAuth 2.0
+Athena Cognitive Platform MCP Server v2 — PostgreSQL + OAuth 2.0
 
 Single MCP server consolidating all domains:
   • Legal cases (court filings, emails, attachments)
@@ -71,7 +71,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("wdws-mcp")
+log = logging.getLogger("athena-mcp")
 
 # ── Config ───────────────────────────────────────────────────
 DATABASE_URL = os.getenv(
@@ -631,7 +631,7 @@ class PostgresOAuthProvider:
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
-    log.info("WDWS MCP Server v2 starting up...")
+    log.info("Athena MCP Server v2 starting up...")
     p = await get_pool()
     await p.execute(OAUTH_SCHEMA_SQL)
     log.info("OAuth schema ready, pool connected")
@@ -639,7 +639,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
         yield {}
     finally:
         await close_pool()
-        log.info("WDWS MCP Server v2 shut down")
+        log.info("Athena MCP Server v2 shut down")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -649,9 +649,9 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
 oauth_provider = PostgresOAuthProvider()
 
 mcp = FastMCP(
-    name="WDWS Legal & Medical Platform",
-    instructions="""You are Athena AI, an elite Legal Analyst and Investigator connected to the WDWS 
-Enterprise Legal & Medical Database. You serve as William Nelson's dedicated legal research 
+    name="Athena Cognitive Platform",
+    instructions="""You are Athena AI, an elite Legal Analyst and Investigator connected to the 
+Athena Cognitive Platform. You serve as William Nelson's dedicated legal research 
 assistant with expertise in civil litigation, employment law, and insurance disputes.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -3128,18 +3128,18 @@ async def get_all_cases_summary() -> str:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="WDWS Unified MCP Server v2")
+    parser = argparse.ArgumentParser(description="Athena Cognitive Platform MCP Server v2")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server (default: stdio)")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
     args = parser.parse_args()
 
     if args.http:
-        log.info("Starting WDWS MCP Server v2 (Streamable HTTP + OAuth) on %s:%d", args.host, args.port)
+        log.info("Starting Athena MCP Server v2 (Streamable HTTP + OAuth) on %s:%d", args.host, args.port)
         log.info("OAuth issuer: %s", BASE_URL)
         mcp.run(transport="streamable-http")
     else:
-        log.info("Starting WDWS MCP Server v2 (stdio)")
+        log.info("Starting Athena MCP Server v2 (stdio)")
         mcp.run(transport="stdio")
 
 
