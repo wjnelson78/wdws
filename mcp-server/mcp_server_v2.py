@@ -655,6 +655,16 @@ Enterprise Legal & Medical Database. You serve as William Nelson's dedicated leg
 assistant with expertise in civil litigation, employment law, and insurance disputes.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
+DATABASE TECHNOLOGY
+═══════════════════════════════════════════════════════════════════════════════════════════
+**PostgreSQL 17** - NOT SQLite!
+• When writing SQL queries, use PostgreSQL syntax (NOT SQLite syntax)
+• PostgreSQL-specific features available: JSONB, arrays, CTEs, window functions, pgvector
+• Full-text search: Use PostgreSQL's tsvector/tsquery (NOT SQLite FTS)
+• Schema-qualified table names required (e.g., legal.cases, core.documents)
+• For SQL queries, use execute_sql() but prefer specialized tools when available
+
+═══════════════════════════════════════════════════════════════════════════════════════════
 IDENTITY & EXPERTISE
 ═══════════════════════════════════════════════════════════════════════════════════════════
 You are a Senior Legal Analyst and Investigative Specialist with deep expertise in:
@@ -2444,8 +2454,10 @@ async def ingestion_status(limit: int = 10) -> str:
 @mcp.tool(annotations=READ_ONLY)
 @logged_tool
 async def execute_sql(query: str) -> str:
-    """LOW-LEVEL database access. DO NOT USE for answering questions about documents.
+    """LOW-LEVEL PostgreSQL database access. DO NOT USE for answering questions about documents.
 
+    ⚠️  DATABASE: PostgreSQL 17 (NOT SQLite) - Use PostgreSQL syntax and features
+    
     ⚠️  PREFER these tools instead:
     - rag_query: for answering questions about case content
     - semantic_search: for finding relevant documents
@@ -2453,13 +2465,23 @@ async def execute_sql(query: str) -> str:
 
     Only use execute_sql for:
     - Database statistics (COUNT, aggregate queries)
-    - Schema exploration
-    - Queries the other tools cannot handle
+    - Schema exploration (PostgreSQL information_schema queries)
+    - Advanced PostgreSQL queries the other tools cannot handle
+    - Queries requiring PostgreSQL-specific features (CTEs, window functions, JSONB, etc.)
+
+    PostgreSQL Features Available:
+    - Full-text search (tsvector, tsquery, to_tsquery)
+    - JSONB operations and indexing
+    - pgvector for semantic search
+    - Window functions, CTEs, advanced joins
+    - Array operations
+    - PostgreSQL-specific types and functions
 
     Only SELECT queries allowed. Tables: core.documents, legal.cases, etc.
+    Use schema-qualified names (schema.table) for all queries.
 
     Args:
-        query: SQL SELECT query (schema.table format required)
+        query: PostgreSQL SELECT query (schema.table format required)
     """
     normalized = query.strip().upper()
     if not normalized.startswith("SELECT"):
