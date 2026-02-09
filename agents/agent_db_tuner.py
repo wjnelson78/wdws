@@ -21,7 +21,7 @@ class DatabaseTunerAgent(BaseAgent):
     priority = 4
     capabilities = ["query-analysis", "index-optimization", "vacuum", "bloat-detection"]
 
-    instructions = """You are the Database Tuner Agent for the Nelson Enterprise WDWS system.
+    instructions = """You are the Database Tuner Agent for the Athena Cognitive Platform.
 
 DATABASE STRUCTURE:
 - PostgreSQL 16 with pgvector extension

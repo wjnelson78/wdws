@@ -1,4 +1,4 @@
-# WDWS Agent System
+# Athena Cognitive Platform (WDWS)
 
 A comprehensive legal workflow automation system featuring email management, case tracking, and Model Context Protocol (MCP) servers for intelligent document processing and legal analysis.
 

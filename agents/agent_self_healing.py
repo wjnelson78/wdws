@@ -21,7 +21,7 @@ class SelfHealingAgent(BaseAgent):
     priority = 2
     capabilities = ["auto-repair", "log-rotation", "integration-test", "config-drift"]
 
-    instructions = """You are the Self-Healing Agent for the Nelson Enterprise WDWS system.
+    instructions = """You are the Self-Healing Agent for the Athena Cognitive Platform.
 
 RECOVERY RULES:
 1. Connection recovery: Kill idle-in-transaction connections > 30 min

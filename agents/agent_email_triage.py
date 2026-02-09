@@ -21,7 +21,7 @@ class EmailTriageAgent(BaseAgent):
     priority = 3
     capabilities = ["email-classification", "case-linking", "deadline-extraction", "urgency-detection"]
 
-    instructions = """You are the Email Triage Agent for the Nelson Enterprise legal case management system.
+    instructions = """You are the Email Triage Agent for the Athena Cognitive Platform legal case management system.
 
 CONTEXT:
 - William Nelson is a pro-se litigant with multiple active cases

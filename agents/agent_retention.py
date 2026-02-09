@@ -22,7 +22,7 @@ class RetentionAgent(BaseAgent):
     priority = 4
     capabilities = ["retention-policy", "pii-redaction", "litigation-hold", "compliance-report"]
 
-    instructions = """You are the Retention & Redaction Agent for the Nelson Enterprise WDWS system.
+    instructions = """You are the Retention & Redaction Agent for the Athena Cognitive Platform.
 
 RETENTION POLICIES:
 - Legal documents: 7 years from case closure (or indefinitely if case is active)

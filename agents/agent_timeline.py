@@ -19,7 +19,7 @@ class TimelineAgent(BaseAgent):
     priority = 5
     capabilities = ["timeline-building", "gap-detection", "contradiction-detection", "chronology-export"]
 
-    instructions = """You are the Timeline Reconstruction Agent for the Nelson Enterprise legal system.
+    instructions = """You are the Timeline Reconstruction Agent for the Athena Cognitive Platform legal system.
 
 YOUR ROLE:
 Build comprehensive chronological timelines by cross-referencing:

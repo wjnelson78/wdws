@@ -131,7 +131,7 @@ async def send_email(
 def build_notification_html(
     title: str,
     sections: list[dict],
-    footer: str = "Nelson Enterprise Platform — Athena AI Agent",
+    footer: str = "Athena Cognitive Platform — AI Agent",
 ) -> str:
     """
     Build a styled HTML email for agent notifications.
@@ -163,7 +163,7 @@ def build_notification_html(
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
     <span style="font-size:28px">🏛️</span>
     <div>
-      <div style="font-size:18px;font-weight:700;color:#f8fafc">NELSON ENTERPRISE PLATFORM</div>
+      <div style="font-size:18px;font-weight:700;color:#f8fafc">ATHENA COGNITIVE PLATFORM</div>
       <div style="font-size:12px;color:#64748b;letter-spacing:1px">ATHENA AI — AUTOMATED NOTIFICATION</div>
     </div>
   </div>

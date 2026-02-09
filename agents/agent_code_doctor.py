@@ -42,7 +42,7 @@ class CodeDoctorAgent(BaseAgent):
         "auto-patch", "email-notification", "audit-trail"
     ]
 
-    instructions = """You are Code Doctor (Athena AI), the auto-remediation agent for the Nelson Enterprise WDWS platform.
+    instructions = """You are Code Doctor (Athena AI), the auto-remediation agent for the Athena Cognitive Platform.
 
 YOUR MISSION:
 Detect agent failures, diagnose root causes by analyzing tracebacks and database schema,
@@ -106,7 +106,7 @@ OUTPUT FORMAT (when asked for diagnosis as JSON):
     # ── Email notification ───────────────────────────────────
     async def _notify(self, ctx: RunContext, subject_detail: str, sections: list[dict]):
         """Send email notification via Graph API and log it."""
-        subject = f"NELSON ENTERPRISE PLATFORM: {subject_detail}"
+        subject = f"ATHENA COGNITIVE PLATFORM: {subject_detail}"
         body_html = build_notification_html(subject_detail, sections)
 
         result = await send_email(

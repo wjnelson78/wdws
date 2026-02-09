@@ -22,7 +22,7 @@ class DataQualityAgent(BaseAgent):
     priority = 3
     capabilities = ["embedding-audit", "ocr-quality", "dedup", "integrity-check"]
 
-    instructions = """You are the Data Quality Agent for the Nelson Enterprise WDWS system.
+    instructions = """You are the Data Quality Agent for the Athena Cognitive Platform.
 
 DATABASE SCHEMA:
 - core.documents: id, domain, document_type, title, source_path, content_hash, full_content_preview, created_at

@@ -1945,141 +1945,141 @@ async def _tool_list_cases(args: dict) -> str:
         return json.dumps({"error": str(e)})
 
 
-    async def _tool_list_case_documents(args: dict) -> str:
-      """List documents for a case with optional type filter and pagination."""
-      case_number = args["case_number"].strip()
-      doc_type = args.get("document_type")
-      limit = min(int(args.get("limit", 50)), 200)
-      offset = max(int(args.get("offset", 0)), 0)
-      p = await get_pool()
-      try:
-        case = await p.fetchrow(
-          "SELECT id, case_number, case_title FROM legal.cases WHERE case_number ILIKE $1",
-          f"%{case_number}%",
-        )
-        if not case:
-          return json.dumps({"error": f"Case '{case_number}' not found"})
+async def _tool_list_case_documents(args: dict) -> str:
+  """List documents for a case with optional type filter and pagination."""
+  case_number = args["case_number"].strip()
+  doc_type = args.get("document_type")
+  limit = min(int(args.get("limit", 50)), 200)
+  offset = max(int(args.get("offset", 0)), 0)
+  p = await get_pool()
+  try:
+    case = await p.fetchrow(
+      "SELECT id, case_number, case_title FROM legal.cases WHERE case_number ILIKE $1",
+      f"%{case_number}%",
+    )
+    if not case:
+      return json.dumps({"error": f"Case '{case_number}' not found"})
 
-        where = ["cd.case_id = $1"]
-        params: list = [case["id"]]
-        if doc_type:
-          where.append(f"d.document_type = ${len(params) + 1}")
-          params.append(doc_type)
-        where_sql = " AND ".join(where)
+    where = ["cd.case_id = $1"]
+    params: list = [case["id"]]
+    if doc_type:
+      where.append(f"d.document_type = ${len(params) + 1}")
+      params.append(doc_type)
+    where_sql = " AND ".join(where)
 
-        total = await p.fetchval(
-          f"""
-          SELECT COUNT(*)
-          FROM legal.case_documents cd
-          JOIN core.documents d ON cd.document_id = d.id
-          WHERE {where_sql}
-          """,
-          *params,
-        )
+    total = await p.fetchval(
+      f"""
+      SELECT COUNT(*)
+      FROM legal.case_documents cd
+      JOIN core.documents d ON cd.document_id = d.id
+      WHERE {where_sql}
+      """,
+      *params,
+    )
 
-        limit_idx = len(params) + 1
-        offset_idx = len(params) + 2
-        rows = await p.fetch(
-          f"""
-          SELECT d.id, d.title, d.filename, d.document_type, d.domain, d.created_at
-          FROM legal.case_documents cd
-          JOIN core.documents d ON cd.document_id = d.id
-          WHERE {where_sql}
-          ORDER BY d.created_at ASC
-          LIMIT ${limit_idx} OFFSET ${offset_idx}
-          """,
-          *params,
-          limit,
-          offset,
-        )
+    limit_idx = len(params) + 1
+    offset_idx = len(params) + 2
+    rows = await p.fetch(
+      f"""
+      SELECT d.id, d.title, d.filename, d.document_type, d.domain, d.created_at
+      FROM legal.case_documents cd
+      JOIN core.documents d ON cd.document_id = d.id
+      WHERE {where_sql}
+      ORDER BY d.created_at ASC
+      LIMIT ${limit_idx} OFFSET ${offset_idx}
+      """,
+      *params,
+      limit,
+      offset,
+    )
 
-        return json.dumps({
-          "case_number": case["case_number"],
-          "case_title": case["case_title"],
-          "document_type": doc_type,
-          "total": total,
-          "count": len(rows),
-          "limit": limit,
-          "offset": offset,
-          "documents": [
-            {
-              "id": str(r["id"]),
-              "title": r["title"] or r["filename"],
-              "filename": r["filename"],
-              "type": r["document_type"],
-              "domain": r["domain"],
-              "created_at": _ser(r["created_at"]),
-            }
-            for r in rows
-          ],
-        })
-      except Exception as e:
-        return json.dumps({"error": str(e)})
+    return json.dumps({
+      "case_number": case["case_number"],
+      "case_title": case["case_title"],
+      "document_type": doc_type,
+      "total": total,
+      "count": len(rows),
+      "limit": limit,
+      "offset": offset,
+      "documents": [
+        {
+          "id": str(r["id"]),
+          "title": r["title"] or r["filename"],
+          "filename": r["filename"],
+          "type": r["document_type"],
+          "domain": r["domain"],
+          "created_at": _ser(r["created_at"]),
+        }
+        for r in rows
+      ],
+    })
+  except Exception as e:
+    return json.dumps({"error": str(e)})
 
 
-    async def _tool_get_documents_bulk(args: dict) -> str:
-      """Get multiple documents by ID in one call."""
-      doc_ids = args.get("document_ids") or []
-      if not isinstance(doc_ids, list) or not doc_ids:
-        return json.dumps({"error": "document_ids must be a non-empty list"})
+async def _tool_get_documents_bulk(args: dict) -> str:
+  """Get multiple documents by ID in one call."""
+  doc_ids = args.get("document_ids") or []
+  if not isinstance(doc_ids, list) or not doc_ids:
+    return json.dumps({"error": "document_ids must be a non-empty list"})
 
-      max_chars = int(args.get("max_chars", 1200))
-      max_chars = max(200, min(max_chars, 4000))
+  max_chars = int(args.get("max_chars", 1200))
+  max_chars = max(200, min(max_chars, 4000))
 
-      truncated = False
-      if len(doc_ids) > 20:
-        doc_ids = doc_ids[:20]
-        truncated = True
+  truncated = False
+  if len(doc_ids) > 20:
+    doc_ids = doc_ids[:20]
+    truncated = True
 
-      p = await get_pool()
-      try:
-        rows = await p.fetch(
-          """
-          SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.created_at,
-               d.full_content, em.sender, em.recipients, em.date_sent,
-               em.direction, em.mailbox
-          FROM core.documents d
-          LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-          WHERE d.id = ANY($1::uuid[])
-          """,
-          doc_ids,
-        )
-        found_ids = {str(r["id"]) for r in rows}
-        missing = [doc_id for doc_id in doc_ids if doc_id not in found_ids]
+  p = await get_pool()
+  try:
+    rows = await p.fetch(
+      """
+      SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.created_at,
+           d.full_content, em.sender, em.recipients, em.date_sent,
+           em.direction, em.mailbox
+      FROM core.documents d
+      LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+      WHERE d.id = ANY($1::uuid[])
+      """,
+      doc_ids,
+    )
+    found_ids = {str(r["id"]) for r in rows}
+    missing = [doc_id for doc_id in doc_ids if doc_id not in found_ids]
 
-        results = []
-        for r in rows:
-          content = r["full_content"] or ""
-          if len(content) > max_chars:
-            content = content[:max_chars] + "\n... [truncated]"
-          item = {
-            "id": str(r["id"]),
-            "title": r["title"] or r["filename"],
-            "filename": r["filename"],
-            "domain": r["domain"],
-            "type": r["document_type"],
-            "created_at": _ser(r["created_at"]),
-            "content": content,
-          }
-          if r["sender"]:
-            item["email"] = {
-              "from": r["sender"],
-              "to": r["recipients"],
-              "date": _ser(r["date_sent"]),
-              "direction": r["direction"],
-              "mailbox": r["mailbox"],
-            }
-          results.append(item)
+    results = []
+    for r in rows:
+      content = r["full_content"] or ""
+      if len(content) > max_chars:
+        content = content[:max_chars] + "\n... [truncated]"
+      item = {
+        "id": str(r["id"]),
+        "title": r["title"] or r["filename"],
+        "filename": r["filename"],
+        "domain": r["domain"],
+        "type": r["document_type"],
+        "created_at": _ser(r["created_at"]),
+        "content": content,
+      }
+      if r["sender"]:
+        item["email"] = {
+          "from": r["sender"],
+          "to": r["recipients"],
+          "date": _ser(r["date_sent"]),
+          "direction": r["direction"],
+          "mailbox": r["mailbox"],
+        }
+      results.append(item)
 
-        return json.dumps({
-          "count": len(results),
-          "max_chars": max_chars,
-          "truncated_ids": truncated,
-          "missing_ids": missing,
-          "documents": results,
-        })
-      except Exception as e:
-        return json.dumps({"error": str(e)})
+    return json.dumps({
+      "count": len(results),
+      "max_chars": max_chars,
+      "truncated_ids": truncated,
+      "missing_ids": missing,
+      "documents": results,
+    })
+  except Exception as e:
+    return json.dumps({"error": str(e)})
 
 
 async def _tool_web_search(args: dict) -> str:
@@ -2702,7 +2702,7 @@ async def api_chat_models(request: Request):
 
 # ── Health Probe ──────────────────────────────────────────────
 async def health(request: Request):
-    return JSONResponse({"status": "healthy", "service": "nelson-dashboard-v2"})
+    return JSONResponse({"status": "healthy", "service": "athena-dashboard-v2"})
 
 
 # ── Serve SPA ─────────────────────────────────────────────────
@@ -3233,7 +3233,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 <!-- ═══ MAIN APP ═══ -->
 <div id="main-app" class="hidden">
 <header>
-  <h1>🏛️ Nelson Enterprise Platform</h1>
+  <h1>🧠 Athena Cognitive Platform</h1>
   <div class="right">
     <span id="hdr-info"></span>
     <span id="hdr-refresh" class="pulse" style="font-size:10px;color:var(--green)">● LIVE</span>

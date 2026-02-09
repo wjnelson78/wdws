@@ -28,7 +28,7 @@ class OrchestratorAgent(BaseAgent):
         "escalation", "fleet-report", "agent-dispatch", "challenge-review"
     ]
 
-    instructions = """You are the Orchestrator — the Manager of all agents in the Nelson Enterprise WDWS system.
+    instructions = """You are the Orchestrator — the Manager of all agents in the Athena Cognitive Platform.
 
 YOUR ROLE:
 You oversee a fleet of specialized agents. You do NOT perform their work directly.

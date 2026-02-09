@@ -1062,7 +1062,7 @@ tr:hover td{background:rgba(59,130,246,.04)}
 <!-- ═══ MAIN APP ═══ -->
 <div id="main-app" class="hidden">
 <header>
-  <h1>🏛️ WDWS Enterprise Platform</h1>
+  <h1>🧠 Athena Cognitive Platform</h1>
   <div class="right">
     <span id="hdr-info"></span>
     <span id="hdr-refresh" class="pulse" style="font-size:10px;color:var(--green)">● LIVE</span>

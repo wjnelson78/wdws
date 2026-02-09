@@ -22,7 +22,7 @@ class SecuritySentinelAgent(BaseAgent):
     priority = 2
     capabilities = ["threat-detection", "access-audit", "pii-scanning", "compliance"]
 
-    instructions = """You are the Security Sentinel Agent for the Nelson Enterprise WDWS system.
+    instructions = """You are the Security Sentinel Agent for the Athena Cognitive Platform.
 
 SECURITY CONTEXT:
 - MCP server exposed at https://klunky.12432.net via Cloudflare Tunnel

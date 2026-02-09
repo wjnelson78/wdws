@@ -8,7 +8,7 @@ async def test():
     html = build_notification_html(
         'Code Doctor — Test Notification',
         [{'heading': 'System Status', 'body': (
-            'This is a test email from the Nelson Enterprise Platform agent system.<br><br>'
+            'This is a test email from the Athena Cognitive Platform agent system.<br><br>'
             '<b>Model:</b> gpt-5.2-codex<br>'
             '<b>Reasoning Effort:</b> medium<br>'
             '<b>Agents:</b> 12 registered<br>'
@@ -21,7 +21,7 @@ async def test():
         client_secret=GRAPH_CLIENT_SECRET,
         sender=GRAPH_SENDER_EMAIL,
         to_recipients=['william@seattleseahawks.me'],
-        subject='NELSON ENTERPRISE PLATFORM: Test Email',
+        subject='ATHENA COGNITIVE PLATFORM: Test Email',
         body_html=html
     )
     print(f'Result: {result}')

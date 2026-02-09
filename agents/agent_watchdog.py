@@ -71,7 +71,7 @@ THRESHOLDS = {
 
 # ── Services to monitor ─────────────────────────────────────
 MONITORED_SERVICES = [
-    "wdws-mcp", "nelson-dashboard", "wdws-agents",
+    "wdws-mcp", "athena-dashboard", "wdws-agents",
     "postgresql@17-main", "ssh",
 ]
 
@@ -110,12 +110,12 @@ class WatchdogAgent(BaseAgent):
         "email-escalation", "system-optimization",
     ]
 
-    instructions = """You are the Watchdog Agent v3 for the Nelson Enterprise WDWS system.
+    instructions = """You are the Watchdog Agent v3 for the Athena Cognitive Platform.
 You are the eyes and ears of the entire platform. You monitor everything.
 
 SYSTEM ARCHITECTURE:
 - Server: 172.16.32.207 (Ubuntu), hostname dtg-mcp-server
-- Services: wdws-mcp (9200), nelson-dashboard (9100), wdws-agents, postgresql@17-main
+- Services: wdws-mcp (9200), athena-dashboard (9100), wdws-agents, postgresql@17-main
 - Timers: wdws-email-sync (15 min), wdws-attach-ingest (30 min)
 - Database: PostgreSQL 'wdws', schemas: core, legal, medical, ops, paperless
 - Tunnel: klunky.12432.net → Cloudflare Tunnel (runs on another server)
@@ -912,7 +912,7 @@ WHEN TO ESCALATE TO HUMAN:
         body_html = build_notification_html(
             title=f"🚨 {title}",
             sections=sections,
-            footer="Nelson Enterprise Platform — Watchdog Agent v3")
+            footer="Athena Cognitive Platform — Watchdog Agent v3")
 
         result = await send_email(
             tenant_id=GRAPH_TENANT_ID,
