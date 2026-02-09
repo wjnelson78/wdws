@@ -22,11 +22,12 @@ from typing import Optional, List, Dict, Any
 import asyncpg
 import httpx
 from starlette.applications import Starlette
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 import uvicorn
 
 # ── Config ────────────────────────────────────────────────────
@@ -3029,6 +3030,8 @@ routes = [
     Route("/api/chat/send", api_chat_send, methods=["POST"]),
     Route("/api/chat/retry", api_chat_retry, methods=["POST"]),
     Route("/api/chat/models", api_chat_models),
+    # Static files
+    Mount("/static", StaticFiles(directory="/opt/wdws/dashboard/static"), name="static"),
 ]
 
 middleware = [
@@ -3233,7 +3236,10 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 <!-- ═══ MAIN APP ═══ -->
 <div id="main-app" class="hidden">
 <header>
-  <h1>🧠 Athena Cognitive Platform</h1>
+  <div style="display:flex;align-items:center;gap:16px">
+    <img src="/static/athena.svg" alt="Athena AI" style="height:48px;width:48px;border-radius:8px"/>
+    <h1 style="margin:0">🧠 Athena Cognitive Platform</h1>
+  </div>
   <div class="right">
     <span id="hdr-info"></span>
     <span id="hdr-refresh" class="pulse" style="font-size:10px;color:var(--green)">● LIVE</span>
@@ -4999,7 +5005,10 @@ async function newConversation(){
   chatConvId=null;
   $('chat-messages').innerHTML=`
     <div class="chat-welcome">
-      <div class="chat-welcome-greeting">⚖️ Athena AI at your service, <span id="chat-greeting-name">${currentUser||'Counselor'}</span>. What shall we investigate?</div>
+      <div style="display:flex;align-items:center;gap:24px;margin-bottom:32px">
+        <img src="/static/athena.svg" alt="Athena AI" style="height:80px;width:80px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)"/>
+        <div class="chat-welcome-greeting" style="margin:0">⚖️ Athena AI at your service, <span id="chat-greeting-name">${currentUser||'Counselor'}</span>. What shall we investigate?</div>
+      </div>
       <div class="suggestions">
         <button onclick="chatSuggestion('What cases are currently active?')">📋 Active cases</button>
         <button onclick="chatSuggestion('Search for documents mentioning Starbucks')">🔍 Search documents</button>

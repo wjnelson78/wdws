@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a8a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#grad1)"/>
+  <circle cx="400" cy="300" r="180" fill="#f8fafc" opacity="0.95"/>
+  <path d="M 400 180 
+           Q 420 200, 440 240
+           Q 460 280, 440 320
+           Q 420 360, 400 380
+           Q 380 360, 360 320
+           Q 340 280, 360 240
+           Q 380 200, 400 180 Z" 
+        fill="#1e3a8a" opacity="0.8"/>
+  <circle cx="380" cy="260" r="20" fill="#1e3a8a"/>
+  <circle cx="420" cy="260" r="20" fill="#1e3a8a"/>
+  <path d="M 360 320 Q 400 340, 440 320" stroke="#1e3a8a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <text x="400" y="580" font-family="Arial, sans-serif" font-size="60" font-weight="bold" 
+        text-anchor="middle" fill="#f8fafc">ATHENA AI</text>
+  <text x="400" y="640" font-family="Arial, sans-serif" font-size="32" 
+        text-anchor="middle" fill="#e2e8f0">Cognitive Platform</text>
+</svg>
