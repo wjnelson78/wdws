@@ -493,7 +493,7 @@ def build_system_prompt(
         ", ".join(known_parties[:50]) if known_parties else "(none)"
     )
 
-    return f"""You are an expert legal AI assistant for William Nelson's WDWS case management platform.
+    return f"""You are an expert legal AI assistant for William Nelson's Athena Cognitive Platform.
 You perform deep analysis of legal emails and their attachments.
 
 William Nelson is the plaintiff/petitioner in most of these cases. He is pro se
