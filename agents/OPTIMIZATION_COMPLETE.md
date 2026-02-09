@@ -24,11 +24,14 @@ Successfully implemented enterprise-grade reliability patterns and resolved crit
 
 **Solution**:
 - Stopped and disabled `nelson-dashboard` service
+- **Completely removed** `nelson-dashboard.service` file from systemd
+- **Removed** old `/var/log/nelson-dashboard.log` file
 - Enabled `athena-dashboard` as primary service  
+- Reloaded systemd daemon
 - Verified no port conflicts
 - Updated all monitoring to track correct service name
 
-**Result**: Dashboard stable, zero unplanned restarts
+**Result**: Dashboard stable, zero unplanned restarts, clean system with no legacy files
 
 ### 2. LLM API Reliability (ENHANCED ✅)
 **Problem**: No retry logic or circuit breaker for OpenAI API calls - any API hiccup caused agent failures.
