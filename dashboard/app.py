@@ -2957,6 +2957,129 @@ async def api_mcp_analytics(request):
     })
 
 
+    async def api_quality_summary(request: Request):
+      """Summary of eval results from the Quality Eval agent."""
+      err = await _check_auth(request)
+      if err:
+        return err
+      hours = int(request.query_params.get("hours", "168"))
+      limit = min(int(request.query_params.get("limit", "20")), 100)
+      p = await get_pool()
+
+      rows = await p.fetch("""
+        SELECT id, status, started_at, ended_at, summary, metrics
+        FROM ops.agent_runs
+        WHERE agent_id = 'quality-eval'
+          AND started_at > now() - interval '1 hour' * $1
+        ORDER BY started_at DESC
+        LIMIT $2
+      """, hours, limit)
+
+      runs = []
+      pass_rates = []
+      for r in rows:
+        metrics = r["metrics"] or {}
+        if isinstance(metrics, str):
+          try:
+            metrics = json.loads(metrics)
+          except Exception:
+            metrics = {}
+        pass_rate = metrics.get("pass_rate")
+        if isinstance(pass_rate, str):
+          try:
+            pass_rate = float(pass_rate)
+          except Exception:
+            pass_rate = None
+        if pass_rate is not None:
+          pass_rates.append(pass_rate)
+
+        runs.append({
+          "id": r["id"],
+          "status": r["status"],
+          "started_at": _ser(r["started_at"]),
+          "ended_at": _ser(r["ended_at"]),
+          "summary": r["summary"],
+          "metrics": metrics,
+          "pass_rate": pass_rate,
+        })
+
+      latest = runs[0] if runs else None
+      avg_pass_rate = round(sum(pass_rates) / len(pass_rates), 3) if pass_rates else None
+      trend = None
+      if len(runs) >= 2 and runs[0].get("pass_rate") is not None and runs[1].get("pass_rate") is not None:
+        trend = round(runs[0]["pass_rate"] - runs[1]["pass_rate"], 3)
+
+      return JSONResponse({
+        "hours": hours,
+        "latest": latest,
+        "avg_pass_rate": avg_pass_rate,
+        "trend": trend,
+        "runs": runs,
+      })
+
+
+    async def api_reliability_summary(request: Request):
+      """Reliability rollups for agent runs, MCP tool calls, and health checks."""
+      err = await _check_auth(request)
+      if err:
+        return err
+      hours = int(request.query_params.get("hours", "24"))
+      p = await get_pool()
+
+      agent_stats = await p.fetchrow("""
+        SELECT COUNT(*) AS total_runs,
+             COUNT(*) FILTER (WHERE status = 'error') AS errors,
+             AVG(duration_ms)::int AS avg_ms,
+             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
+        FROM ops.agent_runs
+        WHERE started_at > now() - interval '1 hour' * $1
+      """, hours)
+
+      mcp_stats = await p.fetchrow("""
+        SELECT COUNT(*) AS total_calls,
+             COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+             AVG(duration_ms)::int AS avg_ms,
+             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms,
+             PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99_ms
+        FROM ops.mcp_query_log
+        WHERE created_at > now() - interval '1 hour' * $1
+      """, hours)
+
+      health_rows = await p.fetch("""
+        SELECT status, COUNT(*) AS count
+        FROM ops.health_checks
+        WHERE checked_at > now() - interval '1 hour' * $1
+        GROUP BY status
+      """, hours)
+
+      health_counts = {r["status"]: r["count"] for r in health_rows}
+
+      total_agent = agent_stats["total_runs"] or 0
+      agent_errors = agent_stats["errors"] or 0
+      total_mcp = mcp_stats["total_calls"] or 0
+      mcp_errors = mcp_stats["errors"] or 0
+
+      return JSONResponse({
+        "hours": hours,
+        "agents": {
+          "total_runs": total_agent,
+          "errors": agent_errors,
+          "error_rate": round(agent_errors / max(total_agent, 1), 3),
+          "avg_ms": agent_stats["avg_ms"],
+          "p95_ms": agent_stats["p95_ms"],
+        },
+        "mcp": {
+          "total_calls": total_mcp,
+          "errors": mcp_errors,
+          "error_rate": round(mcp_errors / max(total_mcp, 1), 3),
+          "avg_ms": mcp_stats["avg_ms"],
+          "p95_ms": mcp_stats["p95_ms"],
+          "p99_ms": mcp_stats["p99_ms"],
+        },
+        "health_checks": health_counts,
+      })
+
+
 # ══════════════════════════════════════════════════════════════
 #  ROUTES + MIDDLEWARE
 # ══════════════════════════════════════════════════════════════
@@ -3024,6 +3147,8 @@ routes = [
     Route("/api/mcp/query-log", api_mcp_query_log),
     Route("/api/mcp/query-log/{id:int}", api_mcp_query_log_detail),
     Route("/api/mcp/analytics", api_mcp_analytics),
+    Route("/api/quality/summary", api_quality_summary),
+    Route("/api/reliability/summary", api_reliability_summary),
     # Chat
     Route("/api/chat/conversations", api_chat_conversations, methods=["GET", "POST"]),
     Route("/api/chat/conversations/{cid}", api_chat_conversation_detail, methods=["GET", "PUT", "DELETE"]),
@@ -3603,6 +3728,12 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
   </div>
 
   <div id="analytics-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
+
+  <div class="section-title" style="margin-top:24px">✅ Quality & Reliability</div>
+  <div id="quality-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
+  <div id="reliability-summary" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
+  <div class="section-title" style="margin-top:16px">🧪 Recent Eval Runs</div>
+  <div id="quality-runs"></div>
 
   <div class="cols-2" style="margin-top:16px">
     <div>
@@ -5464,7 +5595,11 @@ const QLOG_LIMIT=25;
 async function loadAnalytics(){
   try {
     const hours = $('analytics-period')?.value || 168;
-    const data = await api(`/api/mcp/analytics?hours=${hours}`);
+    const [data, quality, reliability] = await Promise.all([
+      api(`/api/mcp/analytics?hours=${hours}`),
+      api(`/api/quality/summary?hours=${hours}`),
+      api(`/api/reliability/summary?hours=${Math.min(hours, 168)}`),
+    ]);
 
     // Summary cards
     $('analytics-summary').innerHTML=`<div class="cards">
@@ -5474,6 +5609,67 @@ async function loadAnalytics(){
       <div class="card"><div class="stat"><div class="stat-value">${data.avg_duration_ms!=null?data.avg_duration_ms+'ms':'—'}</div><div class="stat-label">Avg Duration</div></div></div>
       <div class="card"><div class="stat"><div class="stat-value">${fmtNum(data.error_count||0)}</div><div class="stat-label">Errors</div></div></div>
     </div>`;
+
+    // Quality summary
+    const qLatest = quality?.latest || {};
+    const qMetrics = qLatest.metrics || {};
+    const passRate = qLatest.pass_rate != null ? Math.round(qLatest.pass_rate * 100) + '%' : '—';
+    const trend = quality?.trend != null ? (quality.trend >= 0 ? '+' : '') + Math.round(quality.trend * 100) + '%' : '—';
+    $('quality-summary').innerHTML = `
+      <div class="card"><div class="label">Eval Pass Rate</div>
+        <div class="value green">${passRate}</div>
+        <div class="sub">Trend ${trend}</div></div>
+      <div class="card"><div class="label">Passed</div>
+        <div class="value cyan">${fmtNum(qMetrics.passed||0)}</div></div>
+      <div class="card"><div class="label">Failed</div>
+        <div class="value red">${fmtNum(qMetrics.failed||0)}</div></div>
+      <div class="card"><div class="label">Skipped</div>
+        <div class="value amber">${fmtNum(qMetrics.skipped||0)}</div></div>
+      <div class="card"><div class="label">Avg Results</div>
+        <div class="value blue">${qMetrics.avg_results!=null?qMetrics.avg_results:'—'}</div></div>
+      <div class="card"><div class="label">Last Eval</div>
+        <div class="value purple">${fmtTime(qLatest.started_at)}</div></div>
+    `;
+
+    // Recent eval runs table
+    const qRuns = quality?.runs || [];
+    if(qRuns.length){
+      $('quality-runs').innerHTML = `<div class="tbl-wrap"><table>
+        <thead><tr><th>Time</th><th>Status</th><th>Pass Rate</th><th>Passed</th><th>Failed</th><th>Skipped</th><th>Summary</th></tr></thead>
+        <tbody>${qRuns.slice(0,10).map(r=>`<tr>
+          <td>${fmtTime(r.started_at)}</td>
+          <td>${r.status==='success'||r.status==='completed' ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-red">ERR</span>'}</td>
+          <td>${r.pass_rate!=null?Math.round(r.pass_rate*100)+'%':'—'}</td>
+          <td>${r.metrics?.passed??0}</td>
+          <td>${r.metrics?.failed??0}</td>
+          <td>${r.metrics?.skipped??0}</td>
+          <td title="${esc(r.summary||'')}">${esc((r.summary||'').slice(0,60))}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+    } else {
+      $('quality-runs').innerHTML = '<div class="empty-state">No eval runs recorded yet</div>';
+    }
+
+    // Reliability summary
+    const rAgents = reliability?.agents || {};
+    const rMcp = reliability?.mcp || {};
+    const rHealth = reliability?.health_checks || {};
+    $('reliability-summary').innerHTML = `
+      <div class="card"><div class="label">Agent Error Rate</div>
+        <div class="value amber">${Math.round((rAgents.error_rate||0)*100)}%</div>
+        <div class="sub">${fmtNum(rAgents.errors||0)} / ${fmtNum(rAgents.total_runs||0)}</div></div>
+      <div class="card"><div class="label">Agent p95</div>
+        <div class="value cyan">${rAgents.p95_ms!=null?Math.round(rAgents.p95_ms)+'ms':'—'}</div></div>
+      <div class="card"><div class="label">MCP Error Rate</div>
+        <div class="value amber">${Math.round((rMcp.error_rate||0)*100)}%</div>
+        <div class="sub">${fmtNum(rMcp.errors||0)} / ${fmtNum(rMcp.total_calls||0)}</div></div>
+      <div class="card"><div class="label">MCP p95</div>
+        <div class="value cyan">${rMcp.p95_ms!=null?Math.round(rMcp.p95_ms)+'ms':'—'}</div></div>
+      <div class="card"><div class="label">MCP p99</div>
+        <div class="value purple">${rMcp.p99_ms!=null?Math.round(rMcp.p99_ms)+'ms':'—'}</div></div>
+      <div class="card"><div class="label">Health Checks</div>
+        <div class="value green">${fmtNum(rHealth.healthy||0)}</div>
+        <div class="sub">degraded: ${fmtNum(rHealth.degraded||0)} · critical: ${fmtNum(rHealth.critical||0)}</div></div>
+    `;
 
     // Tool breakdown
     const tools = data.by_tool || [];
