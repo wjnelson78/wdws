@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Nelson Enterprise Dashboard v2.0 — PostgreSQL-native.
+Athena Cognitive Platform Dashboard v2.0 — PostgreSQL-native.
 
 Direct connection to the enterprise PostgreSQL database.
 Provides:
@@ -3050,7 +3050,7 @@ app = Starlette(routes=routes, middleware=middleware)
 def main():
     host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
     print(f"\n{'=' * 60}")
-    print(f"  Nelson Enterprise Dashboard v2.0")
+    print(f"  Athena Cognitive Platform Dashboard v2.0")
     print(f"  http://{host}:{DASHBOARD_PORT}/dashboard")
     db_host = DATABASE_URL.split("@")[1] if "@" in DATABASE_URL else DATABASE_URL
     print(f"  Database: {db_host}")
@@ -3065,7 +3065,7 @@ def main():
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Nelson Enterprise Dashboard</title>
+<title>Athena Cognitive Platform</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🏛️</text></svg>"/>
 <style>
 :root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2332;--border:#1e3a5f;
@@ -3225,7 +3225,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="login-screen" class="login-box">
-  <h2>🔒 Nelson Enterprise Dashboard</h2>
+  <h2>🔒 Athena Cognitive Platform</h2>
   <input id="login-user" type="text" placeholder="Username" autocomplete="username"/>
   <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password"
     onkeydown="if(event.key==='Enter')doLogin()"/>
@@ -3237,7 +3237,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 <div id="main-app" class="hidden">
 <header>
   <div style="display:flex;align-items:center;gap:16px">
-    <img src="/static/athena.svg" alt="Athena AI" style="height:48px;width:48px;border-radius:8px"/>
+    <img src="/static/athena-portrait.jpg" alt="Athena AI" style="height:52px;width:52px;border-radius:8px;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,0.15)"/>
     <h1 style="margin:0">🧠 Athena Cognitive Platform</h1>
   </div>
   <div class="right">
@@ -5006,7 +5006,7 @@ async function newConversation(){
   $('chat-messages').innerHTML=`
     <div class="chat-welcome">
       <div style="display:flex;align-items:center;gap:24px;margin-bottom:32px">
-        <img src="/static/athena.svg" alt="Athena AI" style="height:80px;width:80px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)"/>
+        <img src="/static/athena-portrait.jpg" alt="Athena AI" style="height:96px;width:96px;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,0.2);object-fit:cover"/>
         <div class="chat-welcome-greeting" style="margin:0">⚖️ Athena AI at your service, <span id="chat-greeting-name">${currentUser||'Counselor'}</span>. What shall we investigate?</div>
       </div>
       <div class="suggestions">
@@ -5036,7 +5036,7 @@ async function openConversation(id){
     el.innerHTML=msgs.map((m,i,arr)=>{
       const isLastAssistant=m.role==='assistant'&&!arr.slice(i+1).some(x=>x.role==='assistant');
       const avatar = m.role==='assistant' 
-        ? '<img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>'
+        ? '<img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>'
         : '';
       return `<div class="chat-msg-wrap ${m.role}">
         <div class="chat-msg-name">${avatar}${m.role==='assistant'?'Athena AI':currentUser}</div>
@@ -5197,7 +5197,7 @@ async function sendChat(){
     const rLabel=resp.model_label||modelLabel;
     const aWrap=document.createElement('div');
     aWrap.className='chat-msg-wrap assistant';
-    aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
+    aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
     const aDiv=document.createElement('div');
     aDiv.className='chat-msg assistant';
     aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
@@ -5216,7 +5216,7 @@ async function sendChat(){
     thinkDiv.remove();
     const errWrap=document.createElement('div');
     errWrap.className='chat-msg-wrap assistant';
-    errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI</div>`;
+    errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI</div>`;
     const errDiv=document.createElement('div');
     errDiv.className='chat-msg assistant';
     errDiv.style.borderColor='var(--red)';
@@ -5289,7 +5289,7 @@ async function retryChat(btnEl){
       const rLabel=resp.model_label||modelLabel;
       const aWrap=document.createElement('div');
       aWrap.className='chat-msg-wrap assistant';
-      aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
+      aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
       const aDiv=document.createElement('div');
       aDiv.className='chat-msg assistant';
       aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
@@ -5301,7 +5301,7 @@ async function retryChat(btnEl){
       thinkDiv.remove();
       const errWrap=document.createElement('div');
       errWrap.className='chat-msg-wrap assistant';
-      errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-avatar.svg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle"/>Athena AI</div>`;
+      errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI</div>`;
       const errDiv=document.createElement('div');
       errDiv.className='chat-msg assistant';
       errDiv.style.borderColor='var(--red)';
