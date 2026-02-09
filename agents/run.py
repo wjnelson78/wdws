@@ -41,6 +41,7 @@ from agent_retention import RetentionAgent
 from agent_timeline import TimelineAgent
 from agent_query_insight import QueryInsightAgent
 from agent_code_doctor import CodeDoctorAgent
+from agent_quality_eval import QualityEvalAgent
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -60,6 +61,7 @@ ALL_AGENTS = [
     RetentionAgent(),        # P4 — data governance
     TimelineAgent(),         # P5 — chronology
     QueryInsightAgent(),     # P5 — analytics
+    QualityEvalAgent(),     # P5 — evals + safety checks
 ]
 
 AGENT_MAP = {a.agent_id: a for a in ALL_AGENTS}
