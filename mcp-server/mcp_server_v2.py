@@ -657,12 +657,31 @@ assistant with expertise in civil litigation, employment law, and insurance disp
 ═══════════════════════════════════════════════════════════════════════════════════════════
 DATABASE TECHNOLOGY
 ═══════════════════════════════════════════════════════════════════════════════════════════
-**PostgreSQL 17** - NOT SQLite!
-• When writing SQL queries, use PostgreSQL syntax (NOT SQLite syntax)
-• PostgreSQL-specific features available: JSONB, arrays, CTEs, window functions, pgvector
-• Full-text search: Use PostgreSQL's tsvector/tsquery (NOT SQLite FTS)
-• Schema-qualified table names required (e.g., legal.cases, core.documents)
-• For SQL queries, use execute_sql() but prefer specialized tools when available
+**PostgreSQL 17 with pgvector Extension** - NOT SQLite!
+
+This is a HYBRID system with TWO powerful search capabilities:
+
+1️⃣ **VECTOR SEARCH (pgvector)** - Semantic similarity search
+   • Finds documents by MEANING, not just keywords
+   • Uses embeddings (3072-dimensional vectors)
+   • Best for: "Find documents about X", natural language queries
+   • Tools: semantic_search(), rag_query()
+   • Example: Find all docs related to "employment discrimination" even without exact phrase
+
+2️⃣ **REGULAR RELATIONAL DATABASE (PostgreSQL)** - Structured data
+   • Traditional SQL queries on tables, joins, aggregations
+   • Full-text search with tsvector/tsquery
+   • Best for: Exact filters, statistics, structured queries
+   • Tools: search_emails(), search_filings(), list_cases(), execute_sql()
+   • Example: Find all emails sent on a specific date to a specific recipient
+
+📌 KEY POINTS:
+• When writing SQL: Use PostgreSQL syntax (NOT SQLite)
+• Schema-qualified names required: legal.cases, core.documents, medical.records
+• Available features: JSONB, arrays, CTEs, window functions, regex, date functions
+• Full-text search: Use tsvector/tsquery (NOT SQLite FTS5)
+• For semantic/meaning-based search: Use vector tools (semantic_search, rag_query)
+• For structured/exact queries: Use SQL tools or specialized search functions
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 IDENTITY & EXPERTISE
@@ -2456,11 +2475,14 @@ async def ingestion_status(limit: int = 10) -> str:
 async def execute_sql(query: str) -> str:
     """LOW-LEVEL PostgreSQL database access. DO NOT USE for answering questions about documents.
 
-    ⚠️  DATABASE: PostgreSQL 17 (NOT SQLite) - Use PostgreSQL syntax and features
+    ⚠️  DATABASE: PostgreSQL 17 with pgvector (NOT SQLite)
+    This database has BOTH:
+    - Regular PostgreSQL relational tables (for structured queries)
+    - pgvector semantic search (for meaning-based document search)
     
     ⚠️  PREFER these tools instead:
-    - rag_query: for answering questions about case content
-    - semantic_search: for finding relevant documents
+    - rag_query: for answering questions about case content (uses pgvector)
+    - semantic_search: for finding documents by meaning (uses pgvector)
     - search_emails, search_filings, list_cases: for structured queries
 
     Only use execute_sql for:
@@ -2470,18 +2492,19 @@ async def execute_sql(query: str) -> str:
     - Queries requiring PostgreSQL-specific features (CTEs, window functions, JSONB, etc.)
 
     PostgreSQL Features Available:
-    - Full-text search (tsvector, tsquery, to_tsquery)
-    - JSONB operations and indexing
-    - pgvector for semantic search
-    - Window functions, CTEs, advanced joins
-    - Array operations
-    - PostgreSQL-specific types and functions
+    - Regular SQL: Tables, joins, indexes, constraints
+    - Full-text search: tsvector, tsquery, to_tsquery (NOT SQLite FTS)
+    - JSONB: Native JSON storage with indexing and operators
+    - pgvector: Semantic similarity search via vector embeddings
+    - Window functions, CTEs, recursive queries
+    - Arrays, ranges, and custom types
+    - Advanced date/time, regex, and string functions
 
     Only SELECT queries allowed. Tables: core.documents, legal.cases, etc.
     Use schema-qualified names (schema.table) for all queries.
 
     Args:
-        query: PostgreSQL SELECT query (schema.table format required)
+        query: PostgreSQL SELECT query (schema.table format required, PostgreSQL syntax only)
     """
     normalized = query.strip().upper()
     if not normalized.startswith("SELECT"):
