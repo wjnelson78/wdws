@@ -26,6 +26,7 @@ from config import (
     DATABASE_URL, OPENAI_API_KEY, OPENAI_MODEL, LOG_LEVEL,
     AGENT_LLM_MODEL_HIGH, AGENT_LLM_MODEL_LOW,
     AGENT_LLM_MODEL_CODEX, AGENT_LLM_ROUTING_ENABLED,
+    AGENT_RUN_TIMEOUT_SECONDS, AGENT_WAKE_TIMEOUT_SECONDS,
 )
 from reliability import retry_with_backoff, get_circuit_breaker, CircuitBreakerOpenError
 
@@ -330,7 +331,10 @@ class BaseAgent(ABC):
             except Exception as e:
                 self.log.warning("Inbox processing error (non-fatal): %s", e)
 
-            result = await self.run(RunContext(self))
+            result = await asyncio.wait_for(
+                self.run(RunContext(self)),
+                timeout=AGENT_RUN_TIMEOUT_SECONDS,
+            )
             duration_ms = int((time.time() - t0) * 1000)
             summary = result.get("summary", "Completed")
 
@@ -353,6 +357,27 @@ class BaseAgent(ABC):
             self.log.info("✓ Run #%d complete (%dms) — %d findings, %d actions",
                          self._run_id, duration_ms, self._findings_count, self._actions_count)
             return result
+
+        except asyncio.TimeoutError:
+            duration_ms = int((time.time() - t0) * 1000)
+            msg = f"Timeout after {AGENT_RUN_TIMEOUT_SECONDS}s"
+            self.log.error("✗ Run #%d timed out", self._run_id)
+
+            await p.execute("""
+                UPDATE ops.agent_runs SET
+                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
+                WHERE id = $1
+            """, self._run_id, msg, duration_ms)
+
+            await p.execute("""
+                UPDATE ops.agent_registry SET
+                    last_run_at = now(), last_status = 'error',
+                    run_count = COALESCE(run_count, 0) + 1,
+                    error_count = COALESCE(error_count, 0) + 1
+                WHERE id = $1
+            """, self.agent_id)
+
+            return {"summary": msg, "error": "timeout"}
 
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
@@ -407,7 +432,10 @@ class BaseAgent(ABC):
                       self._run_id, trigger)
 
         try:
-            inbox_count = await self._process_inbox()
+            inbox_count = await asyncio.wait_for(
+                self._process_inbox(),
+                timeout=AGENT_WAKE_TIMEOUT_SECONDS,
+            )
             duration_ms = int((__import__('time').time() - t0) * 1000)
 
             await p.execute("""
@@ -432,6 +460,24 @@ class BaseAgent(ABC):
             self.log.info("\u26a1 Run #%d inbox done (%dms) — %d items",
                          self._run_id, duration_ms, inbox_count)
             return {"summary": f"Inbox: {inbox_count} items", "inbox": inbox_count}
+
+        except asyncio.TimeoutError:
+            duration_ms = int((__import__('time').time() - t0) * 1000)
+            msg = f"Inbox timeout after {AGENT_WAKE_TIMEOUT_SECONDS}s"
+            self.log.error("\u26a1 Inbox run #%d timed out", self._run_id)
+            await p.execute("""
+                UPDATE ops.agent_runs SET
+                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
+                WHERE id = $1
+            """, self._run_id, msg, duration_ms)
+            await p.execute("""
+                UPDATE ops.agent_registry SET
+                    last_run_at = now(), last_status = 'error',
+                    run_count = COALESCE(run_count, 0) + 1,
+                    error_count = COALESCE(error_count, 0) + 1
+                WHERE id = $1
+            """, self.agent_id)
+            return {"summary": msg, "error": "timeout"}
 
         except Exception as e:
             duration_ms = int((__import__('time').time() - t0) * 1000)

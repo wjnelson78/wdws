@@ -45,6 +45,8 @@ LOG_LEVEL = os.getenv("AGENT_LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s %(message)s"
 AGENT_MAX_CONCURRENT = int(os.getenv("AGENT_MAX_CONCURRENT", "3"))
 AGENT_TICK_SECONDS = int(os.getenv("AGENT_TICK_SECONDS", "30"))
+AGENT_RUN_TIMEOUT_SECONDS = int(os.getenv("AGENT_RUN_TIMEOUT_SECONDS", "900"))
+AGENT_WAKE_TIMEOUT_SECONDS = int(os.getenv("AGENT_WAKE_TIMEOUT_SECONDS", "180"))
 
 # ── Server ───────────────────────────────────────────────────
 MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "172.16.32.207")
