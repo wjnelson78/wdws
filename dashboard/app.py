@@ -2957,127 +2957,127 @@ async def api_mcp_analytics(request):
     })
 
 
-    async def api_quality_summary(request: Request):
-      """Summary of eval results from the Quality Eval agent."""
-      err = await _check_auth(request)
-      if err:
-        return err
-      hours = int(request.query_params.get("hours", "168"))
-      limit = min(int(request.query_params.get("limit", "20")), 100)
-      p = await get_pool()
+async def api_quality_summary(request: Request):
+  """Summary of eval results from the Quality Eval agent."""
+  err = await _check_auth(request)
+  if err:
+    return err
+  hours = int(request.query_params.get("hours", "168"))
+  limit = min(int(request.query_params.get("limit", "20")), 100)
+  p = await get_pool()
 
-      rows = await p.fetch("""
-        SELECT id, status, started_at, ended_at, summary, metrics
-        FROM ops.agent_runs
-        WHERE agent_id = 'quality-eval'
-          AND started_at > now() - interval '1 hour' * $1
-        ORDER BY started_at DESC
-        LIMIT $2
-      """, hours, limit)
+  rows = await p.fetch("""
+    SELECT id, status, started_at, ended_at, summary, metrics
+    FROM ops.agent_runs
+    WHERE agent_id = 'quality-eval'
+      AND started_at > now() - interval '1 hour' * $1
+    ORDER BY started_at DESC
+    LIMIT $2
+  """, hours, limit)
 
-      runs = []
-      pass_rates = []
-      for r in rows:
-        metrics = r["metrics"] or {}
-        if isinstance(metrics, str):
-          try:
-            metrics = json.loads(metrics)
-          except Exception:
-            metrics = {}
-        pass_rate = metrics.get("pass_rate")
-        if isinstance(pass_rate, str):
-          try:
-            pass_rate = float(pass_rate)
-          except Exception:
-            pass_rate = None
-        if pass_rate is not None:
-          pass_rates.append(pass_rate)
+  runs = []
+  pass_rates = []
+  for r in rows:
+    metrics = r["metrics"] or {}
+    if isinstance(metrics, str):
+      try:
+        metrics = json.loads(metrics)
+      except Exception:
+        metrics = {}
+    pass_rate = metrics.get("pass_rate")
+    if isinstance(pass_rate, str):
+      try:
+        pass_rate = float(pass_rate)
+      except Exception:
+        pass_rate = None
+    if pass_rate is not None:
+      pass_rates.append(pass_rate)
 
-        runs.append({
-          "id": r["id"],
-          "status": r["status"],
-          "started_at": _ser(r["started_at"]),
-          "ended_at": _ser(r["ended_at"]),
-          "summary": r["summary"],
-          "metrics": metrics,
-          "pass_rate": pass_rate,
-        })
+    runs.append({
+      "id": r["id"],
+      "status": r["status"],
+      "started_at": _ser(r["started_at"]),
+      "ended_at": _ser(r["ended_at"]),
+      "summary": r["summary"],
+      "metrics": metrics,
+      "pass_rate": pass_rate,
+    })
 
-      latest = runs[0] if runs else None
-      avg_pass_rate = round(sum(pass_rates) / len(pass_rates), 3) if pass_rates else None
-      trend = None
-      if len(runs) >= 2 and runs[0].get("pass_rate") is not None and runs[1].get("pass_rate") is not None:
-        trend = round(runs[0]["pass_rate"] - runs[1]["pass_rate"], 3)
+  latest = runs[0] if runs else None
+  avg_pass_rate = round(sum(pass_rates) / len(pass_rates), 3) if pass_rates else None
+  trend = None
+  if len(runs) >= 2 and runs[0].get("pass_rate") is not None and runs[1].get("pass_rate") is not None:
+    trend = round(runs[0]["pass_rate"] - runs[1]["pass_rate"], 3)
 
-      return JSONResponse({
-        "hours": hours,
-        "latest": latest,
-        "avg_pass_rate": avg_pass_rate,
-        "trend": trend,
-        "runs": runs,
-      })
+  return JSONResponse({
+    "hours": hours,
+    "latest": latest,
+    "avg_pass_rate": avg_pass_rate,
+    "trend": trend,
+    "runs": runs,
+  })
 
 
-    async def api_reliability_summary(request: Request):
-      """Reliability rollups for agent runs, MCP tool calls, and health checks."""
-      err = await _check_auth(request)
-      if err:
-        return err
-      hours = int(request.query_params.get("hours", "24"))
-      p = await get_pool()
+async def api_reliability_summary(request: Request):
+  """Reliability rollups for agent runs, MCP tool calls, and health checks."""
+  err = await _check_auth(request)
+  if err:
+    return err
+  hours = int(request.query_params.get("hours", "24"))
+  p = await get_pool()
 
-      agent_stats = await p.fetchrow("""
-        SELECT COUNT(*) AS total_runs,
-             COUNT(*) FILTER (WHERE status = 'error') AS errors,
-             AVG(duration_ms)::int AS avg_ms,
-             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
-        FROM ops.agent_runs
-        WHERE started_at > now() - interval '1 hour' * $1
-      """, hours)
+  agent_stats = await p.fetchrow("""
+    SELECT COUNT(*) AS total_runs,
+         COUNT(*) FILTER (WHERE status = 'error') AS errors,
+         AVG(duration_ms)::int AS avg_ms,
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
+    FROM ops.agent_runs
+    WHERE started_at > now() - interval '1 hour' * $1
+  """, hours)
 
-      mcp_stats = await p.fetchrow("""
-        SELECT COUNT(*) AS total_calls,
-             COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
-             AVG(duration_ms)::int AS avg_ms,
-             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms,
-             PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99_ms
-        FROM ops.mcp_query_log
-        WHERE created_at > now() - interval '1 hour' * $1
-      """, hours)
+  mcp_stats = await p.fetchrow("""
+    SELECT COUNT(*) AS total_calls,
+         COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+         AVG(duration_ms)::int AS avg_ms,
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms,
+         PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99_ms
+    FROM ops.mcp_query_log
+    WHERE created_at > now() - interval '1 hour' * $1
+  """, hours)
 
-      health_rows = await p.fetch("""
-        SELECT status, COUNT(*) AS count
-        FROM ops.health_checks
-        WHERE checked_at > now() - interval '1 hour' * $1
-        GROUP BY status
-      """, hours)
+  health_rows = await p.fetch("""
+    SELECT status, COUNT(*) AS count
+    FROM ops.health_checks
+    WHERE checked_at > now() - interval '1 hour' * $1
+    GROUP BY status
+  """, hours)
 
-      health_counts = {r["status"]: r["count"] for r in health_rows}
+  health_counts = {r["status"]: r["count"] for r in health_rows}
 
-      total_agent = agent_stats["total_runs"] or 0
-      agent_errors = agent_stats["errors"] or 0
-      total_mcp = mcp_stats["total_calls"] or 0
-      mcp_errors = mcp_stats["errors"] or 0
+  total_agent = agent_stats["total_runs"] or 0
+  agent_errors = agent_stats["errors"] or 0
+  total_mcp = mcp_stats["total_calls"] or 0
+  mcp_errors = mcp_stats["errors"] or 0
 
-      return JSONResponse({
-        "hours": hours,
-        "agents": {
-          "total_runs": total_agent,
-          "errors": agent_errors,
-          "error_rate": round(agent_errors / max(total_agent, 1), 3),
-          "avg_ms": agent_stats["avg_ms"],
-          "p95_ms": agent_stats["p95_ms"],
-        },
-        "mcp": {
-          "total_calls": total_mcp,
-          "errors": mcp_errors,
-          "error_rate": round(mcp_errors / max(total_mcp, 1), 3),
-          "avg_ms": mcp_stats["avg_ms"],
-          "p95_ms": mcp_stats["p95_ms"],
-          "p99_ms": mcp_stats["p99_ms"],
-        },
-        "health_checks": health_counts,
-      })
+  return JSONResponse({
+    "hours": hours,
+    "agents": {
+      "total_runs": total_agent,
+      "errors": agent_errors,
+      "error_rate": round(agent_errors / max(total_agent, 1), 3),
+      "avg_ms": agent_stats["avg_ms"],
+      "p95_ms": agent_stats["p95_ms"],
+    },
+    "mcp": {
+      "total_calls": total_mcp,
+      "errors": mcp_errors,
+      "error_rate": round(mcp_errors / max(total_mcp, 1), 3),
+      "avg_ms": mcp_stats["avg_ms"],
+      "p95_ms": mcp_stats["p95_ms"],
+      "p99_ms": mcp_stats["p99_ms"],
+    },
+    "health_checks": health_counts,
+  })
 
 
 # ══════════════════════════════════════════════════════════════
