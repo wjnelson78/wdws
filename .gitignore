@@ -1,0 +1,32 @@
+# Environment variables
+.env
+.env.*
+.env.bak*
+
+# Logs
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Backup files
+*.bak
+*.bak.*
+*.bak_*
+*.pre-*
+*.pre_*
+
+# Data directories (excluding structure)
+data/cases/cases/*/
+data/emails/emails/*/
+data/inbox/attachments/*/
+data/medical/records/*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

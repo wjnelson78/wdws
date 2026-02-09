@@ -1,0 +1,24 @@
+[Unit]
+Description=WDWS Agent Runner
+After=network.target postgresql.service wdws-mcp.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wdws/agents
+Environment=PATH=/opt/wdws/venv/bin:/usr/bin:/bin
+EnvironmentFile=/opt/wdws/mcp-server/.env
+ExecStart=/opt/wdws/venv/bin/python3 /opt/wdws/agents/run.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wdws-agents
+
+# Safety limits
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
