@@ -25,6 +25,7 @@ from openai import AsyncOpenAI
 from config import (
     DATABASE_URL, OPENAI_API_KEY, OPENAI_MODEL, LOG_LEVEL
 )
+from reliability import retry_with_backoff, get_circuit_breaker, CircuitBreakerOpenError
 
 log = logging.getLogger("agents")
 
@@ -63,58 +64,75 @@ def _is_codex_model(model: str) -> bool:
     """Check if model uses the Responses API (gpt-5.x-codex variants)."""
     return bool(model and "codex" in model.lower())
 
+@retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
 async def llm_chat(system: str, user: str, model: str = None,
                    temperature: float = 0.3, max_tokens: int = 2000) -> str:
-    """Quick LLM call with system + user prompt. Returns assistant text."""
-    client = get_llm()
-    mdl = model or OPENAI_MODEL
-    kwargs = dict(
-        model=mdl,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
-    if _is_reasoning_model(mdl):
-        kwargs["max_completion_tokens"] = max_tokens
-    else:
-        kwargs["temperature"] = temperature
-        kwargs["max_tokens"] = max_tokens
-    resp = await client.chat.completions.create(**kwargs)
-    return resp.choices[0].message.content.strip()
+    """Quick LLM call with system + user prompt. Returns assistant text.
+    Includes retry logic and circuit breaker for reliability."""
+    breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
+    
+    try:
+        async with breaker:
+            client = get_llm()
+            mdl = model or OPENAI_MODEL
+            kwargs = dict(
+                model=mdl,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            if _is_reasoning_model(mdl):
+                kwargs["max_completion_tokens"] = max_tokens
+            else:
+                kwargs["temperature"] = temperature
+                kwargs["max_tokens"] = max_tokens
+            resp = await client.chat.completions.create(**kwargs)
+            return resp.choices[0].message.content.strip()
+    except CircuitBreakerOpenError as e:
+        log.warning(f"OpenAI circuit breaker open: {e}")
+        return f"[AI temporarily unavailable - circuit breaker open. Using fallback response.]"
 
+@retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
 async def llm_json(system: str, user: str, model: str = None) -> dict:
-    """LLM call that returns parsed JSON."""
-    client = get_llm()
-    mdl = model or OPENAI_MODEL
-    # Reasoning models (o1, o3, etc.) don't support response_format or max_tokens
-    if _is_reasoning_model(mdl):
-        json_prompt = user + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences."
-        resp = await client.chat.completions.create(
-            model=mdl,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": json_prompt},
-            ],
-            max_completion_tokens=4000,
-        )
-    else:
-        resp = await client.chat.completions.create(
-            model=mdl,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.1,
-            max_tokens=4000,
-            response_format={"type": "json_object"},
-        )
-    text = resp.choices[0].message.content.strip()
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    return json.loads(text)
+    """LLM call that returns parsed JSON. Includes retry logic and circuit breaker."""
+    breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
+    
+    try:
+        async with breaker:
+            client = get_llm()
+            mdl = model or OPENAI_MODEL
+            # Reasoning models (o1, o3, etc.) don't support response_format or max_tokens
+            if _is_reasoning_model(mdl):
+                json_prompt = user + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences."
+                resp = await client.chat.completions.create(
+                    model=mdl,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": json_prompt},
+                    ],
+                    max_completion_tokens=4000,
+                )
+            else:
+                resp = await client.chat.completions.create(
+                    model=mdl,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=0.1,
+                    max_tokens=4000,
+                    response_format={"type": "json_object"},
+                )
+            text = resp.choices[0].message.content.strip()
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\n?", "", text)
+                text = re.sub(r"\n?```$", "", text)
+            return json.loads(text)
+    except CircuitBreakerOpenError as e:
+        log.warning(f"OpenAI circuit breaker open: {e}")
+        return {"error": "AI temporarily unavailable", "fallback": True}
 
 
 
