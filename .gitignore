@@ -5,12 +5,17 @@
 
 # Logs
 *.log
+*.bundle
 
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# OS / Finder metadata
+.DS_Store
+._*
 
 # Backup files
 *.bak
@@ -24,6 +29,12 @@ data/cases/cases/*/
 data/emails/emails/*/
 data/inbox/attachments/*/
 data/medical/records/*/
+
+# Local runtime / ingestion data
+data/
+
+# Local auth caches
+mcp-servers/paperless-ngx/.oauth_tokens.json
 
 # IDE
 .vscode/
