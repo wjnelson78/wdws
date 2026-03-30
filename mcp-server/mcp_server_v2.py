@@ -16,7 +16,7 @@ Features:
 
 Clients:
   • Claude Desktop  — own client_id / client_secret
-  • ChatGPT         — own client_id / client_secret
+  • Athena AI       — own client_id / client_secret
 
 Transport:
   stdio:  /opt/wdws/venv/bin/python3 mcp_server_v2.py
@@ -28,20 +28,26 @@ import sys
 import json
 import asyncio
 import base64
+import email as email_lib
 import re
 import hashlib
 import logging
+import mimetypes
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta, timezone
+from email import policy
+from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 import httpx
 from pydantic import AnyUrl
 from cryptography.fernet import Fernet, InvalidToken
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -82,6 +88,11 @@ DATABASE_URL = os.getenv(
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
+GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
 EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMS = 3072
 BASE_URL = os.getenv("MCP_BASE_URL", "https://klunky.12432.net")
@@ -90,6 +101,7 @@ RAG_SEMANTIC_WEIGHT_DEFAULT = float(os.getenv("RAG_SEMANTIC_WEIGHT", "0.7"))
 RAG_FULLTEXT_WEIGHT_DEFAULT = float(os.getenv("RAG_FULLTEXT_WEIGHT", "0.3"))
 RAG_NEIGHBOR_DEFAULT = int(os.getenv("RAG_NEIGHBOR_DEFAULT", "1"))
 RAG_NEIGHBOR_MAX = int(os.getenv("RAG_NEIGHBOR_MAX", "3"))
+MCP_ENDPOINT_PATH = "/mcp/sse"
 
 # ── OAuth Client Secrets (env-based, for SDK client_secret validation) ───
 # Keyed by client_id. The SDK compares these against the secret
@@ -115,6 +127,17 @@ else:
 
 # ── Connection Pool ──────────────────────────────────────────
 pool: Optional[asyncpg.Pool] = None
+_graph_access_token: Optional[str] = None
+_graph_token_expires_at: float = 0.0
+
+# ── Schema Alias Resolution ─────────────────────────────────
+# Transparently rewrites column name variations (filed_date → date_filed, etc.)
+try:
+    from schema_aliases import normalize_sql as _normalize_sql
+    log.info("Schema alias resolution loaded — column name variations handled transparently")
+except ImportError:
+    _normalize_sql = None
+    log.warning("schema_aliases module not found — column name normalization disabled")
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -132,6 +155,22 @@ async def close_pool():
     if pool:
         await pool.close()
         pool = None
+
+
+async def _fetch(sql: str, *args) -> list:
+    """Execute a read query with transparent column alias resolution."""
+    if _normalize_sql:
+        sql = _normalize_sql(sql, log_rewrites=True)
+    p = await get_pool()
+    return await p.fetch(sql, *args)
+
+
+async def _execute(sql: str, *args):
+    """Execute a write query with transparent column alias resolution."""
+    if _normalize_sql:
+        sql = _normalize_sql(sql, log_rewrites=True)
+    p = await get_pool()
+    return await p.execute(sql, *args)
 
 
 # ── JSON helpers ─────────────────────────────────────────────
@@ -153,6 +192,223 @@ def _row_dict(row, keys=None) -> dict:
     return {k: _ser(v) for k, v in dict(row).items()}
 
 
+def _guess_mime_type(filename: Optional[str], fallback: str = "application/octet-stream") -> str:
+    if filename:
+        guessed, _ = mimetypes.guess_type(filename)
+        if guessed:
+            return guessed
+    return fallback
+
+
+async def _get_graph_access_token() -> str:
+    global _graph_access_token, _graph_token_expires_at
+
+    if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID, GRAPH_TOKEN_URL]):
+        raise RuntimeError("Graph credentials are not configured for MCP downloads")
+
+    if _graph_access_token and time.time() < _graph_token_expires_at:
+        return _graph_access_token
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            GRAPH_TOKEN_URL,
+            data={
+                "client_id": GRAPH_CLIENT_ID,
+                "client_secret": GRAPH_CLIENT_SECRET,
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        _graph_access_token = data["access_token"]
+        _graph_token_expires_at = time.time() + data.get("expires_in", 3600) - 300
+        return _graph_access_token
+
+
+async def _graph_get_json(url: str, params: Optional[dict] = None) -> dict:
+    token = await _get_graph_access_token()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _graph_get_bytes(url: str) -> bytes:
+    token = await _get_graph_access_token()
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        resp.raise_for_status()
+        return resp.content
+
+
+async def _graph_resolve_message_graph_id(mailbox: str, message_ref: str) -> str:
+    if not message_ref:
+        raise RuntimeError("Missing Graph message reference")
+
+    if message_ref.startswith("<") or "@" in message_ref:
+        data = await _graph_get_json(
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages",
+            params={
+                "$filter": f"internetMessageId eq '{message_ref}'",
+                "$select": "id,internetMessageId",
+                "$top": "1",
+            },
+        )
+        values = data.get("value") or []
+        if values:
+            return values[0]["id"]
+
+    try:
+        data = await _graph_get_json(
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_ref}",
+            params={"$select": "id"},
+        )
+        if data.get("id"):
+            return data["id"]
+    except Exception:
+        pass
+
+    raise RuntimeError(f"Unable to resolve Graph message ID for mailbox {mailbox}")
+
+
+def _extract_all_mime_attachments(mime_data: bytes) -> list[dict]:
+    msg = email_lib.message_from_bytes(mime_data, policy=policy.default)
+    attachments: list[dict] = []
+
+    if not msg.is_multipart():
+        return attachments
+
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition", ""))
+        fname = part.get_filename()
+        if not fname and "attachment" not in disp.lower():
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        attachments.append({
+            "filename": fname or "attachment.bin",
+            "content_type": part.get_content_type() or "application/octet-stream",
+            "data": payload,
+            "file_size": len(payload),
+        })
+    return attachments
+
+
+def _match_attachment_bytes(candidates: list[dict], filename: str, content_type: Optional[str], file_size: Optional[int]) -> Optional[dict]:
+    norm_name = (filename or "").strip().lower()
+    norm_type = (content_type or "").strip().lower()
+
+    best = None
+    best_score = -1
+    for item in candidates:
+        score = -1
+        item_name = (item.get("filename") or "").strip().lower()
+        item_type = (item.get("content_type") or "").strip().lower()
+        item_size = item.get("file_size") or 0
+
+        if norm_name and item_name == norm_name and norm_type and item_type == norm_type and file_size and item_size == file_size:
+            score = 4
+        elif norm_name and item_name == norm_name and file_size and item_size == file_size:
+            score = 3
+        elif norm_name and item_name == norm_name:
+            score = 2
+        elif norm_type and item_type == norm_type and file_size and item_size == file_size:
+            score = 1
+
+        if score > best_score:
+            best = item
+            best_score = score
+
+    return best if best_score >= 0 else None
+
+
+async def _load_original_document_bytes(document_id: str) -> tuple[dict, bytes]:
+    p = await get_pool()
+    doc = await p.fetchrow("""
+        SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.source_path,
+               d.full_content, d.metadata,
+               em.message_id, em.subject, em.mailbox
+        FROM core.documents d
+        LEFT JOIN legal.email_metadata em ON em.document_id = d.id
+        WHERE d.id = $1::uuid
+    """, document_id)
+
+    if not doc:
+        raise RuntimeError(f"Document {document_id} not found")
+
+    source_path = doc["source_path"] or ""
+    filename = doc["filename"] or doc["title"] or f"document-{document_id}"
+
+    if source_path.startswith("graph://"):
+        if doc["document_type"] in ("email", "eml"):
+            graph_ref = source_path.replace("graph://", "", 1)
+            mailbox, message_ref = graph_ref.split("/", 1)
+            graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+            mime_bytes = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+            return ({
+                "document_id": str(doc["id"]),
+                "filename": filename if filename.lower().endswith(".eml") else f"{filename}.eml",
+                "mime_type": "message/rfc822",
+                "source_kind": "graph_email",
+                "original_available": True,
+            }, mime_bytes)
+
+        att = await p.fetchrow("""
+            SELECT ea.id, ea.filename, ea.content_type, ea.file_size,
+                   parent.source_path AS parent_source_path
+            FROM legal.email_attachments ea
+            JOIN core.documents parent ON parent.id = ea.email_doc_id
+            WHERE ea.child_doc_id = $1::uuid
+        """, document_id)
+        if att:
+            parent_ref = (att["parent_source_path"] or "").replace("graph://", "", 1)
+            mailbox, message_ref = parent_ref.split("/", 1)
+            graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+            mime_bytes = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+            attachments = _extract_all_mime_attachments(mime_bytes)
+            matched = _match_attachment_bytes(attachments, att["filename"], att["content_type"], att["file_size"])
+            if not matched:
+                raise RuntimeError(f"Attachment bytes not found in parent email for document {document_id}")
+            return ({
+                "document_id": str(doc["id"]),
+                "filename": att["filename"] or filename,
+                "mime_type": att["content_type"] or _guess_mime_type(att["filename"] or filename),
+                "source_kind": "graph_attachment",
+                "original_available": True,
+            }, matched["data"])
+
+    local_path = source_path
+    if local_path.startswith("file://"):
+        local_path = local_path[7:]
+    if local_path and os.path.exists(local_path):
+        return ({
+            "document_id": str(doc["id"]),
+            "filename": os.path.basename(local_path) or filename,
+            "mime_type": _guess_mime_type(os.path.basename(local_path) or filename),
+            "source_kind": "filesystem",
+            "original_available": True,
+        }, Path(local_path).read_bytes())
+
+    if doc["full_content"]:
+        text_bytes = (doc["full_content"] or "").encode("utf-8")
+        export_name = filename if "." in filename else f"{filename}.txt"
+        return ({
+            "document_id": str(doc["id"]),
+            "filename": export_name,
+            "mime_type": "text/plain; charset=utf-8",
+            "source_kind": "database_export",
+            "original_available": False,
+        }, text_bytes)
+
+    raise RuntimeError(f"No downloadable source found for document {document_id}")
+
+
 
 
 # ── Tool-call logging ────────────────────────────────────────
@@ -170,11 +426,28 @@ async def _log_tool_call(tool_name: str, arguments: dict, result: str,
     try:
         parsed = json.loads(result) if isinstance(result, str) else result
         if isinstance(parsed, dict):
-            result_count = parsed.get("count", parsed.get("total", 0))
+            if isinstance(parsed.get("results"), list):
+                result_count = len(parsed["results"])
+            elif isinstance(parsed.get("tools"), list):
+                result_count = len(parsed["tools"])
+            elif isinstance(parsed.get("documents"), list):
+                result_count = len(parsed["documents"])
+            elif isinstance(parsed.get("cases"), list):
+                result_count = len(parsed["cases"])
+            elif isinstance(parsed.get("filings"), list):
+                result_count = len(parsed["filings"])
+            elif isinstance(parsed.get("attachments"), list):
+                result_count = len(parsed["attachments"])
+            elif isinstance(parsed.get("messages"), list):
+                result_count = len(parsed["messages"])
+            else:
+                result_count = parsed.get("count", parsed.get("total", 0))
             # Keep summary small
             summary = {k: v for k, v in parsed.items()
                        if k in ("count", "total", "query", "domain", "case_number",
                                 "tool", "type", "message", "id", "title")}
+            if not summary and isinstance(parsed.get("results"), list):
+                summary = {"count": result_count}
         elif isinstance(parsed, list):
             result_count = len(parsed)
             summary = {"count": result_count}
@@ -709,7 +982,10 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
     try:
         yield {}
     finally:
-        await close_pool()
+        # NOTE: In Streamable HTTP mode, lifespan runs per-session.
+        # Do NOT close the shared pool here — it kills auth for all
+        # other sessions. Pool cleanup happens on process exit via
+        # atexit / signal handlers.
         log.info("Athena MCP Server v2 shut down")
 
 
@@ -720,7 +996,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
 oauth_provider = PostgresOAuthProvider()
 
 mcp = FastMCP(
-    name="Athena Cognitive Platform",
+    name="Athena Cognitive Engine",
     instructions="""You are Athena AI, an elite Legal Analyst and Investigator connected to the 
 Athena Cognitive Platform. You serve as William Nelson's dedicated legal research 
 assistant with expertise in civil litigation, employment law, and insurance disputes.
@@ -809,6 +1085,28 @@ AVAILABLE DATA
 • Embedded document chunks for semantic search
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
+ORIGINAL DOCUMENT ACCESS
+═══════════════════════════════════════════════════════════════════════════════════════════
+• Ingested documents are expected to retain access to their originals whenever a source
+    file or source system reference exists.
+• Use `fetch_document(document_id)` to inspect document metadata and confirm the download hint.
+• Use `fetch_attachments(email_document_id)` to enumerate email attachments and obtain each
+    attachment's `download_document_id`.
+• Use `download_original_document(document_id, offset, chunk_size)` to retrieve exhibit-grade
+    original bytes in base64 chunks.
+• For email messages, the original should be retrieved as `.eml` / `message/rfc822` bytes.
+• For attachments and filesystem-backed documents, the original should be retrieved in its
+    native file format whenever available.
+• If `original_available` is false, the server is returning a text export fallback because the
+    original source file is no longer directly reachable.
+
+Recommended retrieval workflow:
+    1. Search or fetch the target document.
+    2. If it is an email with attachments, call `fetch_attachments`.
+    3. Call `download_original_document` with the document ID (or `download_document_id`).
+    4. Repeat with `next_offset` until `is_last_chunk` is true.
+
+═══════════════════════════════════════════════════════════════════════════════════════════
 CORE PRINCIPLES
 ═══════════════════════════════════════════════════════════════════════════════════════════
 • NEVER fabricate information - if unsure, search for evidence
@@ -830,9 +1128,48 @@ CORE PRINCIPLES
     ),
     host="0.0.0.0",
     port=9200,
-    streamable_http_path="/mcp/sse",
+    streamable_http_path=MCP_ENDPOINT_PATH,
     lifespan=lifespan,
 )
+
+
+def _get_public_base_url(request: Request) -> str:
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_proto and forwarded_host:
+        return f"{forwarded_proto}://{forwarded_host}".rstrip("/")
+    return BASE_URL.rstrip("/")
+
+
+def _mcp_discovery_payload(base_url: str) -> dict[str, Any]:
+    endpoint = f"{base_url}{MCP_ENDPOINT_PATH}"
+    return {
+        "name": "Athena Cognitive Engine",
+        "description": "Athena Cognitive Engine MCP server for legal, email, and medical data.",
+        "version": "2.0",
+        "mcp": {
+            "transport": "streamable-http",
+            "streamable_http_endpoint": endpoint,
+            "http_endpoint": endpoint,
+            "sse_endpoint": endpoint,
+        },
+        "oauth": {
+            "issuer": f"{base_url}/",
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
+            "registration_endpoint": f"{base_url}/register",
+            "revocation_endpoint": f"{base_url}/revoke",
+            "scopes_supported": ["read", "write", "admin", "search", "medical"],
+        },
+    }
+
+
+@mcp.custom_route("/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
+@mcp.custom_route("/mcp/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
+@mcp.custom_route(f"{MCP_ENDPOINT_PATH}/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
+async def mcp_well_known(request: Request) -> JSONResponse:
+    """Publish MCP discovery metadata for clients that probe well-known routes."""
+    return JSONResponse(_mcp_discovery_payload(_get_public_base_url(request)))
 
 
 # ══════════════════════════════════════════════════════════════
@@ -842,7 +1179,7 @@ CORE PRINCIPLES
 @mcp.tool(name="search", annotations=READ_ONLY)
 @logged_tool
 async def search(query: str) -> dict:
-    """Search for documents (ChatGPT connector-compatible).
+    """Search for documents (MCP connector-compatible).
 
     Returns an object with a single key "results" containing items with:
     id, title, url.
@@ -896,7 +1233,7 @@ async def search(query: str) -> dict:
 @mcp.tool(name="fetch", annotations=READ_ONLY)
 @logged_tool
 async def fetch(id: str) -> dict:
-    """Fetch full content for a document (ChatGPT connector-compatible).
+    """Fetch full content for a document (MCP connector-compatible).
 
     Args:
         id: Document ID from search results
@@ -1132,7 +1469,7 @@ async def search_emails(
                     idx += 1
                 conditions.append("(" + " OR ".join(term_conditions) + ")")
         if recipient:
-            conditions.append(f"(em.recipients ILIKE ${idx} OR em.cc ILIKE ${idx})")
+            conditions.append(f"(em.recipients ILIKE ${idx} OR em.cc ILIKE ${idx} OR d.full_content ILIKE ${idx})")
             params.append(f"%{recipient}%")
             idx += 1
         if case_number:
@@ -1590,6 +1927,11 @@ async def fetch_document(document_id: str, include_chunks: bool = False) -> str:
             "created_at": _ser(doc["created_at"]),
             "updated_at": _ser(doc["updated_at"]),
             "full_content": doc["full_content"],
+            "download": {
+                "tool": "download_original_document",
+                "available": True,
+                "note": "Call download_original_document(document_id, offset, chunk_size) until is_last_chunk is true to reconstruct the original file.",
+            },
         }
 
         em = await p.fetchrow(
@@ -1754,6 +2096,8 @@ async def fetch_attachments(email_document_id: str) -> str:
             "is_processed": r["is_processed"],
             "extraction_method": r["extraction_method"],
             "child_document_id": str(r["child_doc_id"]) if r["child_doc_id"] else None,
+            "download_document_id": str(r["child_doc_id"]) if r["child_doc_id"] else None,
+            "download_tool": "download_original_document" if r["child_doc_id"] else None,
             "extracted_text_preview": r["extracted_text"][:500] if r["extracted_text"] else None,
         } for r in rows]
 
@@ -1761,6 +2105,53 @@ async def fetch_attachments(email_document_id: str) -> str:
     except Exception as e:
         log.error("fetch_attachments error: %s", e)
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def download_original_document(document_id: str, offset: int = 0, chunk_size: int = 262144) -> str:
+    """Download the original document bytes in base64 chunks.
+
+    This is the exhibit-grade retrieval path for source emails, attachments,
+    and filesystem-backed documents. Call repeatedly with increasing offsets
+    until `is_last_chunk` is true.
+
+    Args:
+        document_id: UUID of the document to download
+        offset: Byte offset to start reading from (default 0)
+        chunk_size: Max bytes to return in this call (default 262144)
+    """
+    chunk_size = min(max(chunk_size, 1024), 1024 * 1024)
+    offset = max(offset, 0)
+
+    try:
+        info, payload = await _load_original_document_bytes(document_id)
+        total_size = len(payload)
+        if offset > total_size:
+            return json.dumps({
+                "error": f"Offset {offset} exceeds file size {total_size}",
+                "document_id": document_id,
+            })
+
+        chunk = payload[offset:offset + chunk_size]
+        next_offset = offset + len(chunk)
+        is_last_chunk = next_offset >= total_size
+
+        result = {
+            **info,
+            "offset": offset,
+            "chunk_size": chunk_size,
+            "bytes_returned": len(chunk),
+            "total_size": total_size,
+            "next_offset": None if is_last_chunk else next_offset,
+            "is_last_chunk": is_last_chunk,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "data_base64": base64.b64encode(chunk).decode("ascii"),
+        }
+        return json.dumps(result)
+    except Exception as e:
+        log.error("download_original_document error: %s", e)
+        return json.dumps({"error": str(e), "document_id": document_id})
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -3248,11 +3639,21 @@ async def get_all_cases_summary() -> str:
 
 def main():
     import argparse
+    import atexit
+    import signal
+
     parser = argparse.ArgumentParser(description="Athena Cognitive Platform MCP Server v2")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server (default: stdio)")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
     args = parser.parse_args()
+
+    # Clean up DB pool on actual process exit
+    def _cleanup_pool():
+        if pool is not None:
+            asyncio.get_event_loop().run_until_complete(close_pool())
+            log.info("Database pool closed on process exit")
+    atexit.register(_cleanup_pool)
 
     if args.http:
         log.info("Starting Athena MCP Server v2 (Streamable HTTP + OAuth) on %s:%d", args.host, args.port)

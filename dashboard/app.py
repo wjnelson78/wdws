@@ -15,20 +15,29 @@ Provides:
 Runs on uvicorn, default port 9100.
 """
 
-import os, json, time, secrets, subprocess, asyncio
-from pathlib import Path
+import os, io, json, time, secrets, subprocess, asyncio, hashlib, mimetypes, re, shutil, sys, uuid, zipfile
+import email as email_lib
+import base64 as _b64
+from email import policy
+from pathlib import Path, PurePosixPath
 from typing import Optional, List, Dict, Any
+from urllib.parse import quote
 
 import asyncpg
 import httpx
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
+from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 import uvicorn
+
+# OSINT Investigation Database
+import sys
+sys.path.insert(0, '/opt/wdws/dashboard')
+from osint_api import get_osint_routes, get_osint_pool
 
 # ── Config ────────────────────────────────────────────────────
 DATABASE_URL = os.getenv(
@@ -50,17 +59,36 @@ AGENT_LOG      = os.getenv("AGENT_LOG", "/opt/wdws/email_agent.log")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
-OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5.2")
+OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5.4")
 EMBEDDING_MODEL = "text-embedding-3-large"
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
+GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
+CHAT_UPLOAD_DIR = Path(os.getenv("CHAT_UPLOAD_DIR", "/opt/wdws/data/chat_uploads"))
+CHAT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MEDICAL_DROPBOX_DIR = Path(os.getenv("MEDICAL_DROPBOX_DIR", "/opt/wdws/data/dropbox/medical"))
+MEDICAL_DROPBOX_DIR.mkdir(parents=True, exist_ok=True)
+MEDICAL_ZIP_MAX_UPLOAD_BYTES = int(os.getenv("MEDICAL_ZIP_MAX_UPLOAD_BYTES", str(250 * 1024 * 1024)))
+MEDICAL_ZIP_MAX_MEMBERS = int(os.getenv("MEDICAL_ZIP_MAX_MEMBERS", "5000"))
+MEDICAL_ZIP_MAX_UNCOMPRESSED_BYTES = int(os.getenv("MEDICAL_ZIP_MAX_UNCOMPRESSED_BYTES", str(1024 * 1024 * 1024)))
+SUPPORTED_MEDICAL_IMPORT_EXTENSIONS = {
+  ".pdf", ".docx", ".doc", ".txt", ".eml",
+  ".png", ".jpg", ".jpeg", ".tiff", ".tif",
+  ".xml", ".csv", ".rtf", ".xlsx", ".xls",
+}
 AVAILABLE_MODELS = [
-  {"id": "auto",       "model": "gpt-5.2",      "label": "⚡ Auto",       "reasoning_effort": None,      "max_tool_rounds": 12, "description": "Automatically decides when to think deeper"},
-  {"id": "think-low",  "model": "gpt-5.2",      "label": "💭 Think Low",  "reasoning_effort": "low",     "max_tool_rounds": 8,  "description": "Light reasoning — faster responses"},
-  {"id": "think-med",  "model": "gpt-5.2",      "label": "💭 Think Med",  "reasoning_effort": "medium",  "max_tool_rounds": 10, "description": "Balanced reasoning and speed"},
-  {"id": "think-high", "model": "gpt-5.2",      "label": "🧠 Think High", "reasoning_effort": "high",    "max_tool_rounds": 14, "description": "Deep reasoning — most thorough"},
-  {"id": "think-xhigh","model": "gpt-5.2",      "label": "🧠 Think XHigh","reasoning_effort": "xhigh",   "max_tool_rounds": 18, "description": "Extreme reasoning — longest thinking time"},
+  {"id": "auto",       "model": "gpt-5.4",      "label": "⚡ Auto",       "reasoning_effort": None,      "max_tool_rounds": 12, "description": "Automatically decides when to think deeper"},
+  {"id": "think-low",  "model": "gpt-5.4",      "label": "💭 Think Low",  "reasoning_effort": "low",     "max_tool_rounds": 8,  "description": "Light reasoning — faster responses"},
+  {"id": "think-med",  "model": "gpt-5.4",      "label": "💭 Think Med",  "reasoning_effort": "medium",  "max_tool_rounds": 10, "description": "Balanced reasoning and speed"},
+  {"id": "think-high", "model": "gpt-5.4",      "label": "🧠 Think High", "reasoning_effort": "high",    "max_tool_rounds": 14, "description": "Deep reasoning — most thorough"},
+  {"id": "think-xhigh","model": "gpt-5.4",      "label": "🧠 Think XHigh","reasoning_effort": "xhigh",   "max_tool_rounds": 18, "description": "Extreme reasoning — longest thinking time"},
 ]
 
 pool: Optional[asyncpg.Pool] = None
+_graph_access_token: Optional[str] = None
+_graph_token_expires_at: float = 0.0
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -226,6 +254,233 @@ def _row_dict(row, keys=None):
             except Exception:
                 pass
     return d
+
+
+def _guess_mime_type(filename: Optional[str], fallback: str = "application/octet-stream") -> str:
+    if filename:
+        guessed, _ = mimetypes.guess_type(filename)
+        if guessed:
+            return guessed
+    return fallback
+
+
+async def _get_graph_access_token() -> str:
+    global _graph_access_token, _graph_token_expires_at
+
+    if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID, GRAPH_TOKEN_URL]):
+        raise RuntimeError("Graph credentials are not configured for REST document downloads")
+
+    if _graph_access_token and time.time() < _graph_token_expires_at:
+        return _graph_access_token
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            GRAPH_TOKEN_URL,
+            data={
+                "client_id": GRAPH_CLIENT_ID,
+                "client_secret": GRAPH_CLIENT_SECRET,
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        _graph_access_token = data["access_token"]
+        _graph_token_expires_at = time.time() + data.get("expires_in", 3600) - 300
+        return _graph_access_token
+
+
+async def _graph_get_json(url: str, params: Optional[dict] = None) -> dict:
+    token = await _get_graph_access_token()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _graph_get_bytes(url: str) -> bytes:
+    token = await _get_graph_access_token()
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        resp.raise_for_status()
+        return resp.content
+
+
+async def _graph_resolve_message_graph_id(mailbox: str, message_ref: str) -> str:
+    if not message_ref:
+        raise RuntimeError("Missing Graph message reference")
+
+    if message_ref.startswith("<") or "@" in message_ref:
+        data = await _graph_get_json(
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages",
+            params={
+                "$filter": f"internetMessageId eq '{message_ref}'",
+                "$select": "id,internetMessageId",
+                "$top": "1",
+            },
+        )
+        values = data.get("value") or []
+        if values:
+            return values[0]["id"]
+
+    try:
+        data = await _graph_get_json(
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_ref}",
+            params={"$select": "id"},
+        )
+        if data.get("id"):
+            return data["id"]
+    except Exception:
+        pass
+
+    raise RuntimeError(f"Unable to resolve Graph message ID for mailbox {mailbox}")
+
+
+def _extract_all_mime_attachments(mime_data: bytes) -> List[Dict[str, Any]]:
+    msg = email_lib.message_from_bytes(mime_data, policy=policy.default)
+    attachments: List[Dict[str, Any]] = []
+
+    if not msg.is_multipart():
+        return attachments
+
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition", ""))
+        fname = part.get_filename()
+        if not fname and "attachment" not in disp.lower():
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        attachments.append({
+            "filename": fname or "attachment.bin",
+            "content_type": part.get_content_type() or "application/octet-stream",
+            "data": payload,
+            "file_size": len(payload),
+        })
+    return attachments
+
+
+def _match_attachment_bytes(candidates: List[Dict[str, Any]], filename: str, content_type: Optional[str], file_size: Optional[int]) -> Optional[Dict[str, Any]]:
+    norm_name = (filename or "").strip().lower()
+    norm_type = (content_type or "").strip().lower()
+
+    best = None
+    best_score = -1
+    for item in candidates:
+        score = -1
+        item_name = (item.get("filename") or "").strip().lower()
+        item_type = (item.get("content_type") or "").strip().lower()
+        item_size = item.get("file_size") or 0
+
+        if norm_name and item_name == norm_name and norm_type and item_type == norm_type and file_size and item_size == file_size:
+            score = 4
+        elif norm_name and item_name == norm_name and file_size and item_size == file_size:
+            score = 3
+        elif norm_name and item_name == norm_name:
+            score = 2
+        elif norm_type and item_type == norm_type and file_size and item_size == file_size:
+            score = 1
+
+        if score > best_score:
+            best = item
+            best_score = score
+
+    return best if best_score >= 0 else None
+
+
+def _content_disposition_value(filename: str, disposition: str = "attachment") -> str:
+    safe_name = (filename or "download.bin").replace("\r", " ").replace("\n", " ").replace('"', "'")
+    return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{quote(safe_name)}"
+
+
+async def _resolve_original_document_download(document_id: str) -> Dict[str, Any]:
+    p = await get_pool()
+    doc = await p.fetchrow("""
+        SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.source_path,
+               d.full_content, d.metadata,
+               em.message_id, em.subject, em.mailbox
+        FROM core.documents d
+        LEFT JOIN legal.email_metadata em ON em.document_id = d.id
+        WHERE d.id = $1::uuid
+    """, document_id)
+
+    if not doc:
+        raise RuntimeError(f"Document {document_id} not found")
+
+    source_path = doc["source_path"] or ""
+    filename = doc["filename"] or doc["title"] or f"document-{document_id}"
+
+    if source_path.startswith("graph://"):
+        if doc["document_type"] in ("email", "eml"):
+            graph_ref = source_path.replace("graph://", "", 1)
+            mailbox, message_ref = graph_ref.split("/", 1)
+            graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+            mime_bytes = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+            out_name = filename if filename.lower().endswith(".eml") else f"{filename}.eml"
+            return {
+                "document_id": str(doc["id"]),
+                "filename": out_name,
+                "mime_type": "message/rfc822",
+                "source_kind": "graph_email",
+                "original_available": True,
+                "content_bytes": mime_bytes,
+            }
+
+        att = await p.fetchrow("""
+            SELECT ea.id, ea.filename, ea.content_type, ea.file_size,
+                   parent.source_path AS parent_source_path
+            FROM legal.email_attachments ea
+            JOIN core.documents parent ON parent.id = ea.email_doc_id
+            WHERE ea.child_doc_id = $1::uuid
+        """, document_id)
+        if att:
+            parent_ref = (att["parent_source_path"] or "").replace("graph://", "", 1)
+            mailbox, message_ref = parent_ref.split("/", 1)
+            graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+            mime_bytes = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+            attachments = _extract_all_mime_attachments(mime_bytes)
+            matched = _match_attachment_bytes(attachments, att["filename"], att["content_type"], att["file_size"])
+            if not matched:
+                raise RuntimeError(f"Attachment bytes not found in parent email for document {document_id}")
+            return {
+                "document_id": str(doc["id"]),
+                "filename": att["filename"] or filename,
+                "mime_type": att["content_type"] or _guess_mime_type(att["filename"] or filename),
+                "source_kind": "graph_attachment",
+                "original_available": True,
+                "content_bytes": matched["data"],
+            }
+
+    local_path = source_path
+    if local_path.startswith("file://"):
+        local_path = local_path[7:]
+    if local_path and os.path.exists(local_path):
+        local_name = os.path.basename(local_path) or filename
+        return {
+            "document_id": str(doc["id"]),
+            "filename": local_name,
+            "mime_type": _guess_mime_type(local_name),
+            "source_kind": "filesystem",
+            "original_available": True,
+            "local_path": local_path,
+        }
+
+    if doc["full_content"]:
+        export_name = filename if "." in filename else f"{filename}.txt"
+        return {
+            "document_id": str(doc["id"]),
+            "filename": export_name,
+            "mime_type": "text/plain; charset=utf-8",
+            "source_kind": "database_export",
+            "original_available": False,
+            "content_bytes": (doc["full_content"] or "").encode("utf-8"),
+        }
+
+    raise RuntimeError(f"No downloadable source found for document {document_id}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -422,6 +677,8 @@ async def api_document_detail(request: Request):
 
     dd = _row_dict(doc, ["metadata"])
     dd["id"] = str(dd["id"])
+    dd["download_url"] = f"/api/documents/{doc_id}/download"
+    dd["download_api_url"] = f"/api/documents/{doc_id}/download"
     # Truncate full content for the preview
     if "full_content" in dd and dd["full_content"]:
         dd["full_content_preview"] = dd["full_content"][:2000]
@@ -440,6 +697,51 @@ async def api_document_detail(request: Request):
             "metadata": json.loads(c["metadata"]) if isinstance(c["metadata"], str) else (c["metadata"] or {}),
         } for c in chunks],
     })
+
+
+async def api_document_download(request: Request):
+    err = await _check_auth(request)
+    if err:
+        return err
+
+    doc_id = request.path_params["doc_id"]
+    disposition = request.query_params.get("disposition", "attachment").lower()
+    if disposition not in {"attachment", "inline"}:
+        disposition = "attachment"
+
+    try:
+        download = await _resolve_original_document_download(doc_id)
+    except RuntimeError as exc:
+        message = str(exc)
+        status = 404 if "not found" in message.lower() or "no downloadable source" in message.lower() else 502
+        return JSONResponse({"error": message}, status_code=status)
+    except Exception as exc:
+        return JSONResponse({"error": f"download failed: {exc}"}, status_code=500)
+
+    headers = {
+        "Content-Disposition": _content_disposition_value(download["filename"], disposition),
+        "X-Document-Id": download["document_id"],
+        "X-Original-Available": "true" if download.get("original_available") else "false",
+        "X-Source-Kind": download.get("source_kind", "unknown"),
+    }
+
+    local_path = download.get("local_path")
+    if local_path:
+        return FileResponse(
+            local_path,
+            media_type=download["mime_type"],
+            filename=download["filename"],
+            headers=headers,
+            content_disposition_type=disposition,
+        )
+
+    content_bytes = download.get("content_bytes", b"")
+    headers["Content-Length"] = str(len(content_bytes))
+    return StreamingResponse(
+        io.BytesIO(content_bytes),
+        media_type=download["mime_type"],
+        headers=headers,
+    )
 
 
 # ── Legal Cases ───────────────────────────────────────────────
@@ -1455,6 +1757,231 @@ async def api_email_trigger_classify(request: Request):
             cmd, stdout=log_file, stderr=subprocess.STDOUT, cwd="/opt/wdws",
         )
         return JSONResponse({"ok": True, "message": f"AI classification started (limit={limit})"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Chat-DB Email System (proxied to Athena Chat API 9350) ─────
+CHAT_API_BASE = os.getenv("CHAT_API_URL", "http://127.0.0.1:9350")
+
+async def _chat_api_proxy(path: str, method: str = "GET", json_body: dict = None) -> dict:
+    """Proxy a request to the Athena Chat API."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        url = f"{CHAT_API_BASE}{path}"
+        if method == "GET":
+            resp = await client.get(url)
+        elif method == "POST":
+            resp = await client.post(url, json=json_body or {})
+        elif method == "DELETE":
+            resp = await client.delete(url)
+        elif method == "PATCH":
+            resp = await client.patch(url, json=json_body or {})
+        else:
+            resp = await client.request(method, url, json=json_body)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def api_chat_email_accounts(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/api/email/accounts")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_sync_status(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/api/email/sync")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_trigger_sync(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        body = await request.json() if request.method == "POST" else {}
+        data = await _chat_api_proxy("/api/email/sync", "POST", body)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_messages(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        qs = str(request.query_params)
+        path = f"/api/email/messages?{qs}" if qs else "/api/email/messages"
+        data = await _chat_api_proxy(path)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_action_required(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/api/email/action-required")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_semantic_search(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        qs = str(request.query_params)
+        path = f"/api/email/semantic-search?{qs}" if qs else "/api/email/semantic-search"
+        data = await _chat_api_proxy(path)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_search(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        qs = str(request.query_params)
+        path = f"/api/email/search?{qs}" if qs else "/api/email/search"
+        data = await _chat_api_proxy(path)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_webhooks(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        if request.method == "POST":
+            body = await request.json() if request.method == "POST" else {}
+            data = await _chat_api_proxy("/api/email/webhooks", "POST", body)
+        else:
+            data = await _chat_api_proxy("/api/email/webhooks")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_webhooks_renew(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/api/email/webhooks/renew", "POST", {})
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_email_webhooks_delete(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        sub_id = request.path_params["sub_id"]
+        data = await _chat_api_proxy(f"/api/email/webhooks/{sub_id}", "DELETE")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── OneDrive Integration (proxy to chat_api) ─────────────────
+
+async def api_onedrive_stats(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/onedrive/stats")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_targets(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        data = await _chat_api_proxy("/onedrive/targets")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_target_toggle(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        tid = request.path_params["target_id"]
+        data = await _chat_api_proxy(f"/onedrive/targets/{tid}/toggle", "POST", {})
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_files(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        qs = str(request.url.query)
+        path = f"/onedrive/files?{qs}" if qs else "/onedrive/files"
+        data = await _chat_api_proxy(path)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_search(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        qs = str(request.url.query)
+        path = f"/onedrive/search?{qs}" if qs else "/onedrive/search"
+        data = await _chat_api_proxy(path)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_sync(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        body = await request.json() if request.method == "POST" else {}
+        data = await _chat_api_proxy("/onedrive/sync", "POST", body)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_webhooks(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        if request.method == "POST":
+            data = await _chat_api_proxy("/onedrive/webhooks", "POST", {})
+        else:
+            data = await _chat_api_proxy("/onedrive/webhooks")
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_onedrive_webhook_delete(request: Request):
+    err = await _check_auth(request)
+    if err: return err
+    try:
+        sub_id = request.path_params["sub_id"]
+        data = await _chat_api_proxy(f"/onedrive/webhooks/{sub_id}", "DELETE")
+        return JSONResponse(data)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -2569,28 +3096,224 @@ async def api_chat_conversation_detail(request: Request):
         return JSONResponse({"ok": True})
     # GET — return messages
     rows = await p.fetch("""
-        SELECT id, role, content, tool_calls, tool_name, tokens_used, model, created_at
+        SELECT id, role, content, tool_calls, tool_name, tokens_used, model, created_at, attachments
         FROM ops.chat_messages
         WHERE conversation_id = $1::uuid AND role IN ('user', 'assistant')
         ORDER BY created_at
     """, cid)
-    return JSONResponse([{
-        "id": r["id"], "role": r["role"], "content": r["content"],
-        "tool_name": r["tool_name"], "tokens_used": r["tokens_used"],
-        "model": r["model"], "created_at": r["created_at"].isoformat(),
-    } for r in rows])
+    result = []
+    for r in rows:
+        msg = {
+            "id": r["id"], "role": r["role"], "content": r["content"],
+            "tool_name": r["tool_name"], "tokens_used": r["tokens_used"],
+            "model": r["model"], "created_at": r["created_at"].isoformat(),
+        }
+        if r["attachments"]:
+            att = json.loads(r["attachments"]) if isinstance(r["attachments"], str) else r["attachments"]
+            msg["attachments"] = att
+        result.append(msg)
+    return JSONResponse(result)
 
 
-async def api_chat_send(request: Request):
-    """POST: send a message and get AI response."""
+# ── Chat File Upload ──────────────────────────────────────────
+def _extract_text_basic(raw: bytes, content_type: str, file_name: str) -> str:
+    """Best-effort text extraction for common file types."""
+    ct = content_type.lower()
+    fn = file_name.lower()
+    # Plain text / code / CSV / markdown
+    if ct.startswith("text/") or fn.endswith((".txt", ".csv", ".md", ".json", ".py", ".js", ".sql", ".log", ".xml", ".html", ".htm")):
+        try:
+            return raw.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+    # PDF
+    if ct == "application/pdf" or fn.endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=raw, filetype="pdf")
+            text = "\n".join(page.get_text() for page in doc)
+            doc.close()
+            return text.strip()
+        except Exception:
+            pass
+    # DOCX
+    if fn.endswith(".docx") or "wordprocessingml" in ct:
+        try:
+            import io
+            from zipfile import ZipFile
+            import xml.etree.ElementTree as ET
+            zf = ZipFile(io.BytesIO(raw))
+            xml_content = zf.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            parts = [node.text for node in tree.iter(f"{{{ns['w']}}}t") if node.text]
+            return " ".join(parts).strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _medical_zip_slug(name: str) -> str:
+    base = Path(name or "medical-import").stem
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-._")
+    return (slug or "medical-import")[:64]
+
+
+def _normalize_zip_member(name: str) -> PurePosixPath:
+    member = PurePosixPath((name or "").replace("\\", "/"))
+    parts = [part for part in member.parts if part not in ("", ".", "/")]
+    if not parts or any(part == ".." for part in parts):
+        raise ValueError(f"unsafe archive member: {name}")
+    return PurePosixPath(*parts)
+
+
+def _is_supported_medical_member(member: PurePosixPath) -> bool:
+    return not member.name.startswith(".") and member.suffix.lower() in SUPPORTED_MEDICAL_IMPORT_EXTENSIONS
+
+
+def _tail_lines(text: str, max_lines: int = 40) -> str:
+    lines = (text or "").splitlines()
+    return "\n".join(lines[-max_lines:])
+
+
+async def _run_dropbox_ingest_once(timeout_seconds: int = 300) -> Dict[str, Any]:
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "/opt/wdws/dropbox_watcher.py",
+        "--once",
+        cwd="/opt/wdws",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        return {
+            "completed": False,
+            "exit_code": None,
+            "processed_count": None,
+            "log_tail": "Dropbox ingestion is still running in the background. Check the live ingestion log for progress.",
+        }
+
+    output = stdout.decode("utf-8", errors="replace") if stdout else ""
+    match = re.search(r"Done\. Processed (\d+) file\(s\)\.", output)
+    return {
+        "completed": True,
+        "exit_code": proc.returncode,
+        "processed_count": int(match.group(1)) if match else None,
+        "log_tail": _tail_lines(output),
+    }
+
+
+async def api_ingestion_medical_zip(request: Request):
+    """Upload a medical ZIP, extract supported files into the medical dropbox, and trigger ingestion."""
+    err = await _check_auth(request)
+    if err:
+        return err
+
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None:
+        return JSONResponse({"error": "zip file is required"}, status_code=400)
+
+    file_name = getattr(upload, "filename", "") or "medical-records.zip"
+    content_type = (getattr(upload, "content_type", None) or mimetypes.guess_type(file_name)[0] or "application/octet-stream").lower()
+    if not file_name.lower().endswith(".zip") and content_type not in {"application/zip", "application/x-zip-compressed", "multipart/x-zip"}:
+        return JSONResponse({"error": "only .zip uploads are supported for medical import"}, status_code=400)
+
+    raw = await upload.read()
+    if not raw:
+        return JSONResponse({"error": "uploaded zip is empty"}, status_code=400)
+    if len(raw) > MEDICAL_ZIP_MAX_UPLOAD_BYTES:
+        return JSONResponse({
+            "error": f"zip exceeds max upload size of {MEDICAL_ZIP_MAX_UPLOAD_BYTES // (1024 * 1024)} MB"
+        }, status_code=413)
+
+    ingest_now = str(form.get("ingest_now", "true")).strip().lower() not in {"0", "false", "no"}
+    staging_dir = MEDICAL_DROPBOX_DIR / f"portal_{time.strftime('%Y%m%d_%H%M%S')}_{_medical_zip_slug(file_name)}_{uuid.uuid4().hex[:8]}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    extracted_files: List[str] = []
+    skipped_files: List[Dict[str, str]] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            members = [info for info in zf.infolist() if not info.is_dir()]
+            if not members:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                return JSONResponse({"error": "zip does not contain any files"}, status_code=400)
+            if len(members) > MEDICAL_ZIP_MAX_MEMBERS:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                return JSONResponse({"error": f"zip has too many files ({len(members)} > {MEDICAL_ZIP_MAX_MEMBERS})"}, status_code=400)
+
+            total_uncompressed = sum(max(info.file_size, 0) for info in members)
+            if total_uncompressed > MEDICAL_ZIP_MAX_UNCOMPRESSED_BYTES:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                return JSONResponse({
+                    "error": f"zip expands beyond the {MEDICAL_ZIP_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB safety limit"
+                }, status_code=400)
+
+            for info in members:
+                if info.flag_bits & 0x1:
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    return JSONResponse({"error": "password-protected zip files are not supported"}, status_code=400)
+
+                try:
+                    member_path = _normalize_zip_member(info.filename)
+                except ValueError as exc:
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    return JSONResponse({"error": str(exc)}, status_code=400)
+
+                if not _is_supported_medical_member(member_path):
+                    skipped_files.append({"path": str(member_path), "reason": "unsupported file type"})
+                    continue
+
+                target_path = staging_dir.joinpath(*member_path.parts)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(target_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
+                extracted_files.append(str(target_path.relative_to(MEDICAL_DROPBOX_DIR)))
+    except zipfile.BadZipFile:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return JSONResponse({"error": "invalid or corrupt zip file"}, status_code=400)
+    except Exception as exc:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return JSONResponse({"error": f"failed to extract zip: {exc}"}, status_code=500)
+
+    if not extracted_files:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return JSONResponse({
+            "error": "zip did not contain any supported medical files",
+            "supported_extensions": sorted(SUPPORTED_MEDICAL_IMPORT_EXTENSIONS),
+        }, status_code=400)
+
+    response: Dict[str, Any] = {
+        "ok": True,
+        "uploaded_file": file_name,
+        "staging_dir": str(staging_dir.relative_to(MEDICAL_DROPBOX_DIR.parent)),
+        "extracted_count": len(extracted_files),
+        "skipped_count": len(skipped_files),
+        "extracted_files": extracted_files[:50],
+        "skipped_files": skipped_files[:50],
+        "supported_extensions": sorted(SUPPORTED_MEDICAL_IMPORT_EXTENSIONS),
+    }
+
+    if ingest_now:
+        response["ingestion"] = await _run_dropbox_ingest_once()
+
+    return JSONResponse(response, status_code=201)
+
+
+async def api_chat_upload(request: Request):
+    """POST: upload files to a chat conversation (multipart/form-data)."""
     err = await _check_auth(request)
     if err: return err
-    data = await request.json()
-    cid = data.get("conversation_id")
-    user_msg = data.get("message", "").strip()
-    model_id = data.get("model", "auto")
-    if not user_msg:
-        return JSONResponse({"error": "message required"}, status_code=400)
+
+    form = await request.form()
+    cid = form.get("conversation_id", "")
+    files = form.getlist("files")
+
+    if not files:
+        return JSONResponse({"error": "no files provided"}, status_code=400)
 
     p = await get_pool()
 
@@ -2600,25 +3323,194 @@ async def api_chat_send(request: Request):
             "INSERT INTO ops.chat_conversations DEFAULT VALUES RETURNING id")
         cid = str(row["id"])
 
-    # Save user message
+    results = []
+    for f in files:
+        raw = await f.read()
+        file_name = f.filename or "unnamed"
+        content_type = f.content_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+        ct_lower = content_type.lower()
+
+        if ct_lower.startswith("image/"):
+            asset_type = "image"
+        elif ct_lower.startswith("audio/"):
+            asset_type = "audio"
+        elif ct_lower.startswith("video/"):
+            asset_type = "video"
+        else:
+            asset_type = "file"
+
+        sha = hashlib.sha256(raw).hexdigest()
+        ext = Path(file_name).suffix or mimetypes.guess_extension(content_type) or ".bin"
+        out_name = f"{uuid.uuid4().hex}{ext}"
+        out_path = CHAT_UPLOAD_DIR / out_name
+        out_path.write_bytes(raw)
+
+        # Text extraction for documents
+        extracted = ""
+        if asset_type != "image":
+            extracted = _extract_text_basic(raw, content_type, file_name)
+
+        row = await p.fetchrow("""
+            INSERT INTO ops.chat_attachments
+                (conversation_id, file_name, content_type, size_bytes,
+                 storage_path, asset_type, sha256, extracted_text)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, file_name, content_type, size_bytes, asset_type
+        """, cid, file_name, content_type, len(raw),
+            str(out_path), asset_type, sha, extracted[:200_000] if extracted else None)
+
+        results.append({
+            "id": str(row["id"]),
+            "file_name": row["file_name"],
+            "content_type": row["content_type"],
+            "size_bytes": row["size_bytes"],
+            "asset_type": row["asset_type"],
+            "extracted_length": len(extracted),
+        })
+
+    return JSONResponse({"conversation_id": cid, "attachments": results}, status_code=201)
+
+
+async def api_chat_attachment_download(request: Request):
+    """GET: download/serve a chat attachment by id."""
+    err = await _check_auth(request)
+    if err: return err
+    aid = request.path_params["aid"]
+    p = await get_pool()
+    row = await p.fetchrow(
+        "SELECT storage_path, file_name, content_type FROM ops.chat_attachments WHERE id = $1::uuid", aid)
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    fpath = Path(row["storage_path"])
+    if not fpath.exists():
+        return JSONResponse({"error": "file missing"}, status_code=404)
+    ct = row["content_type"] or "application/octet-stream"
+    if ct.startswith("image/") or ct == "application/pdf":
+        return FileResponse(str(fpath), media_type=ct)
+    return FileResponse(str(fpath), media_type=ct, filename=row["file_name"])
+
+
+async def api_chat_send(request: Request):
+    """POST: send a message (with optional attachments) and get AI response."""
+    err = await _check_auth(request)
+    if err: return err
+    data = await request.json()
+    cid = data.get("conversation_id")
+    user_msg = data.get("message", "").strip()
+    model_id = data.get("model", "auto")
+    attachment_ids = data.get("attachment_ids", [])  # list of UUIDs from upload
+
+    if not user_msg and not attachment_ids:
+        return JSONResponse({"error": "message or attachments required"}, status_code=400)
+
+    p = await get_pool()
+
+    # Auto-create conversation if needed
+    if not cid:
+        row = await p.fetchrow(
+            "INSERT INTO ops.chat_conversations DEFAULT VALUES RETURNING id")
+        cid = str(row["id"])
+
+    # Build attachment info
+    attach_meta = []
+    if attachment_ids:
+        rows = await p.fetch("""
+            SELECT id, file_name, content_type, size_bytes, asset_type,
+                   storage_path, extracted_text
+            FROM ops.chat_attachments
+            WHERE id = ANY($1::uuid[]) AND conversation_id = $2::uuid
+        """, attachment_ids, cid)
+        for r in rows:
+            attach_meta.append(dict(r))
+
+    # Build content for the user message (JSON for attachments reference)
+    attach_json = None
+    if attach_meta:
+        attach_json = json.dumps([{
+            "id": str(a["id"]), "file_name": a["file_name"],
+            "content_type": a["content_type"], "size_bytes": a["size_bytes"],
+            "asset_type": a["asset_type"],
+        } for a in attach_meta])
+
+    display_content = user_msg or ""
+    if attach_meta:
+        fnames = ", ".join(a["file_name"] for a in attach_meta)
+        if display_content:
+            display_content += f"\n\n📎 Attached: {fnames}"
+        else:
+            display_content = f"📎 Attached: {fnames}"
+
+    # Save user message with attachment refs
     await p.execute("""
-        INSERT INTO ops.chat_messages (conversation_id, role, content)
-        VALUES ($1::uuid, 'user', $2)
-    """, cid, user_msg)
+        INSERT INTO ops.chat_messages (conversation_id, role, content, attachments)
+        VALUES ($1::uuid, 'user', $2, $3::jsonb)
+    """, cid, display_content, attach_json)
+
+    # Link attachments to the message
+    if attach_meta:
+        msg_row = await p.fetchrow("""
+            SELECT id FROM ops.chat_messages
+            WHERE conversation_id = $1::uuid AND role = 'user'
+            ORDER BY created_at DESC LIMIT 1
+        """, cid)
+        if msg_row:
+            for a in attach_meta:
+                await p.execute("""
+                    UPDATE ops.chat_attachments SET message_id = $1
+                    WHERE id = $2::uuid
+                """, msg_row["id"], a["id"])
 
     # Build messages array from conversation history
     history = await p.fetch("""
-        SELECT role, content FROM ops.chat_messages
+        SELECT role, content, attachments FROM ops.chat_messages
         WHERE conversation_id = $1::uuid AND role IN ('user', 'assistant')
         ORDER BY created_at
     """, cid)
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for h in history:
-        messages.append({"role": h["role"], "content": h["content"]})
+        if h["role"] == "user" and h.get("attachments"):
+            # Check if this message has image attachments — use multimodal content
+            h_attachments = json.loads(h["attachments"]) if isinstance(h["attachments"], str) else h["attachments"]
+            content_parts = []
+            if h["content"]:
+                # Strip the "📎 Attached:" suffix for the API — cleaner prompt
+                text = h["content"]
+                content_parts.append({"type": "text", "text": text})
+            for att_ref in (h_attachments or []):
+                att_id = att_ref.get("id")
+                if att_ref.get("asset_type") == "image":
+                    # Look up the attachment for base64 image
+                    att_row = await p.fetchrow(
+                        "SELECT storage_path, content_type FROM ops.chat_attachments WHERE id = $1::uuid", att_id)
+                    if att_row:
+                        fpath = Path(att_row["storage_path"])
+                        if fpath.exists() and fpath.stat().st_size < 20_000_000:  # 20MB limit
+                            img_b64 = _b64.b64encode(fpath.read_bytes()).decode()
+                            ct = att_row["content_type"] or "image/png"
+                            content_parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{ct};base64,{img_b64}", "detail": "auto"}
+                            })
+                else:
+                    # For documents, inject extracted text
+                    att_row = await p.fetchrow(
+                        "SELECT file_name, extracted_text FROM ops.chat_attachments WHERE id = $1::uuid", att_id)
+                    if att_row and att_row["extracted_text"]:
+                        content_parts.append({
+                            "type": "text",
+                            "text": f"\n\n--- File: {att_row['file_name']} ---\n{att_row['extracted_text'][:50000]}\n--- End file ---"
+                        })
+            if content_parts:
+                messages.append({"role": "user", "content": content_parts})
+            else:
+                messages.append({"role": h["role"], "content": h["content"] or ""})
+        else:
+            messages.append({"role": h["role"], "content": h["content"] or ""})
 
     # Auto-title from first user message
     if len([h for h in history if h["role"] == "user"]) <= 1:
-        title = user_msg[:80]
+        title = (user_msg or "File upload")[:80]
         await p.execute(
             "UPDATE ops.chat_conversations SET title = $2 WHERE id = $1::uuid",
             cid, title)
@@ -2636,8 +3528,6 @@ async def api_chat_send(request: Request):
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-
-
 
 
 async def api_chat_retry(request: Request):
@@ -3083,6 +3973,18 @@ async def api_reliability_summary(request: Request):
 # ══════════════════════════════════════════════════════════════
 #  ROUTES + MIDDLEWARE
 # ══════════════════════════════════════════════════════════════
+
+def _osint_auth_wrap(endpoint):
+    """Wrap OSINT endpoints with dashboard auth check."""
+    async def wrapped(request):
+        err = await _check_auth(request)
+        if err:
+            return err
+        return await endpoint(request)
+    wrapped.__name__ = getattr(endpoint, "__name__", "osint")
+    return wrapped
+
+
 routes = [
     Route("/health", health),
     Route("/", page_dashboard),
@@ -3099,8 +4001,10 @@ routes = [
     # Ingestion
     Route("/api/ingestion/jobs", api_ingestion_jobs),
     Route("/api/ingestion/live", api_ingestion_live),
+    Route("/api/ingestion/medical-zip", api_ingestion_medical_zip, methods=["POST"]),
     # Documents
     Route("/api/documents", api_documents),
+    Route("/api/documents/{doc_id}/download", api_document_download),
     Route("/api/documents/{doc_id}", api_document_detail),
     # Legal
     Route("/api/cases", api_cases),
@@ -3141,6 +4045,26 @@ routes = [
     Route("/api/email/sync/live", api_email_sync_live),
     Route("/api/email/classifications", api_email_classifications),
     Route("/api/email/classify", api_email_trigger_classify, methods=["POST"]),
+    # Chat-DB Email System (proxied to Chat API)
+    Route("/api/cemail/accounts", api_chat_email_accounts),
+    Route("/api/cemail/sync", api_chat_email_sync_status),
+    Route("/api/cemail/sync/trigger", api_chat_email_trigger_sync, methods=["POST"]),
+    Route("/api/cemail/messages", api_chat_email_messages),
+    Route("/api/cemail/action-required", api_chat_email_action_required),
+    Route("/api/cemail/semantic-search", api_chat_email_semantic_search),
+    Route("/api/cemail/search", api_chat_email_search),
+    Route("/api/cemail/webhooks", api_chat_email_webhooks, methods=["GET", "POST"]),
+    Route("/api/cemail/webhooks/renew", api_chat_email_webhooks_renew, methods=["POST"]),
+    Route("/api/cemail/webhooks/{sub_id}", api_chat_email_webhooks_delete, methods=["DELETE"]),
+    # OneDrive
+    Route("/api/onedrive/stats", api_onedrive_stats),
+    Route("/api/onedrive/targets", api_onedrive_targets),
+    Route("/api/onedrive/targets/{target_id}/toggle", api_onedrive_target_toggle, methods=["POST"]),
+    Route("/api/onedrive/files", api_onedrive_files),
+    Route("/api/onedrive/search", api_onedrive_search),
+    Route("/api/onedrive/sync", api_onedrive_sync, methods=["POST"]),
+    Route("/api/onedrive/webhooks", api_onedrive_webhooks, methods=["GET", "POST"]),
+    Route("/api/onedrive/webhooks/{sub_id}", api_onedrive_webhook_delete, methods=["DELETE"]),
     # MCP Accounts & Analytics
     Route("/api/mcp/clients", api_mcp_clients),
     Route("/api/mcp/clients/{cid}/toggle", api_mcp_client_toggle, methods=["POST"]),
@@ -3153,10 +4077,16 @@ routes = [
     Route("/api/chat/conversations", api_chat_conversations, methods=["GET", "POST"]),
     Route("/api/chat/conversations/{cid}", api_chat_conversation_detail, methods=["GET", "PUT", "DELETE"]),
     Route("/api/chat/send", api_chat_send, methods=["POST"]),
+    Route("/api/chat/upload", api_chat_upload, methods=["POST"]),
+    Route("/api/chat/attachments/{aid}", api_chat_attachment_download, methods=["GET"]),
     Route("/api/chat/retry", api_chat_retry, methods=["POST"]),
     Route("/api/chat/models", api_chat_models),
-    # Static files
+    # ── OSINT Investigation Database ──
+    *[Route(r.path, _osint_auth_wrap(r.endpoint), methods=r.methods) for r in get_osint_routes()],
+    # Static files — dashboard assets
     Mount("/static", StaticFiles(directory="/opt/wdws/dashboard/static"), name="static"),
+    # Static files — OSINT module assets
+    Mount("/osint-static", StaticFiles(directory="/opt/wdws/dashboard/osint_static"), name="osint-static"),
 ]
 
 middleware = [
@@ -3228,6 +4158,52 @@ nav button.active{color:var(--cyan);border-bottom-color:var(--cyan)}
 .nav-dropdown-item:hover{background:rgba(59,130,246,.08);color:var(--cyan)}
 .nav-dropdown-item.active{background:rgba(59,130,246,.12);color:var(--cyan);font-weight:600}
 main{flex:1;padding:24px;max-width:1500px;margin:0 auto;width:100%}
+
+/* OSINT Investigation Module */
+.osint-inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+.osint-inv-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;cursor:pointer;transition:all .2s}
+.osint-inv-card:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(59,130,246,.12)}
+.osint-inv-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.osint-inv-case{font-family:monospace;font-size:.85rem;color:var(--cyan)}
+.osint-inv-title{font-size:1.05rem;font-weight:600;margin-bottom:6px}
+.osint-inv-desc{font-size:.85rem;color:var(--muted);margin-bottom:8px;line-height:1.4}
+.osint-inv-stats{display:flex;gap:14px;font-size:.8rem;color:var(--muted);flex-wrap:wrap}
+.osint-inv-date{font-size:.75rem;color:var(--muted);margin-top:8px}
+.osint-breadcrumb{padding:10px 0;margin-bottom:16px;font-size:.9rem;color:var(--muted);border-bottom:1px solid var(--border)}
+.osint-breadcrumb a{color:var(--cyan);text-decoration:none}
+.osint-breadcrumb strong{color:var(--text)}
+.osint-detail-header{padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:16px}
+.osint-detail-header h2{font-size:1.3rem;font-weight:700}
+.osint-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:16px 0}
+.osint-person-header{display:flex;gap:20px;align-items:center;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.osint-person-avatar{font-size:3rem;width:64px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border-radius:50%}
+.osint-person-header h2{font-size:1.3rem;font-weight:700}
+.osint-contact-grid{display:flex;flex-direction:column;gap:14px;padding:8px 0}
+.osint-contact-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.osint-contact-section h4{font-size:.85rem;margin-bottom:8px;color:var(--cyan)}
+.osint-contact-item{padding:6px 0;font-size:.9rem;border-bottom:1px solid var(--border)}
+.osint-contact-item:last-child{border-bottom:none}
+.osint-filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.osint-filters input{min-width:180px}
+.osint-pag{display:flex;gap:12px;align-items:center;justify-content:center;padding:16px 0}
+.osint-timeline{border-left:3px solid var(--border);padding-left:20px;margin-left:12px}
+.osint-timeline-item{position:relative;padding-bottom:16px}
+.osint-timeline-item::before{content:'';position:absolute;left:-27px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.osint-timeline-date{font-size:.8rem;color:var(--muted);margin-bottom:4px}
+.osint-timeline-content{font-size:.9rem}
+.osint-timeline-content strong{color:var(--cyan);margin-right:8px}
+.osint-note{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.osint-note-header{font-size:.8rem;color:var(--muted);margin-bottom:6px}
+.osint-note-body{font-size:.9rem;line-height:1.5;white-space:pre-wrap}
+.osint-raw{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-family:monospace;font-size:.8rem;overflow-x:auto;max-height:400px;overflow-y:auto;white-space:pre;line-height:1.6}
+.osint-content-preview{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-size:.85rem;line-height:1.6;max-height:500px;overflow-y:auto;white-space:pre-wrap;font-family:monospace}
+.osint-social-profiles{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem}
+.osint-social-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);text-decoration:none;color:var(--fg);font-size:.85rem;transition:all .15s}
+.osint-social-chip:hover{background:rgba(0,200,255,0.12);border-color:var(--accent)}
+.osint-social-icon{font-size:1.1rem}
+.osint-social-platform{text-transform:capitalize;color:var(--muted);font-size:.75rem}
+.osint-social-name{font-weight:500}
+.cols-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 
 /* Login */
 .login-box{max-width:380px;margin:80px auto;background:var(--surface);padding:32px;border-radius:12px;border:1px solid var(--border);box-shadow:var(--glow)}
@@ -3372,6 +4348,17 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
   </div>
 </header>
 <nav id="main-nav">
+  <div class="nav-category" data-category="osint">
+    <button class="nav-category-btn">🔍 Investigations <span class="arrow">▼</span></button>
+    <div class="nav-dropdown">
+      <button class="nav-dropdown-item" data-tab="osint-inv" onclick="switchTab('osint-inv')">📂 Investigations</button>
+      <button class="nav-dropdown-item" data-tab="osint-persons" onclick="switchTab('osint-persons')">👤 Persons</button>
+      <button class="nav-dropdown-item" data-tab="osint-records" onclick="switchTab('osint-records')">⚖️ Court Records</button>
+      <button class="nav-dropdown-item" data-tab="osint-docs" onclick="switchTab('osint-docs')">📄 OSINT Documents</button>
+      <button class="nav-dropdown-item" data-tab="osint-props" onclick="switchTab('osint-props')">🏠 Properties</button>
+      <button class="nav-dropdown-item" data-tab="osint-search" onclick="switchTab('osint-search')">🔎 OSINT Search</button>
+    </div>
+  </div>
   <div class="nav-category" data-category="content">
     <button class="nav-category-btn">📚 Data & Content <span class="arrow">▼</span></button>
     <div class="nav-dropdown">
@@ -3386,6 +4373,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
     <div class="nav-dropdown">
       <button class="nav-dropdown-item" data-tab="ingestion" onclick="switchTab('ingestion')">📥 Ingestion</button>
       <button class="nav-dropdown-item" data-tab="email" onclick="switchTab('email')">📧 Email Sync</button>
+      <button class="nav-dropdown-item" data-tab="onedrive" onclick="switchTab('onedrive')">☁️ OneDrive</button>
     </div>
   </div>
   <div class="nav-category" data-category="ai">
@@ -3428,6 +4416,20 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 
 <!-- ═══ DOCUMENTS TAB ═══ -->
 <section id="tab-documents" class="hidden">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
+    <div style="display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div style="font-size:.98rem;font-weight:700;color:var(--cyan);margin-bottom:4px">🏥 Medical ZIP Import</div>
+        <div style="font-size:.82rem;color:var(--muted);max-width:760px">Upload a ZIP bundle of medical records from the portal. Supported files are safely extracted into the medical dropbox and ingestion is started immediately.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="medical-zip-input" type="file" accept=".zip,application/zip,application/x-zip-compressed" onchange="handleMedicalZipSelect(event)" style="max-width:280px"/>
+        <button class="btn btn-primary btn-sm" id="medical-zip-btn" onclick="uploadMedicalZip()">Import ZIP</button>
+      </div>
+    </div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:8px">Supported after extraction: PDF, DOC/DOCX, TXT, EML, XML, CSV, RTF, XLS/XLSX, PNG/JPG/TIFF. ZIPs with unsafe paths or encryption are rejected.</div>
+    <div id="medical-zip-status" class="empty-state" style="padding:14px 16px;background:rgba(255,255,255,.02);border:1px dashed var(--border);border-radius:var(--radius);font-size:.82rem">Select a medical ZIP to import.</div>
+  </div>
   <div class="search-bar">
     <select id="doc-domain" onchange="docOffset=0;loadDocs()"><option value="">All Domains</option><option value="legal">Legal</option><option value="medical">Medical</option><option value="paperless">Paperless</option></select>
     <select id="doc-type" onchange="docOffset=0;loadDocs()"><option value="">All Types</option></select>
@@ -3472,7 +4474,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 
 <!-- ═══ AUDIT TAB ═══ -->
 <section id="tab-audit" class="hidden">
-  <div class="section-title">🤖 MCP Client Activity <span style="font-size:.75rem;color:var(--muted);font-weight:400">— ChatGPT, Claude Desktop tool calls</span></div>
+  <div class="section-title">🤖 MCP Client Activity <span style="font-size:.75rem;color:var(--muted);font-weight:400">— Athena AI, Claude Desktop tool calls</span></div>
   <div id="audit-mcp"></div>
   <div class="section-title" style="margin-top:24px">🔐 Access Log</div>
   <div id="audit-access"></div>
@@ -3561,6 +4563,88 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
     <span id="classify-indicator" style="font-size:.8rem;color:var(--muted)"></span>
   </div>
   <div id="email-classifications"></div>
+
+  <!-- ═══ NEW: Chat-DB Email Integration ═══ -->
+  <div style="margin-top:32px;padding-top:24px;border-top:2px solid var(--border)">
+    <h2 style="color:var(--cyan);margin:0 0 16px 0;font-size:1.1rem">📨 Real-Time Email Integration <span style="font-size:.7rem;color:var(--muted);font-weight:400">(Graph API + RAG)</span></h2>
+  </div>
+
+  <div id="cemail-stats" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
+
+  <div class="section-title" style="margin-top:20px">📫 Synced Email Accounts</div>
+  <div id="cemail-accounts"></div>
+
+  <div class="section-title" style="margin-top:20px">🔔 Graph Webhook Subscriptions</div>
+  <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" onclick="createWebhooks()">+ Register Webhooks</button>
+    <button class="btn btn-outline btn-sm" onclick="renewWebhooks()">🔄 Renew All</button>
+    <span id="webhook-indicator" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
+  <div id="cemail-webhooks"></div>
+
+  <div class="section-title" style="margin-top:20px">🔄 Chat-DB Sync Runs</div>
+  <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" onclick="triggerCemailSync()">▶ Trigger RAG Sync</button>
+    <span id="cemail-sync-indicator" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
+  <div id="cemail-sync-runs"></div>
+
+  <div class="section-title" style="margin-top:20px">🚨 Action Required <span style="font-size:.75rem;color:var(--muted);font-weight:400">— AI-flagged urgent emails</span></div>
+  <div id="cemail-action"></div>
+
+  <div class="section-title" style="margin-top:20px">🔍 Email RAG Search</div>
+  <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+    <input id="cemail-search-q" placeholder="Semantic search across all synced emails..." style="flex:1" onkeydown="if(event.key==='Enter')cemailSearch()"/>
+    <button class="btn btn-primary btn-sm" onclick="cemailSearch()">Search</button>
+  </div>
+  <div id="cemail-search-results"></div>
+
+  <div class="section-title" style="margin-top:20px">📋 Recent Synced Emails <span style="font-size:.75rem;color:var(--muted);font-weight:400">(domain-filtered)</span></div>
+  <div id="cemail-messages"></div>
+</section>
+
+<!-- ═══ ONEDRIVE TAB ═══ -->
+<section id="tab-onedrive" class="hidden">
+  <div id="od-stats" class="cards"><div class="empty-state"><span class="spinner"></span></div></div>
+
+  <div class="section-title">📂 Sync Targets</div>
+  <div id="od-targets"></div>
+
+  <div class="section-title" style="margin-top:24px">🔔 Webhook Subscriptions</div>
+  <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" onclick="odRegisterWebhooks()">+ Register Webhooks</button>
+    <span id="od-webhook-indicator" style="font-size:.8rem;color:var(--muted)"></span>
+  </div>
+  <div id="od-webhooks"></div>
+
+  <div class="section-title" style="margin-top:24px">🔄 Sync Control</div>
+  <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" id="od-sync-btn" onclick="odTriggerSync()">▶ Run OneDrive Sync</button>
+    <span id="od-sync-indicator" style="font-size:.85rem"></span>
+  </div>
+
+  <div class="section-title" style="margin-top:16px">📊 Sync History</div>
+  <div id="od-runs"></div>
+
+  <div class="section-title" style="margin-top:24px">📊 File Type Breakdown</div>
+  <div id="od-ext-breakdown"></div>
+
+  <div class="section-title" style="margin-top:24px">🔍 OneDrive RAG Search</div>
+  <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+    <input id="od-search-q" placeholder="Semantic search across all indexed OneDrive files..." style="flex:1" onkeydown="if(event.key==='Enter')odSearch()"/>
+    <select id="od-search-type" style="width:130px"><option value="hybrid">Hybrid</option><option value="semantic">Semantic</option><option value="fulltext">Full Text</option></select>
+    <button class="btn btn-primary btn-sm" onclick="odSearch()">Search</button>
+  </div>
+  <div id="od-search-results"></div>
+
+  <div class="section-title" style="margin-top:24px">📁 Indexed Files <span id="od-files-count" style="font-size:.75rem;color:var(--muted);font-weight:400"></span></div>
+  <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input id="od-files-q" placeholder="Filter by filename..." style="width:250px" onkeydown="if(event.key==='Enter')loadOdFiles()"/>
+    <select id="od-files-status" style="width:130px" onchange="loadOdFiles()"><option value="">All Statuses</option><option value="indexed">Indexed</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="skipped">Skipped</option></select>
+    <button class="btn btn-outline btn-sm" onclick="loadOdFiles()">Refresh</button>
+  </div>
+  <div id="od-files"></div>
+  <div id="od-files-pager" style="margin-top:8px;display:flex;gap:8px;align-items:center"></div>
 </section>
 
 <!-- ═══ CHAT TAB ═══ -->
@@ -3643,6 +4727,28 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 .chat-input-wrap select option{background:var(--surface);color:var(--text)}
 .model-badge{font-size:.65rem;color:var(--muted);font-weight:400;margin-left:6px;opacity:.7}
 .chat-input-wrap button:disabled{background:transparent;color:var(--muted);cursor:not-allowed;transform:none}
+/* Attachment button */
+.chat-attach-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--muted);font-size:1.2rem;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0;margin-bottom:2px}
+.chat-attach-btn:hover{color:var(--accent);background:rgba(59,130,246,.08)}
+/* Preview strip */
+.chat-preview-strip{display:flex;gap:8px;padding:0 0 8px 0;overflow-x:auto;max-width:720px;margin:0 auto}
+.chat-preview-strip:empty{display:none}
+.chat-preview-item{position:relative;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 28px 6px 8px;font-size:.78rem;color:var(--text);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.chat-preview-item img{width:36px;height:36px;object-fit:cover;border-radius:6px}
+.chat-preview-item .file-icon{font-size:1.2rem;flex-shrink:0}
+.chat-preview-item .file-info{display:flex;flex-direction:column;overflow:hidden}
+.chat-preview-item .file-name{overflow:hidden;text-overflow:ellipsis}
+.chat-preview-item .file-size{font-size:.65rem;color:var(--muted)}
+.chat-preview-remove{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;border:none;background:var(--red,#ef4444);color:#fff;font-size:.7rem;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
+/* Drag drop overlay */
+.chat-drop-overlay{display:none;position:absolute;inset:0;background:rgba(59,130,246,.08);border:2px dashed var(--accent);border-radius:16px;z-index:50;align-items:center;justify-content:center;font-size:1rem;color:var(--accent);pointer-events:none}
+.chat-input-area.dragging .chat-drop-overlay{display:flex}
+/* Inline images in messages */
+.chat-msg img.chat-inline-img{max-width:100%;max-height:400px;border-radius:8px;margin:8px 0;cursor:pointer;transition:transform .2s}
+.chat-msg img.chat-inline-img:hover{transform:scale(1.02)}
+.chat-attach-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chat-attach-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(59,130,246,.08);border:1px solid var(--border);border-radius:8px;font-size:.75rem;color:var(--accent);text-decoration:none;cursor:pointer;transition:all .2s}
+.chat-attach-chip:hover{background:rgba(59,130,246,.15);border-color:var(--accent)}
 .chat-thinking{align-self:flex-start;color:var(--muted);font-size:.85rem;display:flex;align-items:center;gap:8px;padding:8px 16px}
 .chat-thinking .dots span{animation:dotPulse 1.4s infinite;animation-fill-mode:both;display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin:0 2px}
 .chat-thinking .dots span:nth-child(2){animation-delay:.2s}
@@ -3673,8 +4779,11 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
       </div>
     </div>
   </div>
-  <div class="chat-input-area">
+  <div class="chat-input-area" id="chat-input-area">
+    <div class="chat-preview-strip" id="chat-preview-strip"></div>
     <div class="chat-input-wrap">
+      <input type="file" id="chat-file-input" multiple accept="image/*,.pdf,.doc,.docx,.txt,.csv,.md,.json,.py,.js,.sql,.log,.xml,.html,.htm,.xlsx,.xls" style="display:none" onchange="handleFileSelect(event)">
+      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach files" type="button">📎</button>
       <textarea id="chat-input" placeholder="Message Athena AI..." rows="1" onkeydown="chatKeyDown(event)" oninput="autoGrow(this)"></textarea>
       <select id="chat-model-select" title="Select model">
         <option value="auto">⚡ Auto</option>
@@ -3685,6 +4794,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
       </select>
       <button id="chat-send-btn" onclick="sendChat()" title="Send">➤</button>
     </div>
+    <div class="chat-drop-overlay">📎 Drop files here to attach</div>
   </div>
 </div>
 </section>
@@ -3693,7 +4803,7 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 <section id="tab-mcp" class="hidden">
   <div class="section-title">🔑 OAuth Client Accounts</div>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">
-    Manage AI clients (ChatGPT, Claude Desktop) connected via OAuth 2.0 to the MCP server at
+    Manage AI clients (Athena AI, Claude Desktop) connected via OAuth 2.0 to the MCP server at
     <code style="color:var(--cyan)">klunky.12432.net</code>
   </p>
   <div id="mcp-clients-grid"><div class="empty-state"><span class="spinner"></span></div></div>
@@ -3957,6 +5067,32 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 </div>
 </section>
 
+
+<!-- ═══ OSINT MODULE TABS ═══ -->
+<section id="tab-osint-inv" class="hidden">
+  <div id="osint-content"><div class="empty-state"><span class="spinner"></span></div></div>
+</section>
+<section id="tab-osint-persons" class="hidden">
+  <div id="osint-persons-content"><div class="empty-state"><span class="spinner"></span></div></div>
+</section>
+<section id="tab-osint-records" class="hidden">
+  <div id="osint-records-content"><div class="empty-state"><span class="spinner"></span></div></div>
+</section>
+<section id="tab-osint-docs" class="hidden">
+  <div id="osint-docs-content"><div class="empty-state"><span class="spinner"></span></div></div>
+</section>
+<section id="tab-osint-props" class="hidden">
+  <div id="osint-props-content"><div class="empty-state"><span class="spinner"></span></div></div>
+</section>
+<section id="tab-osint-search" class="hidden">
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+    <input id="osint-search-input" placeholder="Search across all OSINT data..." style="flex:1;padding:10px 14px;font-size:1rem"
+      onkeydown="if(event.key==='Enter')doOsintSearch()"/>
+    <button class="btn btn-primary" onclick="doOsintSearch()">🔍 Search</button>
+  </div>
+  <div id="osint-search-results"></div>
+</section>
+
 </main>
 </div>
 
@@ -3987,11 +5123,13 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 
 </div><!-- /app -->
 
+<script src="/osint-static/osint.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 //  GLOBAL STATE
 // ═══════════════════════════════════════════════════════════
 let stats={}, docOffset=0, casesList=[], ingestTimer=null, currentUser='User';
+let medicalZipPendingName='';
 
 async function api(path, opts={}){
   const r = await fetch(path, {credentials:'same-origin', ...opts,
@@ -4053,7 +5191,7 @@ function $(id){ return document.getElementById(id); }
 })();
 function switchTab(t){
   // Save to localStorage for persistence across refresh
-  localStorage.setItem('wdws-current-tab', t);
+  localStorage.setItem('acp-current-tab', t);
   
   document.querySelectorAll('main>section').forEach(s=>s.classList.add('hidden'));
   $('tab-'+t).classList.remove('hidden');
@@ -4079,11 +5217,18 @@ function switchTab(t){
     database: loadDbHealth,
     email: loadEmail,
     chat: loadChat,
+    onedrive: loadOneDrive,
     mcp: loadMcpAccounts,
     analytics: loadAnalytics,
     security: loadACL,
     comms: loadComms,
     chatroom: loadChatRoom,
+    'osint-inv': loadOsintInvestigations,
+    'osint-persons': loadOsintPersons,
+    'osint-records': loadOsintCourtRecords,
+    'osint-docs': loadOsintDocuments,
+    'osint-props': loadOsintProperties,
+    'osint-search': ()=>{},
   };
   if (loaders[t]) loaders[t]();
 }
@@ -4179,6 +5324,89 @@ async function loadOverview(){
 // ═══════════════════════════════════════════════════════════
 //  TAB: DOCUMENTS
 // ═══════════════════════════════════════════════════════════
+function setMedicalZipStatus(html, isError=false){
+  const el=$('medical-zip-status');
+  if(!el) return;
+  el.className='';
+  el.style.padding='14px 16px';
+  el.style.background=isError?'rgba(239,68,68,.08)':'rgba(255,255,255,.02)';
+  el.style.border='1px solid ' + (isError?'rgba(239,68,68,.35)':'var(--border)');
+  el.style.borderRadius='var(--radius)';
+  el.style.fontSize='.82rem';
+  el.innerHTML=html;
+}
+
+function handleMedicalZipSelect(event){
+  const file=(event.target.files||[])[0];
+  medicalZipPendingName=file?file.name:'';
+  if(!file){
+    setMedicalZipStatus('Select a medical ZIP to import.');
+    return;
+  }
+  const size=file.size<1048576?`${(file.size/1024).toFixed(1)} KB`:`${(file.size/1048576).toFixed(1)} MB`;
+  setMedicalZipStatus(`Ready to import <strong>${esc(file.name)}</strong> (${size}). The portal will extract supported files into the medical dropbox and run ingestion.`);
+}
+
+async function uploadMedicalZip(){
+  const input=$('medical-zip-input');
+  const btn=$('medical-zip-btn');
+  const file=(input.files||[])[0];
+  if(!file){
+    setMedicalZipStatus('Please choose a ZIP file first.', true);
+    return;
+  }
+  if(!/\.zip$/i.test(file.name)){
+    setMedicalZipStatus('Only .zip files are supported for portal medical import.', true);
+    return;
+  }
+
+  const fd=new FormData();
+  fd.append('file', file);
+  fd.append('ingest_now', 'true');
+
+  btn.disabled=true;
+  setMedicalZipStatus('<span class="spinner"></span> Uploading ZIP, extracting medical records, and starting ingestion...');
+  try {
+    const resp=await fetch('/api/ingestion/medical-zip',{method:'POST',body:fd,credentials:'same-origin'});
+    const data=await resp.json();
+    if(resp.status===401){ showLogin(); throw new Error('unauthorized'); }
+    if(!resp.ok) throw new Error(data.error||'Medical ZIP import failed');
+
+    const extracted=(data.extracted_files||[]).slice(0,6).map(f=>`<li><code>${esc(f)}</code></li>`).join('');
+    const skipped=(data.skipped_files||[]).slice(0,4).map(f=>`<li><code>${esc(f.path||'')}</code> — ${esc(f.reason||'skipped')}</li>`).join('');
+    const ingest=data.ingestion||{};
+    const ingestLine=ingest.completed
+      ? `Ingestion finished${ingest.processed_count!=null?` and processed <strong>${ingest.processed_count}</strong> pending file(s).`:'.'}`
+      : 'Ingestion is still running in the background — the live log below will show progress.';
+    const logTail=ingest.log_tail?`<details style="margin-top:10px"><summary style="cursor:pointer;color:var(--cyan)">Watcher output</summary><pre style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;max-height:220px;overflow:auto">${esc(ingest.log_tail)}</pre></details>`:'';
+    setMedicalZipStatus(`
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><strong>Imported ${esc(data.uploaded_file||medicalZipPendingName||file.name)}</strong><br/><span style="color:var(--muted)">${ingestLine}</span></div>
+        <button class="btn btn-outline btn-sm" onclick="$('doc-domain').value='medical';docOffset=0;switchTab('documents')">View medical documents</button>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;color:var(--muted)">
+        <span><strong style="color:var(--text)">${data.extracted_count||0}</strong> extracted</span>
+        <span><strong style="color:var(--text)">${data.skipped_count||0}</strong> skipped</span>
+        <span>staged under <code>${esc(data.staging_dir||'')}</code></span>
+      </div>
+      ${extracted?`<div style="margin-top:10px"><div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">Extracted files</div><ul style="margin:0;padding-left:18px">${extracted}</ul></div>`:''}
+      ${skipped?`<div style="margin-top:10px"><div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">Skipped files</div><ul style="margin:0;padding-left:18px">${skipped}</ul></div>`:''}
+      ${logTail}
+    `);
+    input.value='';
+    medicalZipPendingName='';
+    $('doc-domain').value='medical';
+    docOffset=0;
+    loadDocs();
+    loadIngestLive();
+    loadIngestJobs();
+  } catch(e) {
+    setMedicalZipStatus(esc(e.message||'Medical ZIP import failed'), true);
+  } finally {
+    btn.disabled=false;
+  }
+}
+
 async function loadDocs(){
   const domain=$('doc-domain').value, dtype=$('doc-type').value, cn=$('doc-case').value;
   const limit=50;
@@ -4221,8 +5449,14 @@ async function openDoc(id){
   try {
     const data=await api(`/api/documents/${id}`);
     const d=data.document;
+    const downloadUrl=d.download_url||(`/api/documents/${id}/download`);
+    const inlineUrl=downloadUrl+(downloadUrl.includes('?')?'&':'?')+'disposition=inline';
     $('modal-title').textContent = d.title || d.filename || id;
     let h='';
+    h+=`<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-bottom:12px">
+      <a class="btn btn-primary btn-sm" href="${downloadUrl}" target="_blank" rel="noopener">⬇ Download Original</a>
+      <a class="btn btn-outline btn-sm" href="${inlineUrl}" target="_blank" rel="noopener">👁 Open Inline</a>
+    </div>`;
     h+=field('ID', `<span style="font-family:monospace;font-size:.8rem">${d.id}</span>`);
     h+=field('Domain / Type', `<span class="badge badge-blue">${d.domain}</span>
       <span class="badge badge-cyan">${d.document_type||''}</span>`);
@@ -4493,7 +5727,7 @@ async function loadAudit(){
       api('/api/mcp/query-log?limit=100')
     ]);
 
-    // MCP Client Activity (ChatGPT / Claude tool calls)
+    // MCP Client Activity (Athena AI / Claude tool calls)
     $('audit-mcp').innerHTML = mcpLog.length
       ? `<div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>Time</th><th>Client</th><th>Tool</th><th>Arguments</th><th>Results</th><th>Duration</th><th>Status</th></tr></thead>
@@ -4513,7 +5747,7 @@ async function loadAudit(){
             <td>${status}</td>
           </tr>`;
         }).join('')}</tbody></table></div>`
-      : '<div class="empty-state">No MCP client queries logged yet — make a query from ChatGPT or Claude Desktop</div>';
+      : '<div class="empty-state">No MCP client queries logged yet — make a query from Athena AI or Claude Desktop</div>';
 
     $('audit-access').innerHTML = access.length
       ? `<div class="tbl-wrap"><table>
@@ -4903,6 +6137,8 @@ async function loadDbHealth(){
 // ═══════════════════════════════════════════════════════════
 async function loadEmail(){
   await Promise.all([loadEmailStats(), loadMailboxes(), loadRules(), loadSyncRuns(), loadClassifications()]);
+  // Also load new chat-DB email integration
+  await Promise.all([loadCemailStats(), loadCemailAccounts(), loadCemailWebhooks(), loadCemailSyncRuns(), loadCemailAction(), loadCemailMessages()]);
 }
 
 async function loadEmailStats(){
@@ -5100,10 +6336,441 @@ async function triggerClassify(reclassify){
   } catch(e){$('classify-indicator').textContent='Error: '+e.message;}
 }
 
+// ── Chat-DB Email Integration JS ──
+async function loadCemailStats(){
+  try {
+    const [accts,sync]=await Promise.all([api('/api/cemail/accounts'),api('/api/cemail/sync')]);
+    const tot=Array.isArray(accts)?accts.reduce((s,a)=>s+(a.message_count||0),0):0;
+    const emb=Array.isArray(accts)?accts.reduce((s,a)=>s+(a.embedding_count||0),0):0;
+    const cls=Array.isArray(accts)?accts.reduce((s,a)=>s+(a.classified_count||0),0):0;
+    const lastSync=sync?.last_sync||sync?.last_run||'—';
+    $('cemail-stats').innerHTML=`
+      <div class="card"><div class="card-value">${fmtNum(tot)}</div><div class="card-label">Synced Emails</div></div>
+      <div class="card"><div class="card-value">${fmtNum(emb)}</div><div class="card-label">RAG Embeddings</div></div>
+      <div class="card"><div class="card-value">${fmtNum(cls)}</div><div class="card-label">AI Classified</div></div>
+      <div class="card"><div class="card-value">${Array.isArray(accts)?accts.length:0}</div><div class="card-label">Accounts</div></div>
+      <div class="card"><div class="card-value" style="font-size:.85rem">${typeof lastSync==='string'&&lastSync!=='—'?fmtTime(lastSync):lastSync}</div><div class="card-label">Last Sync</div></div>`;
+  } catch(e){$('cemail-stats').innerHTML=`<div class="empty-state red">Error: ${esc(e.message)}</div>`;}
+}
+
+async function loadCemailAccounts(){
+  try {
+    const accts=await api('/api/cemail/accounts');
+    if(!Array.isArray(accts)||!accts.length){$('cemail-accounts').innerHTML='<div class="empty-state">No accounts configured</div>';return;}
+    let h='<table><tr><th>Email</th><th>Display Name</th><th>Messages</th><th>Embeddings</th><th>Classified</th><th>Last Sync</th><th>Status</th></tr>';
+    for(const a of accts){
+      const st=a.is_active?'<span class="green">● Active</span>':'<span class="red">● Disabled</span>';
+      h+=`<tr><td>${esc(a.email_address||'')}</td><td>${esc(a.display_name||'')}</td><td>${fmtNum(a.message_count||0)}</td><td>${fmtNum(a.embedding_count||0)}</td><td>${fmtNum(a.classified_count||0)}</td><td>${a.last_sync?fmtTime(a.last_sync):'Never'}</td><td>${st}</td></tr>`;
+    }
+    $('cemail-accounts').innerHTML=h+'</table>';
+  } catch(e){$('cemail-accounts').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function loadCemailWebhooks(){
+  try {
+    const data=await api('/api/cemail/webhooks');
+    const subs=data?.subscriptions||data||[];
+    if(!Array.isArray(subs)||!subs.length){$('cemail-webhooks').innerHTML='<div class="empty-state">No webhook subscriptions</div>';return;}
+    let h='<table><tr><th>Account</th><th>Resource</th><th>Expires</th><th>Status</th><th>Actions</th></tr>';
+    for(const s of subs){
+      const exp=s.expiration_datetime||s.expires||'';
+      const isExp=exp&&new Date(exp)<new Date();
+      const st=isExp?'<span class="red">Expired</span>':'<span class="green">Active</span>';
+      h+=`<tr><td>${esc(s.email_address||s.account||'')}</td><td style="font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.resource||'')}</td><td>${exp?fmtTime(exp):'—'}</td><td>${st}</td><td><button class="btn btn-outline btn-sm" onclick="deleteWebhook('${esc(s.subscription_id||s.id||'')}')">Delete</button></td></tr>`;
+    }
+    $('cemail-webhooks').innerHTML=h+'</table>';
+  } catch(e){$('cemail-webhooks').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function createWebhooks(){
+  try {
+    $('webhook-indicator').innerHTML='<span class="spinner"></span> Registering...';
+    const r=await api('/api/cemail/webhooks',{method:'POST',body:JSON.stringify({})});
+    $('webhook-indicator').innerHTML='<span class="green">✓ Done</span>';
+    setTimeout(()=>{$('webhook-indicator').textContent='';},3000);
+    await loadCemailWebhooks();
+  } catch(e){$('webhook-indicator').textContent='Error: '+e.message;}
+}
+
+async function renewWebhooks(){
+  try {
+    $('webhook-indicator').innerHTML='<span class="spinner"></span> Renewing...';
+    const r=await api('/api/cemail/webhooks/renew',{method:'POST'});
+    $('webhook-indicator').innerHTML='<span class="green">✓ Renewed</span>';
+    setTimeout(()=>{$('webhook-indicator').textContent='';},3000);
+    await loadCemailWebhooks();
+  } catch(e){$('webhook-indicator').textContent='Error: '+e.message;}
+}
+
+async function deleteWebhook(id){
+  if(!confirm('Delete this webhook subscription?'))return;
+  try {
+    await api('/api/cemail/webhooks/'+id,{method:'DELETE'});
+    await loadCemailWebhooks();
+  } catch(e){alert('Error: '+e.message);}
+}
+
+async function loadCemailSyncRuns(){
+  try {
+    const data=await api('/api/cemail/sync');
+    const runs=data?.recent_runs||data?.runs||[];
+    if(!Array.isArray(runs)||!runs.length){
+      const info=data||{};
+      $('cemail-sync-runs').innerHTML=`<div class="empty-state">Last sync: ${info.last_sync?fmtTime(info.last_sync):'Never'} · Total messages: ${fmtNum(info.total_messages||0)} · Status: ${esc(info.status||'Unknown')}</div>`;
+      return;
+    }
+    let h='<table><tr><th>Time</th><th>Account</th><th>New</th><th>Embeddings</th><th>Classified</th><th>Duration</th><th>Status</th></tr>';
+    for(const r of runs.slice(0,15)){
+      h+=`<tr><td>${r.started_at?fmtTime(r.started_at):'—'}</td><td>${esc(r.account||r.email_address||'—')}</td><td>${r.new_messages||0}</td><td>${r.new_embeddings||0}</td><td>${r.classified||0}</td><td>${r.duration_seconds?r.duration_seconds.toFixed(1)+'s':'—'}</td><td>${r.status==='completed'?'<span class="green">✓</span>':'<span class="red">'+esc(r.status||'')+'</span>'}</td></tr>`;
+    }
+    $('cemail-sync-runs').innerHTML=h+'</table>';
+  } catch(e){$('cemail-sync-runs').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function triggerCemailSync(){
+  try {
+    $('cemail-sync-indicator').innerHTML='<span class="spinner"></span> Triggering sync...';
+    const r=await api('/api/cemail/sync/trigger',{method:'POST',body:JSON.stringify({})});
+    $('cemail-sync-indicator').innerHTML='<span class="green">✓ Sync started</span>';
+    setTimeout(async()=>{
+      $('cemail-sync-indicator').textContent='';
+      await Promise.all([loadCemailStats(),loadCemailSyncRuns(),loadCemailMessages()]);
+    },10000);
+  } catch(e){$('cemail-sync-indicator').textContent='Error: '+e.message;}
+}
+
+async function loadCemailAction(){
+  try {
+    const data=await api('/api/cemail/action-required');
+    const items=data?.messages||data||[];
+    if(!Array.isArray(items)||!items.length){$('cemail-action').innerHTML='<div class="empty-state" style="color:var(--green)">✓ No action-required emails</div>';return;}
+    let h='<table><tr><th>From</th><th>Subject</th><th>Date</th><th>Category</th><th>Priority</th></tr>';
+    for(const m of items.slice(0,20)){
+      const pr=m.priority_score>=8?'🔴':m.priority_score>=5?'🟡':'🟢';
+      h+=`<tr><td>${esc(m.from_address||m.sender||'')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(m.subject||'')}</td><td>${m.received_at?fmtTime(m.received_at):m.date?fmtTime(m.date):'—'}</td><td>${esc(m.category||'')}</td><td>${pr} ${m.priority_score||'—'}</td></tr>`;
+    }
+    $('cemail-action').innerHTML=h+'</table>';
+  } catch(e){$('cemail-action').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function cemailSearch(){
+  const q=$('cemail-search-q').value.trim();
+  if(!q){$('cemail-search-results').innerHTML='<div class="empty-state">Enter a query</div>';return;}
+  $('cemail-search-results').innerHTML='<div class="empty-state"><span class="spinner"></span> Searching...</div>';
+  try {
+    const data=await api('/api/cemail/semantic-search?q='+encodeURIComponent(q)+'&limit=10');
+    const results=data?.results||data||[];
+    if(!Array.isArray(results)||!results.length){$('cemail-search-results').innerHTML='<div class="empty-state">No results</div>';return;}
+    let h='<table><tr><th>Score</th><th>From</th><th>Subject</th><th>Date</th><th>Snippet</th></tr>';
+    for(const r of results){
+      const score=r.similarity!==undefined?(r.similarity*100).toFixed(1)+'%':r.score!==undefined?(r.score*100).toFixed(1)+'%':'—';
+      const snip=(r.chunk_text||r.snippet||r.body||'').substring(0,120);
+      h+=`<tr><td>${score}</td><td>${esc(r.from_address||r.sender||'')}</td><td>${esc(r.subject||'')}</td><td>${r.received_at?fmtTime(r.received_at):'—'}</td><td style="font-size:.78rem;max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(snip)}</td></tr>`;
+    }
+    $('cemail-search-results').innerHTML=h+'</table>';
+  } catch(e){$('cemail-search-results').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function loadCemailMessages(){
+  try {
+    const data=await api('/api/cemail/messages?limit=25');
+    const msgs=data?.messages||data||[];
+    if(!Array.isArray(msgs)||!msgs.length){$('cemail-messages').innerHTML='<div class="empty-state">No messages synced yet</div>';return;}
+    let h='<table><tr><th>From</th><th>Subject</th><th>Date</th><th>Category</th><th>Priority</th><th>Has Embed</th></tr>';
+    for(const m of msgs.slice(0,25)){
+      const pr=m.priority_score>=8?'🔴':m.priority_score>=5?'🟡':'🟢';
+      const cat=m.category||m.classification||'—';
+      const emb=m.has_embeddings||m.embedding_count>0?'<span class="green">✓</span>':'<span class="red">✗</span>';
+      h+=`<tr><td>${esc(m.from_address||m.sender||'')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(m.subject||'')}</td><td>${m.received_at?fmtTime(m.received_at):m.date?fmtTime(m.date):'—'}</td><td>${esc(cat)}</td><td>${pr} ${m.priority_score||'—'}</td><td>${emb}</td></tr>`;
+    }
+    $('cemail-messages').innerHTML=h+'</table>';
+  } catch(e){$('cemail-messages').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TAB: ONEDRIVE
+// ═══════════════════════════════════════════════════════════
+let odFilesOffset=0;
+async function loadOneDrive(){
+  await Promise.all([loadOdStats(), loadOdTargets(), loadOdWebhooks(), loadOdRuns(), loadOdExtBreakdown(), loadOdFiles()]);
+}
+
+async function loadOdStats(){
+  try {
+    const d=await api('/api/onedrive/stats');
+    const t=d.totals||{};
+    const idx=t.indexed_files||0, pend=t.pending_files||0, fail=t.failed_files||0, skip=t.skipped_files||0;
+    const chunks=d.total_chunks||0;
+    const targets=Array.isArray(d.targets)?d.targets.length:0;
+    const wh=d.webhook_count||0;
+    const lastRun=d.recent_runs&&d.recent_runs.length?d.recent_runs[0].started_at:null;
+    $('od-stats').innerHTML=`
+      <div class="card"><div class="card-value">${fmtNum(idx)}</div><div class="card-label">Indexed Files</div></div>
+      <div class="card"><div class="card-value">${fmtNum(chunks)}</div><div class="card-label">RAG Chunks</div></div>
+      <div class="card"><div class="card-value">${esc(t.total_file_size||'0 bytes')}</div><div class="card-label">Total Size</div></div>
+      <div class="card"><div class="card-value">${fmtNum(pend)}</div><div class="card-label">Pending</div></div>
+      <div class="card"><div class="card-value">${fmtNum(fail)}</div><div class="card-label">Failed</div></div>
+      <div class="card"><div class="card-value">${targets}</div><div class="card-label">Sync Targets</div></div>
+      <div class="card"><div class="card-value">${wh}</div><div class="card-label">Webhooks</div></div>
+      <div class="card"><div class="card-value" style="font-size:.85rem">${lastRun?fmtTime(lastRun):'Never'}</div><div class="card-label">Last Sync</div></div>`;
+  } catch(e){$('od-stats').innerHTML=`<div class="empty-state red">Error: ${esc(e.message)}</div>`;}
+}
+
+async function loadOdTargets(){
+  try {
+    const targets=await api('/api/onedrive/targets');
+    const list=Array.isArray(targets)?targets:[];
+    if(!list.length){$('od-targets').innerHTML='<div class="empty-state">No sync targets configured</div>';return;}
+    let h='<table><tr><th>ID</th><th>Type</th><th>Owner</th><th>Path</th><th>Label</th><th>Files</th><th>Chunks</th><th>Size</th><th>Last Sync</th><th>Status</th><th>Actions</th></tr>';
+    for(const t of list){
+      const st=t.is_active?'<span class="green">● Active</span>':'<span class="red">● Paused</span>';
+      const err=t.last_sync_error?`<br><span style="font-size:.72rem;color:var(--red)">${esc((t.last_sync_error||'').substring(0,60))}</span>`:'';
+      h+=`<tr>
+        <td>${t.id}</td><td>${esc(t.drive_type||'')}</td><td>${esc(t.drive_owner||'')}</td>
+        <td>${esc(t.folder_path||'/')}</td><td>${esc(t.label||'—')}</td>
+        <td>${fmtNum(t.total_files||0)}</td><td>${fmtNum(t.total_chunks||0)}</td>
+        <td>${esc(t.total_size||'—')}</td>
+        <td>${t.last_sync_at?fmtTime(t.last_sync_at):'Never'}${err}</td>
+        <td>${st}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="odToggleTarget(${t.id})">${t.is_active?'Pause':'Resume'}</button></td>
+      </tr>`;
+    }
+    $('od-targets').innerHTML=h+'</table>';
+  } catch(e){$('od-targets').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function odToggleTarget(id){
+  try {
+    await api('/api/onedrive/targets/'+id+'/toggle',{method:'POST'});
+    await loadOdTargets();
+  } catch(e){alert('Error: '+e.message);}
+}
+
+async function loadOdWebhooks(){
+  try {
+    const data=await api('/api/onedrive/webhooks');
+    const wh=data?.webhooks||[];
+    if(!wh.length){$('od-webhooks').innerHTML='<div class="empty-state">No webhook subscriptions</div>';return;}
+    let h='<table><tr><th>Target</th><th>Owner</th><th>Resource</th><th>Expires</th><th>Created</th><th>Status</th><th>Actions</th></tr>';
+    for(const w of wh){
+      const exp=w.expiration_at||'';
+      const isExp=exp&&new Date(exp)<new Date();
+      const st=!w.is_active?'<span class="red">Inactive</span>':isExp?'<span class="red">Expired</span>':'<span class="green">Active</span>';
+      h+=`<tr><td>${esc(w.target_label||'#'+w.sync_target_id)}</td><td>${esc(w.drive_owner||'')}</td><td style="font-size:.72rem;max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(w.resource||'')}</td><td>${exp?fmtTime(exp):'—'}</td><td>${w.created_at?fmtTime(w.created_at):'—'}</td><td>${st}</td><td><button class="btn btn-outline btn-sm" onclick="odDeleteWebhook('${esc(w.subscription_id||'')}')">Delete</button></td></tr>`;
+    }
+    $('od-webhooks').innerHTML=h+'</table>';
+  } catch(e){$('od-webhooks').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function odRegisterWebhooks(){
+  try {
+    $('od-webhook-indicator').innerHTML='<span class="spinner"></span> Registering...';
+    await api('/api/onedrive/webhooks',{method:'POST',body:JSON.stringify({})});
+    $('od-webhook-indicator').innerHTML='<span class="green">✓ Done</span>';
+    setTimeout(()=>{$('od-webhook-indicator').textContent='';},3000);
+    await loadOdWebhooks();
+  } catch(e){$('od-webhook-indicator').textContent='Error: '+e.message;}
+}
+
+async function odDeleteWebhook(id){
+  if(!confirm('Delete this OneDrive webhook?'))return;
+  try {
+    await api('/api/onedrive/webhooks/'+id,{method:'DELETE'});
+    await loadOdWebhooks();
+  } catch(e){alert('Error: '+e.message);}
+}
+
+async function odTriggerSync(){
+  try {
+    $('od-sync-indicator').innerHTML='<span class="spinner"></span> Starting sync...';
+    $('od-sync-btn').disabled=true;
+    const r=await api('/api/onedrive/sync',{method:'POST',body:JSON.stringify({})});
+    $('od-sync-indicator').innerHTML=`<span class="green">✓ Sync started (PID ${r.pid||'?'})</span>`;
+    setTimeout(async()=>{
+      $('od-sync-indicator').textContent='';
+      $('od-sync-btn').disabled=false;
+      await Promise.all([loadOdStats(),loadOdRuns(),loadOdFiles()]);
+    },15000);
+  } catch(e){
+    $('od-sync-indicator').textContent='Error: '+e.message;
+    $('od-sync-btn').disabled=false;
+  }
+}
+
+async function loadOdRuns(){
+  try {
+    const d=await api('/api/onedrive/stats');
+    const runs=d?.recent_runs||[];
+    if(!runs.length){$('od-runs').innerHTML='<div class="empty-state">No sync runs yet</div>';return;}
+    let h='<table><tr><th>Time</th><th>Target</th><th>Trigger</th><th>Discovered</th><th>New</th><th>Updated</th><th>Failed</th><th>Chunks</th><th>Duration</th><th>Status</th></tr>';
+    for(const r of runs){
+      const dur=r.duration_seconds?r.duration_seconds.toFixed(1)+'s':'—';
+      const stClass=r.status==='completed'?'green':r.status==='running'?'cyan':'red';
+      h+=`<tr><td>${r.started_at?fmtTime(r.started_at):'—'}</td><td>${esc(r.label||'#'+(r.sync_target_id||''))}</td><td>${esc(r.trigger||'—')}</td><td>${fmtNum(r.files_discovered||0)}</td><td>${fmtNum(r.files_new||0)}</td><td>${fmtNum(r.files_updated||0)}</td><td>${fmtNum(r.files_failed||0)}</td><td>${fmtNum(r.chunks_created||0)}</td><td>${dur}</td><td><span class="${stClass}">${esc(r.status||'?')}</span></td></tr>`;
+    }
+    $('od-runs').innerHTML=h+'</table>';
+  } catch(e){$('od-runs').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function loadOdExtBreakdown(){
+  try {
+    const d=await api('/api/onedrive/stats');
+    const exts=d?.extension_breakdown||[];
+    if(!exts.length){$('od-ext-breakdown').innerHTML='<div class="empty-state">No files indexed yet</div>';return;}
+    let h='<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    for(const e2 of exts){
+      const ext=e2.file_extension||'(none)';
+      const cnt=e2.cnt||0;
+      const sz=e2.total_size||'—';
+      h+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;font-size:.82rem"><strong>${esc(ext)}</strong> <span style="color:var(--muted)">${fmtNum(cnt)} files · ${esc(sz)}</span></div>`;
+    }
+    $('od-ext-breakdown').innerHTML=h+'</div>';
+  } catch(e){$('od-ext-breakdown').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function loadOdFiles(){
+  try {
+    const q=$('od-files-q')?.value||'';
+    const st=$('od-files-status')?.value||'';
+    let path='/api/onedrive/files?limit=50&offset='+odFilesOffset;
+    if(q) path+='&q='+encodeURIComponent(q);
+    if(st) path+='&status='+st;
+    const d=await api(path);
+    const files=d?.files||[];
+    const total=d?.total||0;
+    $('od-files-count').textContent=`(${fmtNum(total)} total)`;
+    if(!files.length){$('od-files').innerHTML='<div class="empty-state">No files found</div>';$('od-files-pager').innerHTML='';return;}
+    let h='<table><tr><th>Name</th><th>Path</th><th>Type</th><th>Size</th><th>Status</th><th>Modified</th><th>Indexed</th></tr>';
+    for(const f of files){
+      const stClass=f.status==='indexed'?'green':f.status==='pending'?'cyan':f.status==='failed'?'red':'muted';
+      const sz=f.size_bytes?(f.size_bytes<1024?f.size_bytes+' B':f.size_bytes<1048576?(f.size_bytes/1024).toFixed(1)+' KB':(f.size_bytes/1048576).toFixed(1)+' MB'):'—';
+      const name=f.web_url?`<a href="${esc(f.web_url)}" target="_blank" style="color:var(--cyan)">${esc(f.file_name||'')}</a>`:esc(f.file_name||'');
+      h+=`<tr><td>${name}</td><td style="font-size:.75rem;max-width:250px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">${esc(f.file_path||'')}</td><td>${esc(f.file_extension||'—')}</td><td>${sz}</td><td><span class="${stClass}">${esc(f.status||'')}</span></td><td>${f.graph_modified_at?fmtTime(f.graph_modified_at):'—'}</td><td>${f.indexed_at?fmtTime(f.indexed_at):'—'}</td></tr>`;
+    }
+    $('od-files').innerHTML=h+'</table>';
+    // Pager
+    let pg='';
+    if(odFilesOffset>0) pg+=`<button class="btn btn-outline btn-sm" onclick="odFilesOffset-=50;loadOdFiles()">← Prev</button>`;
+    pg+=`<span style="font-size:.82rem;color:var(--muted)">Showing ${odFilesOffset+1}–${Math.min(odFilesOffset+50,total)} of ${fmtNum(total)}</span>`;
+    if(odFilesOffset+50<total) pg+=`<button class="btn btn-outline btn-sm" onclick="odFilesOffset+=50;loadOdFiles()">Next →</button>`;
+    $('od-files-pager').innerHTML=pg;
+  } catch(e){$('od-files').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
+async function odSearch(){
+  const q=$('od-search-q').value.trim();
+  if(!q){$('od-search-results').innerHTML='<div class="empty-state">Enter a search query</div>';return;}
+  try {
+    $('od-search-results').innerHTML='<div class="empty-state"><span class="spinner"></span> Searching...</div>';
+    const st=$('od-search-type').value;
+    const data=await api('/api/onedrive/search?q='+encodeURIComponent(q)+'&search_type='+st+'&limit=15');
+    const results=data?.results||[];
+    if(!results.length){$('od-search-results').innerHTML='<div class="empty-state">No results found</div>';return;}
+    let h=`<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">${results.length} results in ${data.execution_time_ms||0}ms (${esc(data.search_type||'')})</div>`;
+    h+='<table><tr><th>File</th><th>Path</th><th>Chunk</th><th>Score</th><th>Excerpt</th></tr>';
+    for(const r of results){
+      const name=r.web_url?`<a href="${esc(r.web_url)}" target="_blank" style="color:var(--cyan)">${esc(r.file_name||'')}</a>`:esc(r.file_name||'');
+      const score=(r.score||0).toFixed(3);
+      const excerpt=esc((r.chunk_text||'').substring(0,200));
+      h+=`<tr><td>${name}</td><td style="font-size:.72rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">${esc(r.file_path||'')}</td><td>#${r.chunk_index||0}${r.page_number?' p'+r.page_number:''}</td><td>${score}</td><td style="font-size:.78rem;max-width:350px">${excerpt}...</td></tr>`;
+    }
+    $('od-search-results').innerHTML=h+'</table>';
+  } catch(e){$('od-search-results').innerHTML=`<div class="empty-state red">${esc(e.message)}</div>`;}
+}
+
 // ═══════════════════════════════════════════════════════════
 //  TAB: AI CHAT
 // ═══════════════════════════════════════════════════════════
 let chatConvId=null, chatSending=false, chatConversations=[], chatShowArchived=false, chatModelOptions=null;
+let chatPendingFiles=[];
+
+// ── File attachment helpers ──
+function handleFileSelect(event){
+  const files=Array.from(event.target.files||[]);
+  for(const f of files){
+    if(f.size>50*1024*1024){alert(f.name+' exceeds 50 MB limit');continue;}
+    chatPendingFiles.push(f);
+  }
+  event.target.value='';
+  renderPreviewStrip();
+}
+
+function removePreviewFile(idx){
+  chatPendingFiles.splice(idx,1);
+  renderPreviewStrip();
+}
+
+function renderPreviewStrip(){
+  const el=$('chat-preview-strip');
+  if(!el) return;
+  if(!chatPendingFiles.length){el.innerHTML='';return;}
+  el.innerHTML=chatPendingFiles.map((f,i)=>{
+    const isImg=f.type.startsWith('image/');
+    const thumb=isImg?URL.createObjectURL(f):'';
+    const icon=isImg?'':(f.name.match(/\\.pdf$/i)?'📄':f.name.match(/\\.docx?$/i)?'📝':'📎');
+    const size=f.size<1024?(f.size+' B'):f.size<1048576?((f.size/1024).toFixed(1)+' KB'):((f.size/1048576).toFixed(1)+' MB');
+    return `<div class="chat-preview-item">
+      ${isImg?'<img src="'+thumb+'" alt=""/>':'<span class="file-icon">'+icon+'</span>'}
+      <div class="file-info"><span class="file-name" title="${esc(f.name)}">${esc(f.name)}</span><span class="file-size">${size}</span></div>
+      <button class="chat-preview-remove" onclick="removePreviewFile(${i})" title="Remove">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+async function uploadPendingFiles(conversationId){
+  if(!chatPendingFiles.length) return {attachmentIds:[],conversationId:conversationId};
+  const fd=new FormData();
+  fd.append('conversation_id',conversationId||'');
+  for(const f of chatPendingFiles) fd.append('files',f);
+  const resp=await fetch('/api/chat/upload',{method:'POST',body:fd,credentials:'same-origin'});
+  if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Upload failed');}
+  const data=await resp.json();
+  chatPendingFiles=[];
+  renderPreviewStrip();
+  return {attachmentIds:(data.attachments||[]).map(a=>a.id), conversationId:data.conversation_id||conversationId};
+}
+
+function renderAttachmentChips(attachments){
+  if(!attachments||!attachments.length) return '';
+  return '<div class="chat-attach-chips">'+attachments.map(a=>{
+    const isImg=(a.asset_type||a.content_type||'').startsWith('image');
+    if(isImg){
+      return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">🖼️ '+esc(a.file_name)+'</a>';
+    }
+    return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">📄 '+esc(a.file_name)+'</a>';
+  }).join('')+'</div>';
+}
+
+function renderAttachmentImages(attachments){
+  if(!attachments||!attachments.length) return '';
+  let html='';
+  for(const a of attachments){
+    const isImg=(a.asset_type||'').startsWith('image')||(a.content_type||'').startsWith('image');
+    if(isImg){
+      html+='<img class="chat-inline-img" src="/api/chat/attachments/'+a.id+'" alt="'+esc(a.file_name)+'" onclick="window.open(this.src,\'_blank\')" />';
+    }
+  }
+  return html;
+}
+
+// ── Drag-drop on chat input area ──
+document.addEventListener('DOMContentLoaded',()=>{
+  const area=$('chat-input-area');
+  if(!area) return;
+  let dragCounter=0;
+  area.addEventListener('dragenter',e=>{e.preventDefault();dragCounter++;area.classList.add('dragging');});
+  area.addEventListener('dragleave',e=>{e.preventDefault();dragCounter--;if(dragCounter<=0){dragCounter=0;area.classList.remove('dragging');}});
+  area.addEventListener('dragover',e=>{e.preventDefault();});
+  area.addEventListener('drop',e=>{
+    e.preventDefault();dragCounter=0;area.classList.remove('dragging');
+    const files=Array.from(e.dataTransfer.files||[]);
+    for(const f of files){
+      if(f.size>50*1024*1024){alert(f.name+' exceeds 50 MB limit');continue;}
+      chatPendingFiles.push(f);
+    }
+    renderPreviewStrip();
+  });
+});
 
 async function loadChat(){
   try {
@@ -5160,6 +6827,8 @@ async function newConversation(){
 
 async function openConversation(id){
   chatConvId=id;
+  chatPendingFiles=[];
+  renderPreviewStrip();
   renderConvList();
   try {
     const msgs = await api('/api/chat/conversations/'+id);
@@ -5173,9 +6842,11 @@ async function openConversation(id){
       const avatar = m.role==='assistant' 
         ? '<img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>'
         : '';
+      const attachHtml=(m.attachments&&m.attachments.length)?(renderAttachmentImages(m.attachments)+renderAttachmentChips(m.attachments)):'';
+      const contentHtml=m.role==='assistant'?renderMarkdown(m.content):esc(m.content);
       return `<div class="chat-msg-wrap ${m.role}">
         <div class="chat-msg-name">${avatar}${m.role==='assistant'?'Athena AI':currentUser}</div>
-        <div class="chat-msg ${m.role}">${m.role==='assistant'?renderMarkdown(m.content):esc(m.content)}</div>
+        <div class="chat-msg ${m.role}">${contentHtml}${attachHtml}</div>
         ${isLastAssistant?retryBarHTML():''}
       </div>`;
     }).join('');
@@ -5270,7 +6941,8 @@ async function sendChat(){
   if(chatSending) return;
   const input=$('chat-input');
   const msg=input.value.trim();
-  if(!msg) return;
+  const hasFiles=chatPendingFiles.length>0;
+  if(!msg&&!hasFiles) return;
 
   const modelId=$('chat-model-select').value;
   const modelLabel=$('chat-model-select').selectedOptions[0].textContent;
@@ -5279,33 +6951,66 @@ async function sendChat(){
   input.value='';
   input.style.height='auto';
 
+  // Capture pending file info for UI before upload clears them
+  const pendingFileInfo=chatPendingFiles.map(f=>({
+    name:f.name, type:f.type, size:f.size,
+    thumbUrl:f.type.startsWith('image/')?URL.createObjectURL(f):null
+  }));
+
   const msgsEl=$('chat-messages');
   // Remove welcome if present
   const welcome=msgsEl.querySelector('.chat-welcome');
   if(welcome) welcome.remove();
 
-  // Add user message
+  // Add user message (with file previews if any)
   const userWrap=document.createElement('div');
   userWrap.className='chat-msg-wrap user';
   userWrap.innerHTML=`<div class="chat-msg-name">${esc(currentUser)}</div>`;
   const userDiv=document.createElement('div');
   userDiv.className='chat-msg user';
-  userDiv.textContent=msg;
+  let userHtml=msg?esc(msg):'';
+  if(pendingFileInfo.length){
+    userHtml+='<div class="chat-attach-chips">';
+    for(const pf of pendingFileInfo){
+      const icon=pf.type.startsWith('image/')?'🖼️':pf.name.match(/\\.pdf$/i)?'📄':'📎';
+      userHtml+=`<span class="chat-attach-chip">${icon} ${esc(pf.name)}</span>`;
+    }
+    userHtml+='</div>';
+    // Show image thumbnails
+    for(const pf of pendingFileInfo){
+      if(pf.thumbUrl) userHtml+=`<img class="chat-inline-img" src="${pf.thumbUrl}" alt="${esc(pf.name)}" />`;
+    }
+  }
+  userDiv.innerHTML=userHtml;
   userWrap.appendChild(userDiv);
   msgsEl.appendChild(userWrap);
 
   // Add thinking indicator (model-aware)
   const thinkDiv=document.createElement('div');
   thinkDiv.className='chat-thinking';
-  const thinkLabel=modelId.startsWith('think')?'Reasoning deeply...':'Searching & thinking...';
+  const thinkLabel=hasFiles?'Uploading & processing...':modelId.startsWith('think')?'Reasoning deeply...':'Searching & thinking...';
   thinkDiv.innerHTML='<div class="dots"><span></span><span></span><span></span></div> '+thinkLabel;
   msgsEl.appendChild(thinkDiv);
   msgsEl.scrollTop=msgsEl.scrollHeight;
 
   try {
+    // Upload files first if any — need conversation ID
+    let attachmentIds=[];
+    if(hasFiles){
+      // If no conversation yet, create one via upload (backend auto-creates)
+      const uploadResult=await uploadPendingFiles(chatConvId||'');
+      attachmentIds=uploadResult.attachmentIds;
+      // If upload created a new conversation, use its ID
+      if(!chatConvId && uploadResult.conversationId){
+        chatConvId=uploadResult.conversationId;
+      }
+      // Update thinking label after upload
+      thinkDiv.innerHTML='<div class="dots"><span></span><span></span><span></span></div> '+(modelId.startsWith('think')?'Reasoning deeply...':'Searching & thinking...');
+    }
+
     const resp=await api('/api/chat/send',{
       method:'POST',
-      body:JSON.stringify({conversation_id:chatConvId,message:msg,model:modelId})
+      body:JSON.stringify({conversation_id:chatConvId,message:msg,model:modelId,attachment_ids:attachmentIds})
     });
 
     // Remove thinking
@@ -5344,7 +7049,7 @@ async function sendChat(){
     // Update sidebar title
     const existing=chatConversations.find(c=>c.id===chatConvId);
     if(existing&&existing.title==='New Conversation'){
-      existing.title=msg.substring(0,80);
+      existing.title=(msg||'File upload').substring(0,80);
       renderConvList();
     }
   } catch(e){
@@ -5783,7 +7488,7 @@ function qlogNext(){ qlogOffset+=QLOG_LIMIT; loadQueryLog(); }
 // ═══════════════════════════════════════════════════════════
 async function init(){
   // Restore last active tab from localStorage
-  const savedTab = localStorage.getItem('wdws-current-tab');
+  const savedTab = localStorage.getItem('acp-current-tab');
   if (savedTab && document.getElementById('tab-' + savedTab)) {
     switchTab(savedTab);
   } else {
@@ -5988,7 +7693,7 @@ function renderCommsTimeline(el, data) {
       // Agent log entry
       const color = levelColors[item.level] || '#64748b';
       const icon = levelIcons[item.level] || '📝';
-      const isCode = item.level === 'code-fix' || item.category === 'codex-response';
+      const isCode = item.level === 'code-fix' || item.category === 'code-response';
       const isReasoning = item.level === 'reasoning';
 
       html += `<div style="display:flex;gap:12px;padding:8px 12px;background:var(--surface);border-left:3px solid ${color};border-radius:0 8px 8px 0;align-items:flex-start;${isReasoning?'background:rgba(168,85,247,0.05)':''}">
