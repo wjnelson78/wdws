@@ -118,8 +118,37 @@ NEVER:
             # Check staleness (hasn't run in 2x expected interval)
             if agent["last_run_at"]:
                 since_last = (datetime.now(timezone.utc) - agent["last_run_at"]).total_seconds()
-                # Simple heuristic: if daily agent hasn't run in 48h, it's stale
-                if since_last > 172800:  # 48 hours
+
+                # Estimate expected interval from cron schedule; default to 24h
+                expected_interval = 86400  # 24 hours
+                schedule = (agent["schedule"] or "").strip()
+
+                if schedule.startswith("@"):
+                    if schedule == "@hourly":
+                        expected_interval = 3600
+                    elif schedule == "@daily":
+                        expected_interval = 86400
+                    elif schedule == "@weekly":
+                        expected_interval = 604800
+                    elif schedule == "@monthly":
+                        expected_interval = 2592000
+                else:
+                    parts = schedule.split()
+                    if len(parts) == 5:
+                        minute, hour, dom, month, dow = parts
+                        if minute.startswith("*/") and hour == "*" and dom == "*" and month == "*" and dow == "*":
+                            try:
+                                expected_interval = int(minute.replace("*/", "")) * 60
+                            except ValueError:
+                                pass
+                        elif dom != "*" or month != "*":
+                            expected_interval = 2592000
+                        elif dom == "*" and month == "*" and dow == "*" and hour != "*":
+                            expected_interval = 86400
+                        elif dow != "*" and dom == "*" and month == "*":
+                            expected_interval = 604800
+
+                if since_last > expected_interval * 2:
                     stale_agents.append(agent["name"])
 
             # Check error rate

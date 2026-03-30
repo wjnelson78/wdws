@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the WDWS ingest pipeline with logging
+# Start the ACP ingest pipeline with logging
 cd /opt/wdws
 source venv/bin/activate
 nohup python ingest.py --domain all > ingest_full.log 2>&1 &

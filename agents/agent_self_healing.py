@@ -9,7 +9,9 @@ Automatically detects and repairs system issues:
   - Configuration drift detection
 """
 import json
+import re
 from framework import BaseAgent, RunContext
+from config import MCP_PORT
 
 
 class SelfHealingAgent(BaseAgent):
@@ -49,6 +51,63 @@ SAFETY RULES:
 - Log every repair action with before/after state
 - If unsure, create a finding instead of acting
 - Rate limit: max 5 auto-repairs per run"""
+
+    async def _resolve_wdws_mcp_port_conflict(self, ctx: RunContext) -> bool:
+        """Kill stray unmanaged MCP listeners blocking the wdws-mcp systemd unit."""
+        status = await ctx.service_status("wdws-mcp")
+        journal = await ctx.journal("wdws-mcp", lines=60, since="15 minutes ago")
+        if "address already in use" not in journal:
+            return False
+
+        listener = await ctx.shell(
+            f"ss -ltnp | grep ':{MCP_PORT} '",
+            timeout=10,
+        )
+        if not listener.get("success") or "pid=" not in listener.get("stdout", ""):
+            return False
+
+        match = re.search(r"pid=(\d+)", listener["stdout"])
+        if not match:
+            return False
+
+        pid = match.group(1)
+        if pid == str(status.get("pid") or ""):
+            return False
+
+        owner = await ctx.shell(f"ps -p {pid} -o args=", timeout=10)
+        owner_cmd = owner.get("stdout", "").strip()
+        if "mcp_server_v2.py" not in owner_cmd:
+            await ctx.finding(
+                "critical",
+                "service-port-conflict",
+                f"wdws-mcp is blocked by another process on port {MCP_PORT}",
+                owner_cmd or f"Unknown process owns port {MCP_PORT}",
+                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+            )
+            return False
+
+        kill = await ctx.shell(f"kill {pid}", timeout=10)
+        if not kill.get("success"):
+            await ctx.finding(
+                "critical",
+                "service-port-conflict",
+                f"Failed to clear wdws-mcp port conflict on {MCP_PORT}",
+                kill.get("stderr", "")[:500] or f"Could not kill PID {pid}",
+                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+            )
+            return False
+
+        await ctx.action(
+            f"Killed stray MCP process PID {pid} blocking wdws-mcp on port {MCP_PORT}"
+        )
+        await ctx.finding(
+            "warning",
+            "service-port-conflict",
+            "Cleared stray MCP listener blocking wdws-mcp",
+            owner_cmd,
+            {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+        )
+        return True
 
     async def run(self, ctx: RunContext) -> dict:
         metrics = {"repairs": 0, "tests_passed": 0, "tests_failed": 0, "cleaned": 0}
@@ -129,12 +188,12 @@ SAFETY RULES:
         # Test 1: DB read/write
         try:
             await ctx.execute("""
-                INSERT INTO ops.health_checks (service, status, response_ms, details)
+                INSERT INTO ops.health_checks (check_name, status, value, detail)
                 VALUES ('self-heal-test', 'healthy', 0, '{"test": true}')
             """)
             await ctx.execute("""
                 DELETE FROM ops.health_checks 
-                WHERE service = 'self-heal-test'
+                WHERE check_name = 'self-heal-test'
             """)
             tests.append(("DB read/write", True, None))
             metrics["tests_passed"] += 1
@@ -200,6 +259,54 @@ SAFETY RULES:
             tests.append(("Dashboard", False, str(e)))
             metrics["tests_failed"] += 1
 
+        # ── Systemd service health & auto-restart ───────────
+        WDWS_SERVICES = [
+            "wdws-agents", "wdws-mcp", "wdws-word-mcp",
+            "wdws-docx-proxy", "wdws-imessage-proxy",
+            "wdws-investigator-mcp", "wdws-paperless-mcp",
+        ]
+        dead_services = []
+        for svc in WDWS_SERVICES:
+            status = await ctx.service_status(svc)
+            if not status["active"]:
+                dead_services.append(svc)
+                await ctx.finding("critical", "service-down",
+                    f"Service {svc} is not active (state: {status['state']})",
+                    f"SubState: {status['substate']}. Attempting auto-restart.")
+                if metrics["repairs"] < max_repairs:
+                    if svc == "wdws-mcp":
+                        await self._resolve_wdws_mcp_port_conflict(ctx)
+                    restart = await ctx.shell(
+                        f"systemctl restart {svc}", timeout=30)
+                    if restart["success"]:
+                        metrics["repairs"] += 1
+                        await ctx.action(f"Restarted dead service: {svc}")
+                    else:
+                        await ctx.finding("critical", "service-restart-failed",
+                            f"Could not restart {svc}",
+                            restart["stderr"][:500])
+
+        if dead_services:
+            await ctx.finding("critical", "services",
+                f"{len(dead_services)} services were down: {', '.join(dead_services)}",
+                "Services auto-restarted where possible")
+
+        # ── Journal scan: detect Python errors in wdws-agents ─
+        journal_text = await ctx.journal("wdws-agents", lines=200,
+                                         since="30 minutes ago")
+        crash_lines = [
+            line for line in journal_text.splitlines()
+            if any(tok in line for tok in (
+                "Traceback", "Error:", "CRITICAL", "crashed",
+                "Killed", "OOM", "segfault", "core dumped"
+            ))
+        ]
+        if crash_lines:
+            await ctx.finding("warning", "journal-errors",
+                f"{len(crash_lines)} error/crash indicators in wdws-agents journal (last 30 min)",
+                "\n".join(crash_lines[:20]),
+                {"sample": crash_lines[:10]})
+
         # ── Configuration drift check ────────────────────────
         # Check for required indexes
         important_indexes = await ctx.query("""
@@ -209,6 +316,71 @@ SAFETY RULES:
             ORDER BY schemaname, tablename
         """)
         metrics["index_count"] = len(important_indexes)
+
+        # ── Schema vs Code Validation ────────────────────────
+        # Proactively detect agent SQL referencing non-existent columns
+        import glob, re as _re
+        agent_files = glob.glob("/opt/wdws/agents/agent_*.py")
+        schema_mismatches = []
+
+        # Build a map of actual columns per table
+        actual_cols = await ctx.query("""
+            SELECT table_schema || '.' || table_name as tbl,
+                   array_agg(column_name) as cols
+            FROM information_schema.columns
+            WHERE table_schema IN ('core', 'legal', 'medical', 'ops')
+            GROUP BY table_schema, table_name
+        """)
+        col_map = {r["tbl"]: set(r["cols"]) for r in actual_cols}
+
+        for agent_file in agent_files:
+            try:
+                with open(agent_file, 'r') as f:
+                    source = f.read()
+                # Find SQL-like references: WHERE col = ... or SELECT col FROM schema.table
+                # Look for column references against known tables
+                for tbl, cols in col_map.items():
+                    schema_name, table_name = tbl.split('.', 1)
+                    # Find WHERE <col> patterns near table references
+                    if table_name in source or tbl in source:
+                        # Extract column-like references near the table name
+                        # Pattern: WHERE/AND/OR/SELECT  word  (=/IS/LIKE/IN/</>/!=)
+                        for match in _re.finditer(
+                            rf'(?:WHERE|AND|OR|SELECT|SET)\s+(\w+)\s*(?:=|IS|LIKE|IN|<|>|!=|,)',
+                            source, _re.IGNORECASE):
+                            ref_col = match.group(1).lower()
+                            # Skip SQL keywords and common aliases
+                            if ref_col in ('not', 'null', 'true', 'false', 'and', 'or',
+                                          'exists', 'count', 'distinct', 'case', 'when',
+                                          'then', 'else', 'end', 'as', 'from', 'select',
+                                          'length', 'now', 'interval', 'extract'):
+                                continue
+                            if ref_col not in cols and ref_col not in ('id', '*'):
+                                # Verify it's not an alias or subquery ref
+                                schema_mismatches.append({
+                                    "file": agent_file.split('/')[-1],
+                                    "table": tbl,
+                                    "column": ref_col,
+                                })
+            except Exception:
+                pass
+
+        # Deduplicate
+        seen = set()
+        unique_mismatches = []
+        for m in schema_mismatches:
+            key = f"{m['file']}:{m['table']}:{m['column']}"
+            if key not in seen:
+                seen.add(key)
+                unique_mismatches.append(m)
+
+        if unique_mismatches:
+            metrics["schema_mismatches"] = len(unique_mismatches)
+            await ctx.finding("warning", "schema-drift",
+                f"{len(unique_mismatches)} possible schema mismatches in agent code",
+                "Agent SQL references columns that may not exist in the database. "
+                "This causes recurring errors that Code Doctor cannot permanently fix.",
+                {"mismatches": unique_mismatches[:20]})
 
         # ── Report ───────────────────────────────────────────
         failed_tests = [t for t in tests if not t[1]]

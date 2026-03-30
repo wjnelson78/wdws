@@ -1,4 +1,4 @@
-# Athena Cognitive Platform (WDWS)
+# Athena Cognitive Platform
 
 A comprehensive legal workflow automation system featuring email management, case tracking, and Model Context Protocol (MCP) servers for intelligent document processing and legal analysis.
 
@@ -6,7 +6,7 @@ A comprehensive legal workflow automation system featuring email management, cas
 
 ### Email Management
 - Automated email ingestion and classification
-- intelligent email triage using GPT-4o
+- intelligent email triage using Athena AI
 - Attachment extraction and processing
 - Email-to-case linking and tracking
 
@@ -58,7 +58,7 @@ A comprehensive legal workflow automation system featuring email management, cas
 
 - Python 3.8+
 - PostgreSQL database
-- OpenAI API key
+- Athena AI API key
 - nginx (for proxies)
 
 ## Environment Variables
@@ -69,7 +69,7 @@ Create a `.env` file in the project root with the following variables:
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/wdws
 
-# OpenAI
+# AI Engine
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Optional
@@ -77,6 +77,12 @@ OPENAI_MODEL=gpt-4o
 EMBEDDING_MODEL=text-embedding-3-large
 EMAILS_DIR=/opt/wdws/data/emails
 DATA_DIR=/opt/wdws/data
+CHAT_DATABASE_URL=postgresql://athena_chat:password@localhost:5432/athena_chat
+CHAT_IMAGE_DIR=/opt/wdws/data/chat_images
+TAVILY_API_KEY=your_tavily_api_key_here
+AZURE_AD_TENANT_ID=your_tenant_id
+AZURE_AD_AUDIENCE=your_app_client_id
+CHAT_AUTH_DISABLED=false
 ```
 
 ## Installation
@@ -90,6 +96,7 @@ DATA_DIR=/opt/wdws/data
 2. Install Python dependencies:
    ```bash
    pip install -r agents/requirements.txt
+   pip install -r requirements-chat.txt
    ```
 
 3. Set up the database:
@@ -98,6 +105,8 @@ DATA_DIR=/opt/wdws/data
    psql -U postgres -f 002_email_management.sql
    psql -U postgres -f 003_attachment_support.sql
    psql -U postgres -f agents/migrations/005_agent_system.sql
+   createdb athena_chat
+   psql -U postgres -d athena_chat -f migrations/006_chat_db.sql
    ```
 
 4. Configure environment variables (see above)
@@ -119,6 +128,12 @@ sudo systemctl start wdws-agents
 ```bash
 cd dashboard
 python app.py
+```
+
+### Start the Chat API
+```bash
+python chat_api.py
+# Listens on port 9350 by default (set CHAT_PORT to override)
 ```
 
 ### Email Synchronization

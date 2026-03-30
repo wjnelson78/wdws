@@ -27,7 +27,7 @@ class SecuritySentinelAgent(BaseAgent):
 SECURITY CONTEXT:
 - MCP server exposed at https://klunky.12432.net via Cloudflare Tunnel
 - OAuth 2.0 with client_secret_post validation
-- Two registered clients: chatgpt, claude-desktop
+- Two registered clients: athena-ai, claude-desktop
 - Contains sensitive legal case data, medical records, personal emails
 - HIPAA and litigation-hold data present
 

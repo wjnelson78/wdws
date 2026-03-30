@@ -165,23 +165,13 @@ class ScorecardAgent(BaseAgent):
                 "type": "warning",
             })
 
-        subject = "Athena Cognitive Platform — Weekly Quality Scorecard"
-        body_html = build_notification_html(
-            title="Weekly Quality & Reliability Scorecard",
-            sections=sections,
-            footer="Athena Cognitive Platform — Scorecard Agent",
+        # Queue scorecard for daily digest
+        await ctx.queue_notification(
+            "Weekly Quality & Reliability Scorecard",
+            sections,
+            severity="info",
         )
-
-        result = await send_email(
-            tenant_id=GRAPH_TENANT_ID,
-            client_id=GRAPH_CLIENT_ID,
-            client_secret=GRAPH_CLIENT_SECRET,
-            sender=GRAPH_SENDER_EMAIL,
-            to_recipients=[SCORECARD_EMAIL],
-            subject=subject,
-            body_html=body_html,
-            importance="normal",
-        )
+        result = {"status": "queued"}
 
         # Log email in DB
         await p.execute("""

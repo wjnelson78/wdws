@@ -2,7 +2,7 @@
 -- Migration 003: Email Attachment Support
 -- ============================================================
 -- Adds attachment tracking, parent-child document relationships,
--- and extended classification fields for GPT-4o deep analysis.
+-- and extended classification fields for Athena AI deep analysis.
 -- ============================================================
 
 BEGIN;
@@ -37,7 +37,7 @@ COMMENT ON TABLE core.document_relationships IS
 ALTER TABLE legal.email_metadata
     ADD COLUMN IF NOT EXISTS attachment_text text;
 
--- 4. Upgrade ai_classifications for GPT-4o deeper analysis
+-- 4. Upgrade ai_classifications for Athena AI deeper analysis
 ALTER TABLE ops.ai_classifications
     ADD COLUMN IF NOT EXISTS legal_analysis jsonb,
     ADD COLUMN IF NOT EXISTS attachment_summary text,

@@ -1,5 +1,5 @@
 """
-WDWS Agent Framework — Base classes and infrastructure
+ACP Agent Framework — Base classes and infrastructure
 ═══════════════════════════════════════════════════════
 Every agent inherits from BaseAgent which provides:
   - Database connection pooling
@@ -10,13 +10,22 @@ Every agent inherits from BaseAgent which provides:
 """
 import asyncio
 import json
+import os
 import re
+import shlex
 import logging
+import subprocess
 import time
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional
+
+# Schema alias resolution — transparent column name normalization
+try:
+    from schema_aliases import normalize_sql as _normalize_sql
+except ImportError:
+    _normalize_sql = None  # graceful fallback
 
 import asyncpg
 import httpx
@@ -258,7 +267,7 @@ async def codex_json(system: str, user: str, model: str = None,
 # ═══════════════════════════════════════════════════════════════
 class BaseAgent(ABC):
     """
-    Abstract base for all WDWS agents.
+    Abstract base for all ACP agents.
 
     Subclasses must implement:
       - agent_id: str           — unique identifier
@@ -845,13 +854,24 @@ class RunContext:
             message[:2000], json.dumps(context or {}))
 
     async def query(self, sql: str, *args) -> list:
-        """Execute a read query and return list of dicts."""
+        """Execute a read query and return list of dicts.
+        
+        Transparently resolves column name aliases (e.g., filed_date → date_filed)
+        so agents can use natural column names and still hit the correct schema.
+        """
+        if _normalize_sql:
+            sql = _normalize_sql(sql, log_rewrites=True)
         p = await get_pool()
         rows = await p.fetch(sql, *args)
         return [dict(r) for r in rows]
 
     async def execute(self, sql: str, *args):
-        """Execute a write query."""
+        """Execute a write query.
+        
+        Transparently resolves column name aliases before execution.
+        """
+        if _normalize_sql:
+            sql = _normalize_sql(sql, log_rewrites=True)
         p = await get_pool()
         await p.execute(sql, *args)
 
@@ -907,6 +927,230 @@ class RunContext:
         await p.execute("""
             DELETE FROM ops.agent_memory WHERE agent_id = $1 AND key = $2
         """, self.agent.agent_id, key)
+
+    async def remember_for(self, agent_id: str, key: str, value) -> None:
+        """Write to another agent's persistent memory namespace.
+        Used by Athena to update other agents' runtime configuration
+        without patching their source files.
+        """
+        p = await get_pool()
+        await p.execute("""
+            INSERT INTO ops.agent_memory (agent_id, key, value, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (agent_id, key) DO UPDATE SET
+                value = $3, updated_at = now()
+        """, agent_id, key, json.dumps(value))
+        self.log.info("remember_for: %s.%s updated by %s",
+                      agent_id, key, self.agent.agent_id)
+
+    async def recall_for(self, agent_id: str, key: str, default=None):
+        """Read from another agent's persistent memory namespace."""
+        p = await get_pool()
+        row = await p.fetchrow("""
+            SELECT value FROM ops.agent_memory
+            WHERE agent_id = $1 AND key = $2
+        """, agent_id, key)
+        if row is None:
+            return default
+        val = row["value"]
+        if val is None:
+            return default
+        if isinstance(val, str):
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return val
+        return val
+
+    # ── Notification queue ───────────────────────────────────
+
+    async def queue_notification(
+        self,
+        subject: str,
+        sections: list,
+        severity: str = "info",
+    ) -> None:
+        """Buffer a notification for the daily digest email.
+
+        Instead of sending an email immediately, writes the notification to
+        ops.notification_queue.  The DailyDigestAgent reads all pending rows
+        at 7 AM and sends a single consolidated report.
+
+        Use severity="critical" only for genuine emergencies that cannot wait
+        for the next digest — those are sent immediately by the caller via
+        send_email() directly, NOT through this queue.
+        """
+        p = await get_pool()
+        await p.execute(
+            """
+            INSERT INTO ops.notification_queue
+                (agent_id, subject, sections, severity)
+            VALUES ($1, $2, $3, $4)
+            """,
+            self.agent.agent_id,
+            subject,
+            json.dumps(sections),
+            severity,
+        )
+        self.log.debug("queue_notification: queued '%s' (severity=%s)", subject, severity)
+
+    # ── Shell & Filesystem capabilities ─────────────────────
+
+    async def shell(self, command: str, timeout: int = 60,
+                    cwd: str = "/opt/wdws") -> dict:
+        """Run a shell command and return {stdout, stderr, returncode, success}.
+
+        Logs the command and result as an action in the audit trail.
+        Use for: journalctl, systemctl, git, python -c, pip, grep, etc.
+        NEVER use for destructive operations without explicit logic to confirm safety.
+        """
+        self.log.info("🔧 shell: %s", command[:200])
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                result = {
+                    "stdout": "", "stderr": f"TIMEOUT after {timeout}s",
+                    "returncode": -1, "success": False, "command": command,
+                }
+                await self.action(f"shell (timeout): {command[:120]}")
+                return result
+
+            stdout = stdout_b.decode("utf-8", errors="replace").strip()
+            stderr = stderr_b.decode("utf-8", errors="replace").strip()
+            rc = proc.returncode
+            result = {
+                "stdout": stdout, "stderr": stderr,
+                "returncode": rc, "success": rc == 0, "command": command,
+            }
+            await self.action(
+                f"shell({'OK' if rc == 0 else f'rc={rc}'}): {command[:120]}"
+            )
+            return result
+        except Exception as e:
+            result = {
+                "stdout": "", "stderr": str(e),
+                "returncode": -1, "success": False, "command": command,
+            }
+            await self.action(f"shell (error): {command[:120]} — {e}")
+            return result
+
+    async def read_file(self, path: str) -> str:
+        """Read a file from disk. Returns file contents as a string.
+
+        Suitable for reading agent source files, config files, log files, etc.
+        """
+        try:
+            with open(path, "r", errors="replace") as f:
+                content = f.read()
+            self.log.debug("read_file: %s (%d bytes)", path, len(content))
+            return content
+        except Exception as e:
+            raise IOError(f"read_file failed for {path}: {e}") from e
+
+    async def write_file(self, path: str, content: str,
+                         backup: bool = True) -> dict:
+        """Write content to a file, optionally creating a .bak backup first.
+
+        Validates Python syntax before writing .py files.
+        Returns {success, backup_path, error}.
+        """
+        backup_path = None
+        try:
+            # Validate Python syntax before touching the file
+            if path.endswith(".py"):
+                try:
+                    compile(content, path, "exec")
+                except SyntaxError as e:
+                    return {"success": False, "backup_path": None,
+                            "error": f"Syntax error — file not written: {e}"}
+
+            if backup and os.path.exists(path):
+                backup_path = path + ".bak"
+                with open(backup_path, "w") as f:
+                    with open(path, "r") as src:
+                        f.write(src.read())
+
+            with open(path, "w") as f:
+                f.write(content)
+
+            await self.action(f"write_file: {path}" +
+                              (f" (backup: {backup_path})" if backup_path else ""))
+            return {"success": True, "backup_path": backup_path, "error": None}
+        except Exception as e:
+            return {"success": False, "backup_path": backup_path, "error": str(e)}
+
+    async def patch_file(self, path: str, old_text: str, new_text: str,
+                         backup: bool = True) -> dict:
+        """Replace old_text with new_text in a file (exact match required).
+
+        Validates Python syntax after patching .py files.
+        Returns {success, backup_path, applied, error}.
+        """
+        try:
+            with open(path, "r", errors="replace") as f:
+                content = f.read()
+        except Exception as e:
+            return {"success": False, "applied": False, "backup_path": None,
+                    "error": f"Cannot read {path}: {e}"}
+
+        if old_text not in content:
+            return {"success": False, "applied": False, "backup_path": None,
+                    "error": f"old_text not found in {path}"}
+
+        new_content = content.replace(old_text, new_text, 1)
+
+        result = await self.write_file(path, new_content, backup=backup)
+        result["applied"] = result["success"]
+        return result
+
+    async def service_status(self, service: str) -> dict:
+        """Check systemd service status. Returns {active, status, since, error}."""
+        r = await self.shell(f"systemctl is-active {shlex.quote(service)}", timeout=10)
+        active = r["stdout"].strip() == "active"
+        details = await self.shell(
+            f"systemctl show {shlex.quote(service)} "
+            "--property=ActiveState,SubState,ActiveEnterTimestamp,MainPID",
+            timeout=10
+        )
+        props = dict(
+            line.split("=", 1) for line in details["stdout"].splitlines() if "=" in line
+        )
+        return {
+            "service": service,
+            "active": active,
+            "state": props.get("ActiveState", "unknown"),
+            "substate": props.get("SubState", "unknown"),
+            "since": props.get("ActiveEnterTimestamp", ""),
+            "pid": props.get("MainPID", ""),
+        }
+
+    async def journal(self, service: str, lines: int = 100,
+                      since: str = None) -> str:
+        """Read journalctl output for a systemd service.
+
+        Args:
+            service: systemd unit name (e.g. 'wdws-agents')
+            lines: number of recent lines to retrieve
+            since: optional time string (e.g. '10 minutes ago', '2026-03-01 09:00:00')
+        Returns:
+            Plain text log output.
+        """
+        cmd = f"journalctl -u {shlex.quote(service)} --no-pager -n {int(lines)}"
+        if since:
+            cmd += f" --since={shlex.quote(since)}"
+        r = await self.shell(cmd, timeout=30)
+        return r["stdout"]
 
     # ── HTTP helpers ─────────────────────────────────────────
     async def http_post(self, url: str, **kwargs):

@@ -1,5 +1,5 @@
 """
-🚀 WDWS Agent Runner — Main Entry Point
+🚀 ACP Agent Runner — Main Entry Point
 ════════════════════════════════════════
 Scheduler that runs all registered agents based on their cron schedules.
 Uses asyncio + croniter to tick every AGENT_TICK_SECONDS and launch
@@ -40,9 +40,13 @@ from agent_case_strategy import CaseStrategyAgent
 from agent_retention import RetentionAgent
 from agent_timeline import TimelineAgent
 from agent_query_insight import QueryInsightAgent
+from agent_athena import AthenaAgent
 from agent_code_doctor import CodeDoctorAgent
 from agent_quality_eval import QualityEvalAgent
 from agent_scorecard import ScorecardAgent
+from agent_software_engineer import SoftwareEngineerAgent
+from agent_dba import DBAAgent
+from agent_daily_digest import DailyDigestAgent
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
@@ -51,10 +55,14 @@ log = logging.getLogger("agent-runner")
 # ── Agent Fleet ──────────────────────────────────────────
 ALL_AGENTS = [
     OrchestratorAgent(),     # P0 — fleet manager
-    CodeDoctorAgent(),       # P1 — auto-remediation with Codex
+    AthenaAgent(),           # P1 — autonomous reasoning + self-management
+    CodeDoctorAgent(),       # P1 — auto-remediation with Athena AI
     WatchdogAgent(),         # P1 — health
+    DailyDigestAgent(),      # P2 — 7 AM daily digest email
     SecuritySentinelAgent(), # P2 — security
     SelfHealingAgent(),      # P2 — auto-repair
+    SoftwareEngineerAgent(), # P2 — proactive code maintenance
+    DBAAgent(),              # P2 — database administration
     DataQualityAgent(),      # P3 — data integrity
     EmailTriageAgent(),      # P3 — email classification
     DatabaseTunerAgent(),    # P4 — performance
@@ -228,7 +236,7 @@ async def scheduler():
     """Main scheduling loop."""
     global _shutdown
     log.info("=" * 60)
-    log.info("  WDWS Agent Runner — Starting")
+    log.info("  ACP Agent Runner — Starting")
     log.info(f"  Agents: {len(ALL_AGENTS)}")
     log.info(f"  Tick: {AGENT_TICK_SECONDS}s | Max concurrent: {AGENT_MAX_CONCURRENT}")
     log.info("=" * 60)
@@ -344,7 +352,7 @@ def handle_signal(sig, frame):
 if __name__ == "__main__":
     import json
 
-    parser = argparse.ArgumentParser(description="WDWS Agent Runner")
+    parser = argparse.ArgumentParser(description="ACP Agent Runner")
     parser.add_argument("--once", type=str, help="Run a single agent once")
     parser.add_argument("--list", action="store_true", help="List all agents")
     parser.add_argument("--status", action="store_true", help="Show fleet status")

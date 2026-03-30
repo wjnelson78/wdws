@@ -4,7 +4,7 @@ Word Document MCP Auth Proxy — runs on 172.16.32.207
 
 Full OAuth 2.0 reverse-proxy for the Word Document MCP server.
 Handles the complete OAuth flow by proxying auth requests to the
-WDWS MCP server (port 9200), validates Bearer tokens against the
+ACP MCP server (port 9200), validates Bearer tokens against the
 shared PostgreSQL database, and proxies authenticated MCP requests
 to the Word MCP backend (port 9300).
 
@@ -19,7 +19,7 @@ Usage:
 
 Systemd:  wdws-docx-proxy.service (port 9301)
 Tunnel:   docx.12432.net → http://127.0.0.1:9301
-Auth:     Proxied to WDWS MCP OAuth → http://127.0.0.1:9200
+Auth:     Proxied to ACP MCP OAuth → http://127.0.0.1:9200
 Backend:  http://127.0.0.1:9300 (Word Document MCP Server)
 """
 
@@ -163,17 +163,17 @@ async def oauth_metadata_handler(request: Request) -> JSONResponse:
 
 async def oauth_protected_resource(request: Request) -> JSONResponse:
     """Serve OAuth Protected Resource Metadata (RFC 9728).
-    ChatGPT uses this to discover the authorization server."""
+    Athena AI uses this to discover the authorization server."""
     return JSONResponse(OAUTH_PROTECTED_RESOURCE)
 
 
 # ── OAuth Proxy Handlers ─────────────────────────────────────
 # These proxy /authorize, /token, /register, /revoke to the real
-# WDWS MCP OAuth server running on port 9200. This keeps the entire
-# OAuth flow on docx.12432.net from ChatGPT's perspective.
+# ACP MCP OAuth server running on port 9200. This keeps the entire
+# OAuth flow on docx.12432.net from the client's perspective.
 
 async def proxy_authorize(request: Request) -> Response:
-    """Proxy GET /authorize to the WDWS OAuth server."""
+    """Proxy GET /authorize to the ACP OAuth server."""
     query_string = str(request.url.query) if request.url.query else ""
     auth_url = f"{AUTH_SERVER_URL}/authorize"
     if query_string:
@@ -204,7 +204,7 @@ async def proxy_authorize(request: Request) -> Response:
 
 
 async def proxy_token(request: Request) -> Response:
-    """Proxy POST /token to the WDWS OAuth server."""
+    """Proxy POST /token to the ACP OAuth server."""
     body = await request.body()
     log.info("Proxying token request (%d bytes)", len(body))
 
@@ -467,7 +467,7 @@ app = Starlette(
         # Health
         Route("/health", health, methods=["GET"]),
         # RFC 9728 — OAuth Protected Resource Metadata
-        # ChatGPT tries path-prefixed variants, so handle {path} variants too.
+        # AI clients try path-prefixed variants, so handle {path} variants too.
         Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
         Route("/.well-known/oauth-protected-resource/{path:path}", oauth_protected_resource, methods=["GET"]),
         # RFC 8414 — OAuth Authorization Server Metadata
@@ -475,17 +475,17 @@ app = Starlette(
         Route("/.well-known/oauth-authorization-server/{path:path}", oauth_metadata_handler, methods=["GET"]),
         Route("/.well-known/openid-configuration", oauth_metadata_handler, methods=["GET"]),
         Route("/.well-known/openid-configuration/{path:path}", oauth_metadata_handler, methods=["GET"]),
-        # Also handle /{base}/.well-known/... patterns ChatGPT tries
+        # Also handle /{base}/.well-known/... patterns AI clients try
         Route("/mcp/sse/.well-known/oauth-authorization-server", oauth_metadata_handler, methods=["GET"]),
         Route("/mcp/sse/.well-known/openid-configuration", oauth_metadata_handler, methods=["GET"]),
         Route("/mcp/sse/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
-        # OAuth endpoints — proxied to WDWS MCP server (port 9200)
+        # OAuth endpoints — proxied to ACP MCP server (port 9200)
         Route("/authorize", proxy_authorize, methods=["GET"]),
         Route("/token", proxy_token, methods=["POST"]),
         Route("/register", proxy_register, methods=["POST"]),
         Route("/revoke", proxy_revoke, methods=["POST"]),
         # MCP data endpoints — auth required, proxied to Word MCP (port 9300)
-        # /mcp/sse is an alternate SSE path (ChatGPT convention) → maps to backend /sse
+        # /mcp/sse is an alternate SSE path (MCP convention) → maps to backend /sse
         Route("/mcp/sse", proxy_sse, methods=["GET"]),
         Route("/sse", proxy_sse, methods=["GET"]),
         Route("/messages", proxy_messages, methods=["POST"]),

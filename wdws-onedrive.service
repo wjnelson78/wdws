@@ -1,0 +1,23 @@
+[Unit]
+Description=WDWS OneDrive Sync Daemon
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wdws
+EnvironmentFile=/opt/wdws/.env
+ExecStart=/usr/bin/python3 /opt/wdws/onedrive_sync.py --daemon --interval 300
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wdws-onedrive
+
+# Safety limits — sync is I/O heavy but shouldn't hog resources
+MemoryMax=1G
+CPUQuota=30%
+
+[Install]
+WantedBy=multi-user.target

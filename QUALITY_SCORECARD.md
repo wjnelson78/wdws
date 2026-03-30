@@ -1,6 +1,6 @@
 # Athena Cognitive Platform — Quality & Reliability Scorecard
 
-This document defines **what “ChatGPT‑level” quality means for this platform**, and how we measure it.
+This document defines **what production-level quality means for this platform**, and how we measure it.
 
 ---
 

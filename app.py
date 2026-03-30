@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WDWS Enterprise Dashboard v2.0 — PostgreSQL-native.
+ACP Enterprise Dashboard v2.0 — PostgreSQL-native.
 
 Direct connection to the enterprise PostgreSQL database.
 Provides:
@@ -851,7 +851,7 @@ async def api_email_trigger_classify(request: Request):
 
 # ── Health Probe ──────────────────────────────────────────────
 async def health(request: Request):
-    return JSONResponse({"status": "healthy", "service": "wdws-dashboard-v2"})
+    return JSONResponse({"status": "healthy", "service": "acp-dashboard-v2"})
 
 
 # ── Serve SPA ─────────────────────────────────────────────────
@@ -918,7 +918,7 @@ app = Starlette(routes=routes, middleware=middleware)
 def main():
     host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
     print(f"\n{'=' * 60}")
-    print(f"  WDWS Enterprise Dashboard v2.0")
+    print(f"  Athena Cognitive Platform Dashboard v2.0")
     print(f"  http://{host}:{DASHBOARD_PORT}/dashboard")
     db_host = DATABASE_URL.split("@")[1] if "@" in DATABASE_URL else DATABASE_URL
     print(f"  Database: {db_host}")
@@ -933,7 +933,7 @@ def main():
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>WDWS Enterprise Dashboard</title>
+<title>Athena Cognitive Platform</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🏛️</text></svg>"/>
 <style>
 :root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2332;--border:#1e3a5f;
@@ -1051,7 +1051,7 @@ tr:hover td{background:rgba(59,130,246,.04)}
 
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="login-screen" class="login-box">
-  <h2>🔒 WDWS Enterprise Dashboard</h2>
+  <h2>🔒 Athena Cognitive Platform</h2>
   <input id="login-user" type="text" placeholder="Username" autocomplete="username"/>
   <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password"
     onkeydown="if(event.key==='Enter')doLogin()"/>

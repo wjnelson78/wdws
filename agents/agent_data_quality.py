@@ -25,16 +25,16 @@ class DataQualityAgent(BaseAgent):
     instructions = """You are the Data Quality Agent for the Athena Cognitive Platform.
 
 DATABASE SCHEMA:
-- core.documents: id, domain, document_type, title, source_path, content_hash, full_content_preview, created_at
-- core.document_chunks: id, document_id, chunk_index, content, embedding (vector), has_embedding
+- core.documents: id, domain, document_type, title, source_path, filename, content_hash, full_content, total_chunks, metadata, created_at, updated_at
+- core.document_chunks: id, document_id, chunk_index, content, embedding (halfvec), embedding_model_id, token_count, content_tsv, metadata
 - core.document_relationships: links between documents
-- legal.email_metadata: sender, recipients, subject, email_date, direction, mailbox
-- legal.email_attachments: email_id, filename, content_type, ocr_text
-- legal.cases: case_number, case_title, court, status
-- medical.record_metadata: patient, provider, date_of_service, record_type
+- legal.email_metadata: document_id, message_id, subject, sender, recipients, cc, date_sent, direction, mailbox, thread_id, in_reply_to, has_attachments
+- legal.email_attachments: id, email_doc_id, child_doc_id, filename, content_type, file_size, extracted_text, extraction_method, is_processed
+- legal.cases: id, case_number, case_title, case_type, court, status, date_filed, date_closed, jurisdiction
+- medical.record_metadata: document_id, patient_id, provider_id, record_type, date_of_service, facility
 
 YOUR RESPONSIBILITIES:
-1. Find chunks with missing embeddings (has_embedding = false or embedding IS NULL)
+1. Find chunks with missing embeddings (embedding IS NULL)
 2. Detect documents with empty/very short content (likely OCR failures)
 3. Find duplicate documents (same content_hash)
 4. Check for orphaned records (chunks without parent documents)
@@ -58,7 +58,7 @@ Always quantify issues: "42 chunks missing embeddings across 12 documents" not j
             SELECT COUNT(*) as count,
                    COUNT(DISTINCT document_id) as doc_count
             FROM core.document_chunks
-            WHERE has_embedding = false OR embedding IS NULL
+            WHERE embedding IS NULL
         """)
         me = missing_embed[0] if missing_embed else {"count": 0, "doc_count": 0}
         metrics["missing_embeddings"] = me["count"]
@@ -99,7 +99,7 @@ Always quantify issues: "42 chunks missing embeddings across 12 documents" not j
             await ctx.finding("warning", "data-quality",
                 f"{len(zero_chunks)} documents have zero chunks (incomplete ingestion)",
                 "These documents exist in core.documents but have no content chunks",
-                {"sample_ids": [z["id"] for z in zero_chunks[:10]]})
+                {"sample_ids": [str(z["id"]) for z in zero_chunks[:10]]})
 
         # ── Duplicate documents (same content_hash) ──────────
         dupes = await ctx.query("""
@@ -142,7 +142,7 @@ Always quantify issues: "42 chunks missing embeddings across 12 documents" not j
         bad_ocr = await ctx.query("""
             SELECT COUNT(*) as count
             FROM legal.email_attachments
-            WHERE (ocr_text IS NULL OR LENGTH(ocr_text) < 10)
+            WHERE (extracted_text IS NULL OR LENGTH(extracted_text) < 10)
               AND content_type LIKE 'application/pdf%'
         """)
         metrics["attachments_no_ocr"] = bad_ocr[0]["count"] if bad_ocr else 0
@@ -157,7 +157,7 @@ Always quantify issues: "42 chunks missing embeddings across 12 documents" not j
             SELECT 
                 (SELECT COUNT(*) FROM core.documents) as total_docs,
                 (SELECT COUNT(*) FROM core.document_chunks) as total_chunks,
-                (SELECT COUNT(*) FROM core.document_chunks WHERE has_embedding = true) as embedded_chunks,
+                (SELECT COUNT(*) FROM core.document_chunks WHERE embedding IS NOT NULL) as embedded_chunks,
                 (SELECT COUNT(DISTINCT domain) FROM core.documents) as domains,
                 (SELECT COUNT(*) FROM legal.cases) as cases,
                 (SELECT COUNT(*) FROM legal.email_metadata) as emails,

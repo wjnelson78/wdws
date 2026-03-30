@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-WDWS AI Email Classification Agent v2 — GPT-4o with Attachment Intelligence
+ACP AI Email Classification Agent v2 — Athena AI with Attachment Intelligence
 
-Deep legal analysis powered by GPT-4o (not mini):
+Deep legal analysis powered by Athena AI (not mini):
   • Reads FULL email body (up to 20K chars, not 4K)
   • Processes attachment text when available
   • Structured legal analysis (deadlines, risk, procedural posture)
@@ -58,8 +58,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
-# GPT-4o for serious legal analysis — NOT mini
-CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "gpt-4o")
+# Athena AI for serious legal analysis
+CLASSIFICATION_MODEL = os.getenv("CLASSIFICATION_MODEL", "gpt-5.4")
 
 # Content limits
 MAX_BODY_CHARS = 20_000       # 4x more than v1
@@ -475,7 +475,7 @@ async def get_known_parties(pool: asyncpg.Pool) -> List[str]:
 
 
 # ============================================================
-# AI Classification — GPT-4o Deep Analysis
+# AI Classification — Athena AI Deep Analysis
 # ============================================================
 
 def build_system_prompt(
@@ -625,7 +625,7 @@ async def classify_email(
     api_key: str = None,
     model: str = None,
 ) -> Optional[EmailClassification]:
-    """Use GPT-4o to deeply analyze and classify an email."""
+    """Use Athena AI to deeply analyze and classify an email."""
     api_key = api_key or OPENAI_API_KEY
     model = model or CLASSIFICATION_MODEL
     known_parties = known_parties or []
@@ -698,7 +698,7 @@ async def store_classification(
     classification: EmailClassification,
     model: str = None,
 ):
-    """Store GPT-4o classification with legal analysis."""
+    """Store Athena AI classification with legal analysis."""
     model = model or CLASSIFICATION_MODEL
     doc_uuid = (
         _uuid.UUID(document_id)
@@ -864,11 +864,11 @@ async def backfill_classifications(
     reclassify: bool = False,
     doc_id: str = None,
 ):
-    """Classify emails with GPT-4o, including attachment content."""
+    """Classify emails with Athena AI, including attachment content."""
     log.info("")
     log.info("=" * 64)
-    log.info("  WDWS AI Email Classification Agent v2")
-    log.info("  Model: GPT-4o (deep legal analysis)")
+    log.info("  ACP AI Email Classification Agent v2")
+    log.info("  Model: Athena AI (deep legal analysis)")
     log.info("=" * 64)
     log.info(f"  Limit:      {limit}")
     log.info(f"  Reclassify: {reclassify}")
@@ -958,13 +958,13 @@ async def backfill_classifications(
                 if has_att_text:
                     stats["with_attachments"] += 1
 
-                # Track tokens and cost (GPT-4o pricing)
+                # Track tokens and cost
                 prompt_tok = result.token_usage.get("prompt_tokens", 0)
                 compl_tok = result.token_usage.get("completion_tokens", 0)
                 total_tok = prompt_tok + compl_tok
                 stats["total_tokens"] += total_tok
 
-                # GPT-4o: $2.50/1M input, $10.00/1M output
+                # Pricing: $2.50/1M input, $10.00/1M output
                 email_cost = (
                     (prompt_tok * 2.50 + compl_tok * 10.00) / 1_000_000
                 )
@@ -1028,7 +1028,7 @@ async def backfill_classifications(
             stats["errors"] += 1
             log.error(f"  [{i}/{len(rows)}] ERROR {title} - {e}")
 
-        # Rate limit: GPT-4o is slower, 1.5s between calls
+        # Rate limit: 1.5s between calls
         if i < len(rows):
             await asyncio.sleep(1.5)
 
@@ -1046,7 +1046,7 @@ async def backfill_classifications(
     log.info("=" * 64)
     log.info("  CLASSIFICATION COMPLETE")
     log.info("=" * 64)
-    log.info(f"  Model:            GPT-4o (deep analysis)")
+    log.info(f"  Model:            Athena AI (deep analysis)")
     log.info(f"  Classified:       {stats['ok']}")
     log.info(f"  With attachments: {stats['with_attachments']}")
     log.info(f"  Errors:           {stats['errors']}")
@@ -1085,7 +1085,7 @@ async def full_pipeline(limit: int = 100, reclassify: bool = False):
     await pool.close()
 
     log.info("")
-    log.info("=== PHASE 2: GPT-4o CLASSIFICATION ===")
+    log.info("=== PHASE 2: ATHENA AI CLASSIFICATION ===")
     await backfill_classifications(limit=limit, reclassify=reclassify)
 
 
@@ -1095,7 +1095,7 @@ async def full_pipeline(limit: int = 100, reclassify: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="WDWS AI Email Classification Agent v2 (GPT-4o)"
+        description="ACP AI Email Classification Agent v2"
     )
     parser.add_argument(
         "--backfill", "-n", type=int, default=100,

@@ -9,7 +9,7 @@ async def test():
         'Code Doctor — Test Notification',
         [{'heading': 'System Status', 'body': (
             'This is a test email from the Athena Cognitive Platform agent system.<br><br>'
-            '<b>Model:</b> gpt-5.2-codex<br>'
+            '<b>Model:</b> Athena AI<br>'
             '<b>Reasoning Effort:</b> medium<br>'
             '<b>Agents:</b> 12 registered<br>'
             '<b>Code Doctor:</b> Operational'

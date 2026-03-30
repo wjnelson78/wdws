@@ -2,14 +2,14 @@
 🩺 Code Doctor Agent — AI-Powered Auto-Remediation
 ═══════════════════════════════════════════════════
 Athena's Code Doctor: detects agent failures, diagnoses root causes,
-generates fixes using OpenAI Codex, applies them safely, and notifies
+generates fixes using Athena AI, applies them safely, and notifies
 via Microsoft Graph API email.
 
 Capabilities:
   - Monitor agent errors from ops.agent_runs
   - Parse tracebacks to identify error patterns
   - Query information_schema for actual DB structure
-  - Use OpenAI Codex to generate Python/SQL patches
+  - Use Athena AI to generate Python/SQL patches
   - Apply fixes with syntax validation
   - Send email notifications via Graph API
   - Full audit trail in ops.agent_logs
@@ -33,12 +33,12 @@ from email_util import send_email, build_notification_html
 class CodeDoctorAgent(BaseAgent):
     agent_id = "code-doctor"
     agent_name = "Code Doctor"
-    description = "AI-powered auto-remediation: diagnoses agent failures, generates Codex fixes, applies patches, sends email alerts"
+    description = "AI-powered auto-remediation: diagnoses agent failures, generates Athena AI fixes, applies patches, sends email alerts"
     version = "1.0.0"
     schedule = "*/10 * * * *"  # Every 10 minutes
     priority = 1  # High priority — needs to run before other agents
     capabilities = [
-        "error-diagnosis", "codex-fix", "schema-introspection",
+        "error-diagnosis", "ai-fix", "schema-introspection",
         "auto-patch", "email-notification", "audit-trail"
     ]
 
@@ -67,6 +67,27 @@ FIX GENERATION:
 - Validate Python syntax before applying
 - Never modify the framework.py or run.py files
 - Never drop tables, delete data, or modify schema destructively
+- For "column does not exist" errors: fix the SQL in the Python code to stop
+  referencing the non-existent column. Use (column IS NOT NULL) instead of
+  a boolean column, or remove the reference entirely. Do NOT just add the
+  missing column — fix the code to match the ACTUAL schema.
+- For "relation does not exist" errors: fix the code to use the correct
+  schema-qualified table name from information_schema.
+- Always cross-reference information_schema to know what columns/tables
+  ACTUALLY exist before generating a fix.
+
+COLUMN ALIAS INTELLIGENCE:
+Many columns have common synonyms that all mean the same thing. The framework
+automatically resolves these in ctx.query()/ctx.execute(), but code should
+ideally use the canonical names:
+  - legal.cases: date_filed (not filed_date, filing_date)
+  - legal.email_metadata: date_sent (not email_date, sent_date)
+  - legal.filing_metadata: actual_filing_date (not filing_date, date_filed, filed_date)
+  - core.documents: full_content (not full_content_preview)
+  - legal.email_attachments: extracted_text (not ocr_text), email_doc_id (not email_id)
+  - ops.health_checks: check_name (not service), value (not response_ms), detail (not details)
+When fixing code, prefer the canonical name. The alias resolution layer will
+handle any remaining variations transparently at query time.
 
 SAFETY:
 - Max 3 auto-fixes per run
@@ -75,6 +96,8 @@ SAFETY:
 - Always send email notification after applying fixes
 - Keep a rollback patch for every fix applied
 - If the same error occurs 3+ times, escalate instead of re-fixing
+- When escalating, include the actual schema from information_schema
+  so the human can see exactly what columns exist
 
 OUTPUT FORMAT (when asked for diagnosis as JSON):
 {
@@ -105,36 +128,12 @@ OUTPUT FORMAT (when asked for diagnosis as JSON):
 
     # ── Email notification ───────────────────────────────────
     async def _notify(self, ctx: RunContext, subject_detail: str, sections: list[dict]):
-        """Send email notification via Graph API and log it."""
-        subject = f"ATHENA COGNITIVE PLATFORM: {subject_detail}"
-        body_html = build_notification_html(subject_detail, sections)
-
-        result = await send_email(
-            tenant_id=GRAPH_TENANT_ID,
-            client_id=GRAPH_CLIENT_ID,
-            client_secret=GRAPH_CLIENT_SECRET,
-            sender=GRAPH_SENDER_EMAIL,
-            to_recipients=[ALERT_EMAIL],
-            subject=subject,
-            body_html=body_html,
-            importance="high",
-        )
-
-        # Track in DB
-        p = await ctx.db()
-        await p.execute("""
-            INSERT INTO ops.email_notifications
-                (agent_id, run_id, recipient, subject, body_html, status, error, graph_msg_id, sent_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        """, self.agent_id, self._run_id, ALERT_EMAIL, subject, body_html,
-            result["status"],
-            result.get("error"),
-            result.get("message_id"),
-            datetime.now(timezone.utc) if result["status"] == "sent" else None)
-
-        await self._log(ctx, "email", "notification",
-            f"Email {'sent' if result['status']=='sent' else 'FAILED'}: {subject}",
-            {"result": result, "recipient": ALERT_EMAIL})
+        """Queue notification for daily digest rather than sending immediately."""
+        await ctx.queue_notification(subject_detail, sections, severity="info")
+        await self._log(ctx, "email", "queued",
+            f"Queued for daily digest: {subject_detail}",
+            {"sections": len(sections)})
+        return {"status": "queued"}
 
         return result
 
@@ -213,23 +212,394 @@ OUTPUT FORMAT (when asked for diagnosis as JSON):
         return info
 
     def _error_hash(self, agent_id: str, error_text: str) -> str:
-        """Generate a stable hash for deduplication."""
-        # Normalize: strip timestamps, line numbers, PIDs
-        normalized = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}', '', error_text)
-        normalized = re.sub(r'Run #\d+', 'Run #X', normalized)
-        return hashlib.sha256(f"{agent_id}:{normalized[:500]}".encode()).hexdigest()[:16]
+        """Generate a stable hash for deduplication.
+        
+        Uses a more aggressive normalization to ensure the SAME root cause
+        always produces the SAME hash, regardless of timestamps, line numbers,
+        PIDs, memory addresses, or run IDs.
+        """
+        # Extract the core error message (last meaningful error line)
+        lines = error_text.strip().split('\n')
+        core_error = ''
+        for line in reversed(lines):
+            stripped = line.strip()
+            if stripped and not stripped.startswith('File ') and not stripped.startswith('^'):
+                core_error = stripped
+                break
 
-    # ── Codex-powered fix generation ─────────────────────────
+        # Normalize: strip all variable data
+        normalized = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[.\d]*[Z]?', '', error_text)
+        normalized = re.sub(r'Run #\d+', 'Run #X', normalized)
+        normalized = re.sub(r'line \d+', 'line X', normalized)
+        normalized = re.sub(r'PID \d+', 'PID X', normalized)
+        normalized = re.sub(r'0x[0-9a-fA-F]+', '0xX', normalized)
+        normalized = re.sub(r'\b\d{5,}\b', 'N', normalized)  # large numbers
+        # Hash on: agent + core error + first 200 chars of normalized traceback
+        hash_input = f"{agent_id}:{core_error}:{normalized[:200]}"
+        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
+    def _error_signature(self, error_text: str) -> str:
+        """Extract a short canonical error signature for cross-hash matching."""
+        # e.g. 'column "has_embedding" does not exist' → stable across runs
+        lines = error_text.strip().split('\n')
+        for line in reversed(lines):
+            stripped = line.strip()
+            if re.match(r'^(\w+(?:\.\w+)*Error|Exception|asyncpg\.\w+):', stripped):
+                return stripped[:200]
+        return error_text[:200]
+
+    def _finding_signature(self, title: str, category: str = "", agent_id: str = "") -> str:
+        """Collapse metric-filled alert titles into a stable signature.
+
+        Some watchdog alerts embed changing measurements in the title itself,
+        e.g. "Agent p95 latency regression: 10501ms → 30832ms (+20330ms, x2.94)".
+        Grouping by raw title prevents repeated noisy alerts from ever reaching
+        the 3+ occurrence threshold because every firing looks unique.
+        """
+        title = (title or "").strip()
+        if not title:
+            return ""
+
+        if category == "performance" and agent_id == "watchdog":
+            if title.startswith("Agent p95 latency regression:"):
+                return "Agent p95 latency regression"
+            if title.startswith("MCP p95 latency regression:"):
+                return "MCP p95 latency regression"
+
+        return title
+
+    # ── Behavioral false positive detection ──────────────────
+    async def _detect_false_positive_alerts(self, ctx: RunContext) -> dict:
+        """Detect repeatedly-firing alerts with no corroborating evidence.
+
+        These are behavioral false positives — the code executes without
+        exceptions but the detection logic is too sensitive, firing on normal
+        variation. Pattern:
+          1. Same alert title fires 3+ times in 48 h
+          2. Other agents did NOT raise concerns at the same time
+             (low corroboration = system was actually healthy)
+          3. Read source → LLM diagnoses → apply conservative fix
+             (raise threshold / add exclusion / require larger sample)
+             OR email for human review if confidence < 0.85
+        """
+        result = {"noise_candidates": 0, "fp_fixed": 0, "fp_emailed": 0}
+        self._fp_email_sections = []
+
+        p = await ctx.db()
+
+        # ── 1. Find repeated findings ──────────────────────
+        rows = await p.fetch("""
+            SELECT title, category, agent_id, evidence, created_at
+            FROM ops.agent_findings
+            WHERE created_at > now() - interval '48 hours'
+              AND severity IN ('critical', 'warning')
+              AND status = 'open'
+              AND agent_id != 'code-doctor'
+            ORDER BY created_at DESC
+            LIMIT 250
+        """)
+
+        grouped = {}
+        for row in rows:
+            title = row["title"]
+            category = row["category"]
+            agent_id = row["agent_id"]
+            signature = self._finding_signature(title, category, agent_id)
+            key = (signature, category, agent_id)
+            bucket = grouped.setdefault(key, {
+                "signature": signature,
+                "title": title,
+                "category": category,
+                "agent_id": agent_id,
+                "fire_count": 0,
+                "first_fired": row["created_at"],
+                "last_fired": row["created_at"],
+                "evidence_list": [],
+                "titles": [],
+            })
+            bucket["fire_count"] += 1
+            bucket["first_fired"] = min(bucket["first_fired"], row["created_at"])
+            bucket["last_fired"] = max(bucket["last_fired"], row["created_at"])
+            bucket["evidence_list"].append(row["evidence"])
+            if title not in bucket["titles"]:
+                bucket["titles"].append(title)
+                if row["created_at"] >= bucket["last_fired"]:
+                    bucket["title"] = title
+
+        repeated = [v for v in grouped.values() if v["fire_count"] >= 3]
+        repeated.sort(key=lambda r: r["fire_count"], reverse=True)
+        repeated = repeated[:10]
+
+        if not repeated:
+            return result
+
+        result["noise_candidates"] = len(repeated)
+
+        # ── 2. Corroboration check ─────────────────────────
+        fp_candidates = []
+        for row in repeated:
+            title = row["title"]
+            signature = row["signature"]
+            # How many of those firings had another unrelated agent also raising
+            # a warning/critical simultaneously (within 5 min)?
+            corroborated = 0
+            for other in rows:
+                if other["agent_id"] != row["agent_id"]:
+                    continue
+                if other["category"] != row["category"]:
+                    continue
+                if self._finding_signature(other["title"], other["category"], other["agent_id"]) != signature:
+                    continue
+
+                ts1 = other["created_at"]
+                if any(
+                    other2["title"] != other["title"]
+                    and other2["agent_id"] != other["agent_id"]
+                    and abs((other2["created_at"] - ts1).total_seconds()) < 300
+                    for other2 in rows
+                ):
+                    corroborated += 1
+
+            fire_count = int(row["fire_count"])
+            corroboration_rate = corroborated / max(fire_count, 1)
+
+            if corroboration_rate < 0.3:  # fires alone ≥ 70 % → likely noise
+                fp_candidates.append({
+                    "signature": signature,
+                    "title": title,
+                    "category": row["category"],
+                    "agent_id": row["agent_id"],
+                    "fire_count": fire_count,
+                    "corroboration_rate": corroboration_rate,
+                    "evidence_list": row["evidence_list"],
+                    "last_fired": row["last_fired"],
+                    "sample_titles": row.get("titles", [])[:5],
+                })
+
+        if not fp_candidates:
+            await self._log(ctx, "info", "false-positive-scan",
+                f"{len(repeated)} repeated alert(s) found but all corroborated — no false positives")
+            return result
+
+        # ── 3. Diagnose and fix each candidate ────────────
+        for candidate in fp_candidates[:2]:  # max 2 per Code Doctor run
+            agent_id = candidate["agent_id"]
+            title = candidate["title"]
+
+            source_file = f"/opt/wdws/agents/agent_{agent_id.replace('-', '_')}.py"
+            try:
+                source = await ctx.read_file(source_file)
+            except Exception as e:
+                await self._log(ctx, "warn", "false-positive-scan",
+                    f"Cannot read source for {agent_id}: {e}")
+                continue
+
+            # Deserialise evidence snapshots
+            evidence_samples = []
+            try:
+                ev_list = candidate["evidence_list"]
+                if isinstance(ev_list, str):
+                    ev_list = json.loads(ev_list)
+                for ev in (ev_list or [])[:5]:
+                    if isinstance(ev, str):
+                        ev = json.loads(ev)
+                    evidence_samples.append(ev)
+            except Exception:
+                pass
+
+            await self._log(ctx, "reasoning", "false-positive-candidate",
+                f"FP candidate: '{title[:80]}' fired {candidate['fire_count']}x, "
+                f"corroboration {candidate['corroboration_rate']:.0%}",
+                {
+                    "agent_id": agent_id,
+                    "signature": candidate.get("signature"),
+                    "sample_titles": candidate.get("sample_titles", [])[:3],
+                    "evidence_samples": evidence_samples[:2],
+                })
+
+            prompt = f"""You are Code Doctor analysing a BEHAVIORAL FALSE POSITIVE alert.
+
+The code runs without exceptions but the DETECTION LOGIC is too sensitive —
+it fires even when the system is healthy, causing alert fatigue.
+
+ALERT TITLE (exact string the code emits):
+"{title}"
+
+GENERATING AGENT: {agent_id}
+SOURCE FILE: {source_file}
+
+FIRING STATISTICS (last 48 hours):
+- Fired: {candidate['fire_count']} times
+- Corroboration rate: {candidate['corroboration_rate']:.0%}
+  (how often another agent ALSO raised a concern at the same moment)
+  → Low value means the system was healthy when this fired.
+
+METRIC SNAPSHOTS AT TIME OF FIRING (up to 5 samples):
+{json.dumps(evidence_samples, indent=2, default=str)[:4000]}
+
+FULL SOURCE FILE:
+{source[:12000]}
+
+YOUR TASK:
+1. Find the exact function/block that generates the alert title above.
+2. Using the metric snapshots, identify the specific value(s) that trip the threshold
+   when everything else is fine.
+3. Determine the root cause (common patterns):
+   - Slow batch/scheduled agents skewing fleet-wide p95
+   - Sample window too short → noisy data
+   - Threshold too aggressive
+   - Minimum-sample guard missing
+4. Propose a CONSERVATIVE fix — reduce sensitivity WITHOUT removing detection.
+   Safe fix types:
+     exclusion   — add an agent/item exclusion set
+     threshold   — raise ratio/delta constant (be conservative)
+     sample_size — require more samples before firing
+     window      — longer comparison window
+   ⚠  NEVER propose removing the detection entirely.
+5. old_code MUST be verbatim from the source above.
+
+Respond with JSON:
+{{
+  "root_cause": "specific explanation backed by the metric data",
+  "confidence": 0.0-1.0,
+  "fix_type": "exclusion|threshold|sample_size|window",
+  "target_file": "{source_file}",
+  "fixes": [
+    {{
+      "description": "what the change does",
+      "old_code": "EXACT verbatim multi-line code from source",
+      "new_code": "replacement with identical indentation"
+    }}
+  ]
+}}"""
+
+            diagnosis = await codex_json(self.instructions, prompt,
+                                         model=CODEX_MODEL, effort="high")
+
+            confidence = float(diagnosis.get("confidence", 0))
+            fixes      = diagnosis.get("fixes", [])
+            root_cause = diagnosis.get("root_cause", "unknown")
+            target_file = diagnosis.get("target_file", source_file)
+            fix_type   = diagnosis.get("fix_type", "unknown")
+
+            await self._log(ctx, "reasoning", "false-positive-diagnosis",
+                f"Diagnosis for '{title[:60]}': confidence={confidence:.0%}, "
+                f"type={fix_type}, root_cause={root_cause[:150]}",
+                {"diagnosis": diagnosis})
+
+            fix_hash = hashlib.sha256(candidate.get("signature", title).encode()).hexdigest()[:16]
+
+            if confidence < 0.7 or not fixes:
+                await ctx.finding("info", "false-positive",
+                    f"Unresolved false positive: {title[:80]}",
+                    f"Fired {candidate['fire_count']}x, {candidate['corroboration_rate']:.0%} "
+                    f"corroboration. Low-confidence diagnosis ({confidence:.0%}): {root_cause}",
+                    {"candidate": {k: v for k, v in candidate.items() if k != "evidence_list"},
+                     "diagnosis": diagnosis})
+                continue
+
+            if confidence >= 0.85:
+                # ── Auto-apply ─────────────────────────────
+                applied_any = False
+                for fix in fixes[:2]:
+                    old_code = fix.get("old_code", "")
+                    new_code = fix.get("new_code", "")
+                    desc = fix.get("description", "Fix")
+                    if not old_code or not new_code:
+                        continue
+
+                    success, msg = await self._apply_fix(ctx, target_file, old_code, new_code)
+
+                    await p.execute("""
+                        INSERT INTO ops.code_fixes
+                            (agent_id, run_id, target_file, fix_type, error_hash,
+                             original_error, diagnosis, patch, applied, model_used, rollback_patch)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    """, self.agent_id, self._run_id, target_file, "behavioral",
+                        fix_hash,
+                        f"False positive alert: {title}",
+                        root_cause,
+                        json.dumps({"old": old_code, "new": new_code}),
+                        success, CODEX_MODEL, old_code)
+
+                    if success:
+                        applied_any = True
+                        result["fp_fixed"] += 1
+                        await ctx.action(
+                            f"Auto-fixed false positive [{fix_type}]: {title[:60]}")
+                        # Mark the noisy findings as resolved
+                        await p.execute("""
+                            UPDATE ops.agent_findings
+                            SET status = 'resolved',
+                                resolved_by = 'code-doctor',
+                                resolved_at = now()
+                                                        WHERE agent_id = $1
+                                                            AND category = $2
+                              AND status = 'open'
+                              AND created_at > now() - interval '48 hours'
+                                                            AND title LIKE $3
+                                                """, agent_id, candidate["category"], f"{candidate.get('signature', title)}%")
+
+                if applied_any:
+                    self._fp_email_sections.append({
+                        "heading": f"🔧 False Positive Auto-Fixed: {agent_id}",
+                        "content": (
+                            f"Alert: {title}\n"
+                            f"Fired: {candidate['fire_count']}x in 48 h\n"
+                            f"Fix type: {fix_type} | Confidence: {confidence:.0%}\n"
+                            f"Root cause: {root_cause}\n\n"
+                            f"Patch applied to {target_file}"
+                        ),
+                        "type": "success",
+                    })
+            else:
+                # ── Propose for human review ───────────────
+                result["fp_emailed"] += 1
+                diff_text = "\n\n".join(
+                    f"OLD:\n{f.get('old_code','')[:300]}\n\nNEW:\n{f.get('new_code','')[:300]}"
+                    for f in fixes[:2]
+                )
+                self._fp_email_sections.append({
+                    "heading": f"🔍 False Positive — Human Review Needed: {agent_id}",
+                    "content": (
+                        f"Alert: {title}\n"
+                        f"Fired: {candidate['fire_count']}x in 48 h | "
+                        f"Corroboration: {candidate['corroboration_rate']:.0%}\n"
+                        f"Fix type: {fix_type} | Confidence: {confidence:.0%} "
+                        f"(below 85% auto-apply threshold)\n"
+                        f"Root cause: {root_cause}\n\n"
+                        f"Proposed patch (NOT applied):\n{diff_text}"
+                    ),
+                    "type": "warning",
+                })
+
+        return result
+
+    # ── AI-powered fix generation ─────────────────────────────
     async def _generate_fix(self, ctx: RunContext, agent_id: str,
                             error_text: str, parsed: dict,
                             schema_info: list[dict], file_content: str) -> dict:
-        """Use OpenAI Codex to diagnose and generate a fix."""
+        """Use Athena AI to diagnose and generate a fix."""
         # Build context about the actual schema
         schema_context = ""
         for si in schema_info:
             schema_context += f"\nTable {si['schema']}.{si['table']} columns: {', '.join(si['column_names'])}"
 
         all_tables = await self._get_all_tables(ctx)
+
+        # Extract the relevant section around the error line number
+        relevant_section = file_content
+        error_line = parsed.get('line')
+        if error_line and isinstance(error_line, int):
+            lines = file_content.splitlines()
+            start = max(0, error_line - 15)
+            end = min(len(lines), error_line + 15)
+            relevant_section = '\n'.join(
+                f"{i+1:4d}: {l}" for i, l in enumerate(lines[start:end], start=start)
+            )
+        elif len(file_content) > 8000:
+            # No line number — pass the full file but flag it
+            relevant_section = file_content
 
         prompt = f"""Analyze this agent error and generate a precise code fix.
 
@@ -252,21 +622,40 @@ ACTUAL DATABASE SCHEMA:
 ALL TABLES IN DATABASE:
 {', '.join(all_tables)}
 
-SOURCE FILE CONTENT (relevant section):
-{file_content[:6000]}
+SOURCE FILE — LINES AROUND ERROR (line numbers shown):
+{relevant_section}
 
-Generate a JSON diagnosis with exact code patches. The old_code must be an EXACT substring
-of the source file. The new_code must be a valid replacement.
+FULL SOURCE FILE (for context):
+{file_content}
+
+CRITICAL: The old_code field in your JSON response MUST be an EXACT verbatim multi-line
+substring of the source file above, including correct indentation and whitespace.
+Copy it character-for-character from the source. Do NOT paraphrase or restructure it.
+The new_code must be a valid drop-in replacement with the same indentation.
+
+Return a JSON object with exactly these fields:
+{{
+  "confidence": 0.0-1.0,
+  "root_cause": "technical explanation of the error cause",
+  "plain_english_summary": "2-3 sentences for a non-technical reader with NO code, NO attribute names, NO Python terminology. Describe: (1) what this agent is responsible for in the system, (2) what went wrong in plain everyday language, (3) what will be changed to fix it. Example: 'The Athena monitoring agent encountered an internal error while trying to communicate with another part of the system during a routine check. It was attempting to use a communication channel that was not available in its current environment. The connection logic will be updated to handle this situation gracefully without interrupting the run.'",
+  "fixes": [
+    {{
+      "description": "brief technical description of the code change",
+      "old_code": "EXACT verbatim code from source",
+      "new_code": "replacement with identical indentation"
+    }}
+  ]
+}}
 """
 
-        await self._log(ctx, "reasoning", "codex-prompt",
-            f"Sending diagnosis request to Codex for {agent_id}",
+        await self._log(ctx, "reasoning", "ai-prompt",
+            f"Sending diagnosis request to Athena AI for {agent_id}",
             {"model": CODEX_MODEL, "api": "responses", "reasoning_effort": "medium", "prompt_length": len(prompt)})
 
         diagnosis = await codex_json(self.instructions, prompt, model=CODEX_MODEL, effort="medium")
 
-        await self._log(ctx, "reasoning", "codex-response",
-            f"Codex diagnosis: {diagnosis.get('root_cause', 'unknown')[:200]}",
+        await self._log(ctx, "reasoning", "ai-response",
+            f"Athena AI diagnosis: {diagnosis.get('root_cause', 'unknown')[:200]}",
             {"diagnosis": diagnosis})
 
         return diagnosis
@@ -274,73 +663,20 @@ of the source file. The new_code must be a valid replacement.
     # ── Apply a fix to a file on disk ────────────────────────
     async def _apply_fix(self, ctx: RunContext, target_file: str,
                          old_code: str, new_code: str) -> tuple[bool, str]:
-        """Apply a code fix by replacing old_code with new_code in target_file."""
-        try:
-            # Read the file
-            p = await ctx.db()
-            file_result = await p.fetchval(
-                "SELECT pg_read_file($1)",
-                target_file
-            )
-        except Exception:
-            # pg_read_file might not work for agent files, use a different approach
-            file_result = None
-
-        # We'll apply fixes via direct file operations through the framework
-        # Since we're running on the same server, we can read/write files directly
-        try:
-            with open(target_file, 'r') as f:
-                content = f.read()
-        except Exception as e:
-            return False, f"Cannot read {target_file}: {e}"
-
-        if old_code not in content:
-            # Try with normalized whitespace
-            normalized_content = re.sub(r'[ \t]+', ' ', content)
-            normalized_old = re.sub(r'[ \t]+', ' ', old_code)
-            if normalized_old not in normalized_content:
-                return False, f"old_code not found in {target_file}"
-            # Find the actual text to replace
-            idx = normalized_content.find(normalized_old)
-            # Map back to original positions — too risky, bail
-            return False, "old_code match requires whitespace normalization — manual review needed"
-
-        # Validate new code syntax (for Python files)
-        if target_file.endswith('.py'):
-            # Try to parse just the new code in context
-            test_content = content.replace(old_code, new_code, 1)
-            try:
-                ast.parse(test_content)
-            except SyntaxError as e:
-                return False, f"Syntax error in patched file: {e}"
-
-        # Create backup
-        backup_path = target_file + ".bak"
-        try:
-            with open(backup_path, 'w') as f:
-                f.write(content)
-        except Exception as e:
-            return False, f"Cannot create backup: {e}"
-
-        # Apply the fix
-        new_content = content.replace(old_code, new_code, 1)
-        try:
-            with open(target_file, 'w') as f:
-                f.write(new_content)
-        except Exception as e:
-            # Rollback
-            with open(target_file, 'w') as f:
-                f.write(content)
-            return False, f"Write failed, rolled back: {e}"
-
-        return True, "Applied successfully"
+        """Delegate to ctx.patch_file() with line-number-prefix stripping fallback."""
+        # Fallback: strip line-number prefixes the LLM sometimes adds (e.g. " 99: code")
+        result = await ctx.patch_file(target_file, old_code, new_code)
+        if not result["success"] and "not found" in (result.get("error") or ""):
+            stripped = re.sub(r'^\s*\d+:\s', '', old_code, flags=re.MULTILINE)
+            if stripped != old_code:
+                result = await ctx.patch_file(target_file, stripped, new_code)
+        return result["success"], result.get("error") or "Applied successfully"
 
     # ── Read agent source file ───────────────────────────────
-    def _read_agent_file(self, filepath: str) -> str:
-        """Read an agent source file."""
+    async def _read_agent_file(self, ctx: RunContext, filepath: str) -> str:
+        """Delegate to ctx.read_file()."""
         try:
-            with open(filepath, 'r') as f:
-                return f.read()
+            return await ctx.read_file(filepath)
         except Exception as e:
             return f"# ERROR reading file: {e}"
 
@@ -356,11 +692,32 @@ of the source file. The new_code must be a valid replacement.
             "emails_sent": 0,
             "escalated": 0,
             "skipped_duplicate": 0,
+            "noise_candidates": 0,
+            "false_positives_fixed": 0,
         }
         max_fixes_per_run = 3
+        email_sections = []
+        applied_fixes = []
 
         await self._log(ctx, "info", "startup",
             "Code Doctor starting diagnostic scan")
+
+        # ── 0. Behavioral false positive detection ───────────
+        # Runs every cycle regardless of runtime errors.
+        # Finds repeatedly-firing alerts with no corroborating evidence,
+        # diagnoses the detection logic, and applies conservative fixes.
+        try:
+            fp_result = await self._detect_false_positive_alerts(ctx)
+            metrics["noise_candidates"]    = fp_result.get("noise_candidates", 0)
+            metrics["false_positives_fixed"] = fp_result.get("fp_fixed", 0)
+            metrics["fixes_applied"]       += fp_result.get("fp_fixed", 0)
+            if self._fp_email_sections:
+                email_sections.extend(self._fp_email_sections)
+            for s in self._fp_email_sections:
+                applied_fixes.append(f"fp:{s['heading'][:40]}")
+        except Exception as e:
+            await self._log(ctx, "warn", "false-positive-scan",
+                f"False positive scan failed: {e}")
 
         # ── 1. Find recent agent errors ──────────────────────
         errors = await ctx.query("""
@@ -381,8 +738,27 @@ of the source file. The new_code must be a valid replacement.
         if not errors:
             await self._log(ctx, "info", "scan",
                 "No agent errors in the last 2 hours — all clear")
+            # Still send email if false positive fixes were applied
+            if email_sections and metrics["false_positives_fixed"] > 0:
+                fp_summary = {
+                    "heading": "📊 Scan Summary",
+                    "content": (
+                        f"Runtime Errors: 0\n"
+                        f"Noise Candidates: {metrics['noise_candidates']}\n"
+                        f"False Positives Fixed: {metrics['false_positives_fixed']}"
+                    ),
+                    "type": "info",
+                }
+                email_sections.insert(0, fp_summary)
+                await self._notify(ctx, f"Code Doctor — {metrics['false_positives_fixed']} False Positive(s) Fixed", email_sections)
+                metrics["emails_sent"] += 1
             return {
-                "summary": "Code Doctor: No errors found — system healthy",
+                "summary": (
+                    f"Code Doctor: No runtime errors — "
+                    f"{metrics['false_positives_fixed']} false positive(s) fixed"
+                    if metrics["false_positives_fixed"] else
+                    "Code Doctor: No errors found — system healthy"
+                ),
                 "metrics": metrics,
             }
 
@@ -406,18 +782,20 @@ of the source file. The new_code must be a valid replacement.
             f"({metrics['skipped_duplicate']} duplicates)")
 
         # ── 3. Check for repeat offenders ────────────────────
+        # Use both hash AND error signature to catch re-hashed variants
+        # of the same root cause (e.g. same missing column, different run)
         fix_counts = {}
         for err, h in unique_errors:
+            sig = self._error_signature(err["error"] or "")
             existing = await ctx.query("""
                 SELECT COUNT(*) as count FROM ops.code_fixes
                 WHERE error_hash = $1
+                  AND applied = FALSE
+                  AND created_at > now() - interval '14 days'
             """, h)
             fix_counts[h] = existing[0]["count"] if existing else 0
 
         # ── 4. Diagnose and fix each unique error ────────────
-        applied_fixes = []
-        email_sections = []
-
         for err, error_hash in unique_errors:
             if metrics["fixes_applied"] >= max_fixes_per_run:
                 await self._log(ctx, "warn", "rate-limit",
@@ -503,9 +881,9 @@ of the source file. The new_code must be a valid replacement.
                 # Infer from agent_id
                 target_file = f"/opt/wdws/agents/agent_{agent_id.replace('-', '_')}.py"
 
-            file_content = self._read_agent_file(target_file)
+            file_content = await self._read_agent_file(ctx, target_file)
 
-            # ── Generate fix using Codex ─────────────────────
+            # ── Generate fix using Athena AI ──────────────────
             try:
                 diagnosis = await self._generate_fix(
                     ctx, agent_id, error_text, parsed,
@@ -513,8 +891,8 @@ of the source file. The new_code must be a valid replacement.
                 )
                 metrics["diagnosed"] += 1
             except Exception as e:
-                await self._log(ctx, "error", "codex-failure",
-                    f"Codex failed to generate diagnosis: {e}",
+                await self._log(ctx, "error", "ai-failure",
+                    f"Athena AI failed to generate diagnosis: {e}",
                     {"traceback": traceback.format_exc()})
                 await ctx.finding("warning", "diagnosis-failed",
                     f"Code Doctor could not diagnose {agent_id} error",
@@ -523,6 +901,7 @@ of the source file. The new_code must be a valid replacement.
 
             confidence = diagnosis.get("confidence", 0)
             root_cause = diagnosis.get("root_cause", "Unknown")
+            plain_english_summary = diagnosis.get("plain_english_summary", "")
             fixes = diagnosis.get("fixes", [])
 
             await self._log(ctx, "reasoning", "diagnosis-complete",
@@ -538,9 +917,17 @@ of the source file. The new_code must be a valid replacement.
                     {"diagnosis": diagnosis})
 
                 email_sections.append({
-                    "heading": f"🔍 Low-Confidence Diagnosis: {agent_id}",
-                    "content": f"Confidence: {confidence:.0%}\nRoot Cause: {root_cause}\n\n"
-                               f"Fixes proposed but NOT applied — manual review needed.",
+                    "heading": f"🔍 Issue Found — Needs Review: {agent_id}",
+                    "plain_summary": (
+                        f"A potential issue was detected in the {agent_id} agent. "
+                        f"The repair system was not confident enough to apply a fix automatically. "
+                        f"Human review is recommended before any action is taken."
+                    ),
+                    "content": (
+                        f"CONFIDENCE SCORE\n{confidence:.0%}  (threshold: 80% required for auto-repair)\n\n"
+                        f"ROOT CAUSE\n{root_cause}\n\n"
+                        f"STATUS\nFixes were proposed but NOT applied — awaiting manual review."
+                    ),
                     "type": "warning",
                 })
                 continue
@@ -574,15 +961,24 @@ of the source file. The new_code must be a valid replacement.
 
                 if success:
                     metrics["fixes_applied"] += 1
-                    await ctx.action(f"Applied Codex fix to {target_file}: {fix_desc}")
+                    await ctx.action(f"Applied Athena AI fix to {target_file}: {fix_desc}")
 
+                    _plain = (
+                        plain_english_summary
+                        or f"The {agent_id} agent encountered an error that was automatically detected and repaired by Code Doctor."
+                    )
                     email_sections.append({
                         "heading": f"✅ Auto-Fix Applied: {agent_id}",
-                        "content": f"File: {target_file}\n"
-                                   f"Root Cause: {root_cause}\n"
-                                   f"Fix: {fix_desc}\n\n"
-                                   f"Old Code:\n{old_code[:300]}\n\n"
-                                   f"New Code:\n{new_code[:300]}",
+                        "plain_summary": f"{_plain} The repair was applied automatically — no action is required.",
+                        "content": (
+                            f"FILE\n{target_file}\n\n"
+                            f"ROOT CAUSE\n{root_cause}\n\n"
+                            f"CHANGE DESCRIPTION\n{fix_desc}\n\n"
+                            f"{'\u2500' * 44}\n"
+                            f"BEFORE\n{old_code[:400]}\n\n"
+                            f"{'\u2500' * 44}\n"
+                            f"AFTER\n{new_code[:400]}"
+                        ),
                         "type": "success",
                     })
                 else:
@@ -591,17 +987,25 @@ of the source file. The new_code must be a valid replacement.
                         f"Fix failed for {target_file}: {message}",
                         {"fix": fix})
 
+                    _plain = (
+                        plain_english_summary
+                        or f"A bug was found in the {agent_id} agent."
+                    )
                     email_sections.append({
-                        "heading": f"❌ Fix Failed: {agent_id}",
-                        "content": f"File: {target_file}\n"
-                                   f"Reason: {message}\n"
-                                   f"Manual intervention needed.",
+                        "heading": f"❌ Fix Attempted: {agent_id}",
+                        "plain_summary": f"{_plain} The automatic repair could not be applied and requires manual attention.",
+                        "content": (
+                            f"FILE\n{target_file}\n\n"
+                            f"ROOT CAUSE\n{root_cause}\n\n"
+                            f"FAILURE REASON\n{message}\n\n"
+                            f"ACTION REQUIRED\nManual intervention needed — the automatic patch could not be written to the file."
+                        ),
                         "type": "error",
                     })
 
             applied_fixes.append(agent_id)
 
-        # ── 5. Notify agent system to reload ─────────────────
+        # ── 5. Notify agent system to reload and restart service ─
         if metrics["fixes_applied"] > 0:
             await self.send_message("orchestrator", "code-fix",
                 f"Code Doctor applied {metrics['fixes_applied']} fixes",
@@ -615,17 +1019,61 @@ of the source file. The new_code must be a valid replacement.
                 f"Notified orchestrator: {metrics['fixes_applied']} fixes applied, "
                 f"agents to restart: {applied_fixes}")
 
+            # Restart the agent service so patched code takes effect.
+            # 15-second delay lets this run finish writing DB records first.
+            restart = await ctx.shell(
+                "sleep 15 && systemctl restart wdws-agents",
+                timeout=20,
+            )
+            if restart["success"] or restart["stderr"] == f"TIMEOUT after 20s":
+                # Timeout here is expected — the sleep+restart outlives our timeout
+                await self._log(ctx, "info", "service-restart",
+                    "Scheduled wdws-agents restart in 15s to load patched code")
+            else:
+                await self._log(ctx, "warn", "service-restart",
+                    f"Restart command issue: {restart['stderr'][:200]}")
+
         # ── 6. Send email notification ───────────────────────
         if email_sections:
+            # Build a plain-English one-liner for the top of the email
+            fa = metrics["fixes_applied"]
+            ff = metrics["fixes_failed"]
+            ef = metrics["errors_found"]
+            if fa > 0 and ff == 0:
+                _action = (
+                    f"Code Doctor automatically repaired {fa} bug{'s' if fa > 1 else ''}. "
+                    f"No manual action needed."
+                )
+            elif fa > 0 and ff > 0:
+                _action = (
+                    f"Code Doctor repaired {fa} bug{'s' if fa > 1 else ''} automatically, "
+                    f"but {ff} repair{'s' if ff > 1 else ''} could not be applied and need manual review."
+                )
+            elif ff > 0:
+                _action = (
+                    f"Code Doctor found {ef} error{'s' if ef > 1 else ''} but could not apply repairs automatically. "
+                    f"Manual review is needed."
+                )
+            elif ef > 0:
+                _action = (
+                    f"Code Doctor found {ef} potential issue{'s' if ef > 1 else ''} but did not apply changes. "
+                    f"Review the details below."
+                )
+            else:
+                _action = "Code Doctor ran a scan. No issues were found — all systems healthy."
+
             summary_section = {
                 "heading": "📊 Scan Summary",
+                "plain_summary": _action,
                 "content": (
                     f"Errors Found: {metrics['errors_found']}\n"
                     f"Unique Errors: {len(unique_errors)}\n"
                     f"Fixes Applied: {metrics['fixes_applied']}\n"
                     f"Fixes Failed: {metrics['fixes_failed']}\n"
                     f"Escalated: {metrics['escalated']}\n"
-                    f"Duplicates Skipped: {metrics['skipped_duplicate']}"
+                    f"Duplicates Skipped: {metrics['skipped_duplicate']}\n"
+                    f"Noise Candidates: {metrics['noise_candidates']}\n"
+                    f"False Positives Fixed: {metrics['false_positives_fixed']}"
                 ),
                 "type": "info",
             }

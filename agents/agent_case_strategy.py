@@ -63,14 +63,14 @@ ANALYSIS APPROACH:
         # ── Get all active cases ─────────────────────────────
         cases = await ctx.query("""
             SELECT c.id, c.case_number, c.case_title, c.court, c.status,
-                   c.judge, c.filed_date,
+                   c.date_filed,
                    COUNT(DISTINCT cd.document_id) as doc_count,
                    MAX(d.created_at) as latest_doc
             FROM legal.cases c
             LEFT JOIN legal.case_documents cd ON c.id = cd.case_id
             LEFT JOIN core.documents d ON cd.document_id = d.id
             GROUP BY c.id, c.case_number, c.case_title, c.court, c.status,
-                     c.judge, c.filed_date
+                     c.date_filed
             ORDER BY c.case_number
         """)
         metrics["active_cases"] = len(cases)
@@ -114,15 +114,15 @@ ANALYSIS APPROACH:
         # ── Recent email activity by case ────────────────────
         email_activity = await ctx.query("""
             SELECT c.case_number,
-                   COUNT(*) FILTER (WHERE e.email_date > now() - interval '7 days') as emails_7d,
-                   COUNT(*) FILTER (WHERE e.email_date > now() - interval '1 day') as emails_24h,
-                   MAX(e.email_date) as latest_email
+                   COUNT(*) FILTER (WHERE e.date_sent > now() - interval '7 days') as emails_7d,
+                   COUNT(*) FILTER (WHERE e.date_sent > now() - interval '1 day') as emails_24h,
+                   MAX(e.date_sent) as latest_email
             FROM legal.email_metadata e
-            JOIN core.documents d ON d.id::text LIKE '%'
+            JOIN core.documents d ON e.document_id = d.id
             JOIN legal.case_documents cd ON d.id = cd.document_id
             JOIN legal.cases c ON cd.case_id = c.id
             GROUP BY c.case_number
-            HAVING COUNT(*) FILTER (WHERE e.email_date > now() - interval '7 days') > 0
+            HAVING COUNT(*) FILTER (WHERE e.date_sent > now() - interval '7 days') > 0
             ORDER BY emails_24h DESC
         """)
         metrics["cases_with_email_activity"] = len(email_activity)

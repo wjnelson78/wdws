@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Graph API Email Sync for WDWS Enterprise PostgreSQL.
+Graph API Email Sync for ACP Enterprise PostgreSQL.
 
 Connects to Microsoft Graph API using app-only (client credentials) auth,
 fetches emails to/from specified domains for both william@ and athena@
@@ -24,6 +24,10 @@ import asyncio
 import logging
 import time
 import argparse
+import subprocess
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
@@ -74,6 +78,9 @@ EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
+EMAILS_DIR = Path(os.getenv("EMAILS_DIR", "/opt/wdws/data/emails"))
+RAW_EMAILS_DIR = EMAILS_DIR / "emails"
+ATTACHMENTS_DIR = EMAILS_DIR / "attachments"
 
 # Mailboxes to scan
 MAILBOXES = [
@@ -81,10 +88,46 @@ MAILBOXES = [
     "athena@seattleseahawks.me",
 ]
 
-# Target domains — emails to/from these domains
+# Target domains — emails to/from these domains will be synced
 TARGET_DOMAINS = [
+    # Government / court
     "snoco.org",
     "co.snohomish.wa.us",
+    "courts.wa.gov",
+    "ca9.uscourts.gov",
+    # Opposing / defense counsel law firms
+    "workerlaw.com",        # Iglitzin, Cole, Fernando, Rozzano
+    "csdlaw.com",           # Becker, Davis, Dobbs, Paxton (same firm as cabornelaw)
+    "cabornelaw.com",       # alternate domain for CSD Law
+    "clearpathpllc.com",   # Daniel Fox
+    "fwwlaw.com",           # Lyman, Bertolino, Himes, Ross
+    "kantorlaw.net",        # B. Davis
+    "bn-lawyers.com",       # Suttell
+    "ogletree.com",         # Shapero, Shely
+    "ogletreedeakins.com",  # Shapero, Shely (alternate domain)
+    "lewisbrisbois.com",    # Hunter
+    "grsm.com",             # Jardine, Lockwood
+    "insleebest.com",       # Chambers, Lee
+    "jmblawyers.com",       # Baker
+    "uscanadalaw.com",      # Paul
+    "favros.com",           # James B. Meade
+    "cozen.com",            # Lee
+    "slwsd.com",            # Brees
+    "lldkb.com",            # tam@
+    "starbucks.com",        # Starbucks corp counsel
+    "wahbexchange.org",     # Washington Health Benefit Exchange (WAHBE) — ADA accommodation requests
+    "evergreenhealthcare.org", # EvergreenHealth — primary domain (MyChart, staff, donotreply)
+    "evergreenhealth.com",     # EvergreenHealth — staff email domain (rameeks@, cbredeson@, mshepler@)
+]
+
+# Specific email addresses to always include (regardless of domain)
+# Used for individual contacts whose domains aren't exclusively legal
+TARGET_SPECIFIC_EMAILS = [
+    "fayejwonglawfirm@gmail.com",   # GAL Faye Wong
+    "wjnelson78@gmail.com",         # William personal
+    "rcwcodebuster@gmail.com",      # self research
+    "rcwcodebuster@aol.com",        # self research
+    "rcwcodebuster@yahoo.com",      # self research
 ]
 
 # ============================================================
@@ -120,6 +163,163 @@ def extract_case_numbers_from_text(text: str) -> List[str]:
     for m in STATE_CASE_RE.finditer(text):
         found.add(m.group(0))
     return list(found)
+
+
+# ============================================================
+# Attachment OCR / text extraction
+# ============================================================
+
+EXTRACT_DIR = Path("/opt/wdws/data/extracted_attachments")
+OCR_DPI = 150
+
+# Skip these content types — they are not real attachments
+_SKIP_CONTENT_TYPES = {
+    "application/pkcs7-signature",
+    "application/x-pkcs7-signature",
+    "application/pgp-signature",
+    "application/ms-tnef",
+    "text/calendar",
+}
+
+# Skip tiny files (signatures, logos, spacer pixels)
+_MIN_ATTACHMENT_SIZE = 512   # bytes
+
+
+def _extract_pdf_text(pdf_path: Path) -> str:
+    """Extract text from PDF using OCR — page-by-page."""
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path, pdfinfo_from_path
+    except ImportError:
+        log.warning("pytesseract/pdf2image not installed — skipping PDF OCR")
+        return ""
+    try:
+        try:
+            info = pdfinfo_from_path(str(pdf_path))
+            num_pages = info.get("Pages", 0)
+        except Exception:
+            num_pages = 0
+
+        parts = []
+        if num_pages > 0:
+            for pn in range(1, num_pages + 1):
+                try:
+                    images = convert_from_path(
+                        str(pdf_path), dpi=OCR_DPI,
+                        first_page=pn, last_page=pn, thread_count=1,
+                    )
+                    if images:
+                        page_text = pytesseract.image_to_string(images[0])
+                        if page_text and page_text.strip():
+                            parts.append(f"[Page {pn}]\n{page_text}")
+                        del images
+                except Exception as e:
+                    log.debug(f"  OCR page {pn} failed: {e}")
+        else:
+            images = convert_from_path(str(pdf_path), dpi=OCR_DPI, thread_count=1)
+            for pn, img in enumerate(images, 1):
+                page_text = pytesseract.image_to_string(img)
+                if page_text and page_text.strip():
+                    parts.append(f"[Page {pn}]\n{page_text}")
+        return "\n\n".join(parts)
+    except Exception as e:
+        log.warning(f"OCR failed for {pdf_path.name}: {e}, trying pdftotext")
+        try:
+            result = subprocess.run(
+                ["pdftotext", "-layout", str(pdf_path), "-"],
+                capture_output=True, text=True, timeout=30,
+            )
+            return result.stdout
+        except Exception:
+            return ""
+
+
+def _extract_image_text(image_path: Path) -> str:
+    """Extract text from image using OCR."""
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(image_path)
+        return pytesseract.image_to_string(img)
+    except Exception as e:
+        log.error(f"Image OCR failed for {image_path.name}: {e}")
+        return ""
+
+
+def _extract_docx_text(docx_path: Path) -> str:
+    """Extract text from DOCX file."""
+    try:
+        with zipfile.ZipFile(docx_path) as z:
+            with z.open("word/document.xml") as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                texts = []
+                for p in root.findall(".//w:p", ns):
+                    line = "".join(
+                        (r.text or "") for r in p.findall(".//w:t", ns)
+                    )
+                    if line:
+                        texts.append(line)
+                return "\n".join(texts)
+    except Exception as e:
+        log.error(f"DOCX extraction failed for {docx_path.name}: {e}")
+        return ""
+
+
+def extract_text_from_binary(filename: str, content_type: str, data: bytes) -> Tuple[str, str]:
+    """
+    Extract text from a binary attachment.
+    Returns (extracted_text, extraction_method).
+    Writes temp file → OCR → returns text → cleans up.
+    """
+    if not data:
+        return "", "empty"
+
+    suffix = Path(filename).suffix.lower() if filename else ""
+
+    # Write to temp file for OCR tools that need a path
+    EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r'[^\w\-\.]', '_', filename or "attachment")
+    tmp_path = EXTRACT_DIR / f"_tmp_{uuid.uuid4().hex[:8]}_{safe_name}"
+    try:
+        tmp_path.write_bytes(data)
+
+        ct = (content_type or "").lower()
+        if ct == "application/pdf" or suffix == ".pdf":
+            text = _extract_pdf_text(tmp_path)
+            method = "ocr_pdf_150dpi"
+        elif ct.startswith("image/") or suffix in (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"):
+            text = _extract_image_text(tmp_path)
+            method = "ocr_image"
+        elif ct == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or suffix == ".docx":
+            text = _extract_docx_text(tmp_path)
+            method = "docx_xml"
+        elif ct in ("text/plain", "text/csv", "text/html") or suffix in (".txt", ".csv", ".html", ".htm"):
+            text = data.decode("utf-8", errors="ignore")
+            method = "text_direct"
+        elif suffix in (".doc", ".xls", ".xlsx", ".ppt", ".pptx"):
+            # Try as PDF fallback first (some .doc are actually PDFs)
+            text = _extract_pdf_text(tmp_path)
+            method = "ocr_pdf_fallback" if text.strip() else "unsupported"
+        else:
+            # Unknown — try PDF then image OCR
+            text = _extract_pdf_text(tmp_path)
+            if not text.strip():
+                text = _extract_image_text(tmp_path)
+                method = "ocr_image_fallback"
+            else:
+                method = "ocr_pdf_fallback"
+
+        return text.strip() if text else "", method
+    except Exception as e:
+        log.error(f"  Text extraction failed for {filename}: {e}")
+        return "", f"error: {str(e)[:80]}"
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -380,7 +580,11 @@ class GraphClient:
 # ============================================================
 
 def parse_mime_bytes(mime_data: bytes) -> Optional[Dict]:
-    """Parse MIME bytes into structured email data."""
+    """Parse MIME bytes into structured email data, including attachments.
+    
+    Returns dict with keys: headers, body, full_text, attachments.
+    attachments is a list of (filename, content_type, raw_bytes) tuples.
+    """
     try:
         msg = email_lib.message_from_bytes(mime_data, policy=policy.default)
 
@@ -389,6 +593,7 @@ def parse_mime_bytes(mime_data: bytes) -> Optional[Dict]:
             "from": str(msg.get("From", "")),
             "to": str(msg.get("To", "")),
             "cc": str(msg.get("Cc", "")),
+            "bcc": str(msg.get("Bcc", "")),
             "subject": str(msg.get("Subject", "")),
             "date": str(msg.get("Date", "")),
             "in_reply_to": str(msg.get("In-Reply-To", "")).strip(),
@@ -397,12 +602,44 @@ def parse_mime_bytes(mime_data: bytes) -> Optional[Dict]:
 
         body = ""
         has_attachments = False
+        attachments: List[Tuple[str, str, bytes]] = []
+
         if msg.is_multipart():
             for part in msg.walk():
-                disp = part.get("Content-Disposition", "")
-                if "attachment" in disp.lower() or (part.get_filename()):
+                disp = str(part.get("Content-Disposition", ""))
+                fname = part.get_filename()
+
+                if "attachment" in disp.lower() or fname:
                     has_attachments = True
+
+                    # Extract the attachment binary
+                    ct = part.get_content_type() or "application/octet-stream"
+
+                    # Skip signatures, calendar invites, and other non-document types
+                    if ct.lower() in _SKIP_CONTENT_TYPES:
+                        continue
+
+                    payload = part.get_payload(decode=True)
+                    if not payload:
+                        continue
+
+                    # Skip tiny files (logos, spacer pixels, tracking pixels)
+                    if len(payload) < _MIN_ATTACHMENT_SIZE:
+                        continue
+
+                    if not fname:
+                        ext = {
+                            "application/pdf": ".pdf",
+                            "image/png": ".png",
+                            "image/jpeg": ".jpg",
+                            "text/plain": ".txt",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+                        }.get(ct, ".bin")
+                        fname = f"attachment{ext}"
+
+                    attachments.append((fname, ct, payload))
                     continue
+
                 if part.get_content_type() == "text/plain":
                     try:
                         body += part.get_content()
@@ -424,11 +661,18 @@ def parse_mime_bytes(mime_data: bytes) -> Optional[Dict]:
             f"Subject: {headers['subject']}\n"
             f"From: {headers['from']}\n"
             f"To: {headers['to']}\n"
+            f"Cc: {headers['cc']}\n"
+            f"Bcc: {headers['bcc']}\n"
             f"Date: {headers['date']}\n\n"
             f"{body}"
         )
 
-        return {"headers": headers, "body": body, "full_text": full_text}
+        return {
+            "headers": headers,
+            "body": body,
+            "full_text": full_text,
+            "attachments": attachments,
+        }
     except Exception as e:
         log.error(f"MIME parse failed: {e}")
         return None
@@ -441,35 +685,90 @@ def determine_email_direction(from_addr: str, mailbox: str) -> str:
     return "inbound"
 
 
+def _extract_address_domain(address: str) -> str:
+    """Extract normalized domain portion from an email header/address string."""
+    value = (address or "").strip().lower()
+    if not value:
+        return ""
+
+    match = re.search(r"<([^>]+)>", value)
+    if match:
+        value = match.group(1).strip().lower()
+
+    if "@" not in value:
+        return ""
+    return value.rsplit("@", 1)[-1]
+
+
+def _domain_pattern_matches(address_domain: str, pattern: str) -> bool:
+    """Match exact domains and wildcard patterns like *.uscourts.gov."""
+    address_domain = (address_domain or "").strip().lower()
+    pattern = (pattern or "").strip().lower()
+    if not address_domain or not pattern:
+        return False
+
+    if pattern.startswith("*."):
+        base = pattern[2:]
+        return address_domain == base or address_domain.endswith(f".{base}")
+
+    return address_domain == pattern
+
+
 def address_matches_domains(address: str, domains: List[str]) -> bool:
     """Check if an email address belongs to one of the target domains."""
-    addr_lower = address.lower()
+    addr_domain = _extract_address_domain(address)
     for domain in domains:
-        if f"@{domain.lower()}" in addr_lower:
+        if _domain_pattern_matches(addr_domain, domain):
             return True
     return False
 
 
-def email_involves_domains(msg_data: dict, domains: List[str]) -> bool:
-    """Check if any sender or recipient is from a target domain."""
+def address_matches_specific(address: str, specific_emails: List[str]) -> bool:
+    """Check if an email address matches one of the specific target addresses."""
+    addr_lower = address.lower().strip()
+    return addr_lower in {e.lower() for e in specific_emails}
+
+
+def email_involves_targets(
+    msg_data: dict,
+    domains: List[str],
+    specific_emails: Optional[List[str]] = None,
+) -> bool:
+    """Check if any sender or recipient matches a target domain or specific address."""
+    specific_emails = specific_emails or []
+
+    def _matches(addr: str) -> bool:
+        return address_matches_domains(addr, domains) or address_matches_specific(addr, specific_emails)
+
     # Check from
     from_addr = msg_data.get("from", {}).get("emailAddress", {}).get("address", "")
-    if address_matches_domains(from_addr, domains):
+    if _matches(from_addr):
         return True
 
     # Check to recipients
     for recip in msg_data.get("toRecipients", []):
         addr = recip.get("emailAddress", {}).get("address", "")
-        if address_matches_domains(addr, domains):
+        if _matches(addr):
             return True
 
     # Check cc recipients
     for recip in msg_data.get("ccRecipients", []):
         addr = recip.get("emailAddress", {}).get("address", "")
-        if address_matches_domains(addr, domains):
+        if _matches(addr):
+            return True
+
+    # Check bcc recipients
+    for recip in msg_data.get("bccRecipients", []):
+        addr = recip.get("emailAddress", {}).get("address", "")
+        if _matches(addr):
             return True
 
     return False
+
+
+# Keep old name as alias for backward compat
+def email_involves_domains(msg_data: dict, domains: List[str]) -> bool:
+    return email_involves_targets(msg_data, domains, TARGET_SPECIFIC_EMAILS)
 
 
 # ============================================================
@@ -493,6 +792,104 @@ def _parse_email_date(date_str: str) -> Optional[datetime]:
             return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         except Exception:
             return None
+
+
+def _safe_mailbox_dir_name(mailbox: str) -> str:
+    """Convert an email address into the historical mailbox directory name."""
+    mailbox = (mailbox or "unknown").strip().lower()
+    return re.sub(r"[^a-z0-9._-]", "_", mailbox.replace("@", "_"))
+
+
+def _safe_subject_fragment(subject: str, max_len: int = 80) -> str:
+    """Create a filesystem-safe, human-readable subject fragment."""
+    text = (subject or "No Subject").strip()
+    text = re.sub(r"[^\w\s\-.,()]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return (text[:max_len].rstrip(" .-_")) or "No Subject"
+
+
+def _safe_attachment_filename(filename: str) -> str:
+    """Create a filesystem-safe attachment filename while preserving extension."""
+    name = Path(filename or "attachment.bin").name.strip() or "attachment.bin"
+    name = re.sub(r"[^\w\s\-.,()]+", "_", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name[:180].rstrip(" .-_") or "attachment.bin"
+
+
+def persist_graph_mime_copy(
+    mailbox: str,
+    mime_data: bytes,
+    subject: str,
+    date_hint: Optional[str],
+) -> Optional[str]:
+    """Save a Graph-downloaded MIME message to the local historical .eml archive."""
+    if not mime_data:
+        return None
+
+    mailbox_dir = RAW_EMAILS_DIR / _safe_mailbox_dir_name(mailbox)
+    mailbox_dir.mkdir(parents=True, exist_ok=True)
+
+    date_prefix = (date_hint or datetime.now(timezone.utc).strftime("%Y-%m-%d"))[:10]
+    base_name = f"{date_prefix} - {_safe_subject_fragment(subject)}"
+    base_name = base_name[:180].rstrip(" .-_") or f"{date_prefix} - email"
+
+    candidate = mailbox_dir / f"{base_name}.eml"
+    digest = hashlib.sha256(mime_data).hexdigest()[:10]
+    counter = 1
+
+    while candidate.exists():
+        try:
+            if candidate.read_bytes() == mime_data:
+                return str(candidate)
+        except Exception:
+            pass
+        candidate = mailbox_dir / f"{base_name}_{counter}_{digest}.eml"
+        counter += 1
+
+    candidate.write_bytes(mime_data)
+    return str(candidate)
+
+
+def persist_graph_attachment_copy(
+    mailbox: str,
+    filename: str,
+    data: bytes,
+    email_subject: str,
+    date_hint: Optional[str],
+) -> Optional[str]:
+    """Save an attachment binary to the local historical archive."""
+    if not data:
+        return None
+
+    mailbox_dir = ATTACHMENTS_DIR / _safe_mailbox_dir_name(mailbox)
+    mailbox_dir.mkdir(parents=True, exist_ok=True)
+
+    date_prefix = (date_hint or datetime.now(timezone.utc).strftime("%Y-%m-%d"))[:10]
+    subject_dir = f"{date_prefix} - {_safe_subject_fragment(email_subject, max_len=60)}"
+    subject_dir = subject_dir[:180].rstrip(" .-_") or f"{date_prefix} - attachments"
+
+    attachment_dir = mailbox_dir / subject_dir
+    attachment_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = _safe_attachment_filename(filename)
+    candidate = attachment_dir / safe_name
+    digest = hashlib.sha256(data).hexdigest()[:10]
+    counter = 1
+
+    while candidate.exists():
+        try:
+            if candidate.read_bytes() == data:
+                return str(candidate)
+        except Exception:
+            pass
+
+        stem = candidate.stem[:120].rstrip(" .-_") or "attachment"
+        suffix = candidate.suffix
+        candidate = attachment_dir / f"{stem}_{counter}_{digest}{suffix}"
+        counter += 1
+
+    candidate.write_bytes(data)
+    return str(candidate)
 
 
 # ============================================================
@@ -570,6 +967,307 @@ async def write_email_document(pool: asyncpg.Pool, doc: IngestedDocument, embedd
                 )
 
 
+def _match_existing_attachment_record(
+    existing_rows: List[Dict],
+    filename: str,
+    content_type: str,
+    file_size: int,
+) -> Tuple[Optional[Dict], Optional[int]]:
+    """Find the best existing attachment row for a MIME attachment."""
+    norm_name = (filename or "").strip().lower()
+    norm_type = (content_type or "").strip().lower()
+
+    best_idx = None
+    best_row = None
+    best_score = -1
+
+    for idx, row in enumerate(existing_rows):
+        row_name = (row.get("filename") or "").strip().lower()
+        row_type = (row.get("content_type") or "").strip().lower()
+        row_size = row.get("file_size") or 0
+
+        score = -1
+        if norm_name and row_name == norm_name and norm_type and row_type == norm_type and row_size == file_size:
+            score = 4
+        elif norm_name and row_name == norm_name and row_size == file_size:
+            score = 3
+        elif norm_name and row_name == norm_name:
+            score = 2
+        elif norm_type and row_type == norm_type and row_size == file_size:
+            score = 1
+
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+            best_row = row
+
+    if best_score < 0:
+        return None, None
+    return best_row, best_idx
+
+
+async def process_email_attachments(
+    pool: asyncpg.Pool,
+    embedder: EmbeddingClient,
+    chunker: TextChunker,
+    email_doc_id: str,
+    email_source_path: str,
+    email_subject: str,
+    attachments: List[Tuple[str, str, bytes]],
+    existing_attachment_rows: Optional[List[Dict]] = None,
+    mailbox: Optional[str] = None,
+    email_date: Optional[str] = None,
+) -> int:
+    """
+    Process and ingest attachments extracted from a MIME email.
+    
+    For each attachment:
+      1. OCR / extract text
+      2. Create child document in core.documents + chunks with embeddings
+      3. Insert into legal.email_attachments linking parent email
+      4. Create core.document_relationships record
+    
+    Returns number of attachments successfully processed.
+    """
+    if not attachments:
+        return 0
+
+    processed = 0
+    existing_attachment_rows = [dict(r) for r in (existing_attachment_rows or [])]
+
+    for fname, content_type, data in attachments:
+        file_size = len(data)
+        existing_row, existing_idx = _match_existing_attachment_record(
+            existing_attachment_rows,
+            fname,
+            content_type,
+            file_size,
+        )
+        if existing_idx is not None:
+            existing_attachment_rows.pop(existing_idx)
+
+        if existing_row and existing_row.get("child_doc_id"):
+            log.info(f"    📎 {fname} ({file_size:,} bytes) — already linked, skipping")
+            continue
+
+        att_id = existing_row.get("id") if existing_row else uuid.uuid4()
+        local_attachment_path = persist_graph_attachment_copy(
+            mailbox=mailbox or "unknown",
+            filename=fname,
+            data=data,
+            email_subject=email_subject,
+            date_hint=email_date,
+        )
+        att_source_path = local_attachment_path or f"{email_source_path}/attachment/{fname}"
+
+        try:
+            # 1. OCR / extract text
+            extracted_text, extraction_method = extract_text_from_binary(
+                fname, content_type, data
+            )
+            child_doc_id = existing_row.get("child_doc_id") if existing_row else None
+            if not child_doc_id:
+                child_doc_id = uuid.uuid4()
+
+            title = f"{fname}"
+            if email_subject:
+                title = f"{fname} (from: {email_subject[:80]})"
+
+            metadata = {
+                "parent_email_doc_id": email_doc_id,
+                "attachment_id": str(att_id),
+                "extraction_method": extraction_method,
+                "source": "graph_api",
+                "parent_email_source_path": email_source_path,
+                "local_attachment_path": local_attachment_path,
+                "original_filename": fname,
+            }
+
+            if not extracted_text or len(extracted_text.strip()) < 20:
+                # Still create a child document so the original binary is retrievable
+                log.info(f"    📎 {fname} ({file_size:,} bytes) — no extractable text")
+                placeholder_text = (
+                    f"Attachment filename: {fname}\n"
+                    f"Content-Type: {content_type or 'application/octet-stream'}\n"
+                    f"File size: {file_size}\n"
+                    f"Extraction method: {extraction_method}\n"
+                    f"Original binary stored locally for retrieval."
+                )
+
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        await conn.execute("""
+                            INSERT INTO core.documents
+                                (id, domain, source_path, filename, document_type,
+                                 title, content_hash, total_chunks, full_content, metadata)
+                            VALUES ($1, 'legal', $2, $3, 'email_attachment', $4,
+                                    $5, 0, $6, $7::jsonb)
+                            ON CONFLICT (id) DO UPDATE
+                            SET source_path = EXCLUDED.source_path,
+                                filename = EXCLUDED.filename,
+                                title = EXCLUDED.title,
+                                full_content = EXCLUDED.full_content,
+                                metadata = EXCLUDED.metadata
+                        """,
+                            child_doc_id,
+                            att_source_path,
+                            fname,
+                            title,
+                            hashlib.sha256(data).hexdigest()[:16],
+                            placeholder_text,
+                            json.dumps(metadata),
+                        )
+
+                        await conn.execute("""
+                            INSERT INTO core.document_relationships
+                                (source_document_id, target_document_id, relationship_type)
+                            VALUES ($1, $2, 'has_attachment')
+                            ON CONFLICT DO NOTHING
+                        """, uuid.UUID(email_doc_id), child_doc_id)
+
+                        if existing_row:
+                            await conn.execute("""
+                                UPDATE legal.email_attachments
+                                SET child_doc_id = $2,
+                                    filename = $3,
+                                    content_type = $4,
+                                    file_size = $5,
+                                    extracted_text = $6,
+                                    extraction_method = $7,
+                                    is_processed = true
+                                WHERE id = $1
+                            """,
+                                att_id, child_doc_id, fname, content_type, file_size,
+                                extracted_text or "", extraction_method,
+                            )
+                        else:
+                            await conn.execute("""
+                                INSERT INTO legal.email_attachments
+                                    (id, email_doc_id, child_doc_id, filename, content_type,
+                                     file_size, extracted_text, extraction_method, is_processed)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+                                ON CONFLICT DO NOTHING
+                            """,
+                                att_id, uuid.UUID(email_doc_id), child_doc_id,
+                                fname, content_type, file_size,
+                                extracted_text or "", extraction_method,
+                            )
+                processed += 1
+                continue
+
+            # 2. Chunk the extracted text
+            chunks_text = chunker.split(extracted_text)
+            if not chunks_text:
+                chunks_text = [extracted_text[:CHUNK_SIZE]]
+
+            # 3. Embed
+            try:
+                embeddings = await embedder.embed_batch(chunks_text)
+            except Exception as e:
+                log.warning(f"    Embedding failed for attachment {fname}: {e}")
+                embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunks_text)
+
+            # 4. Create child document
+            content_hash = hashlib.sha256(extracted_text.encode()).hexdigest()[:16]
+            case_numbers = extract_case_numbers_from_text(extracted_text[:5000])
+
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    # 4a. core.documents
+                    await conn.execute("""
+                        INSERT INTO core.documents
+                            (id, domain, source_path, filename, document_type,
+                             title, content_hash, total_chunks, full_content, metadata)
+                        VALUES ($1, 'legal', $2, $3, 'email_attachment', $4,
+                                $5, $6, $7, $8::jsonb)
+                        ON CONFLICT (id) DO NOTHING
+                    """,
+                        child_doc_id, att_source_path, fname, title,
+                        content_hash, len(chunks_text),
+                        extracted_text[:500000],
+                        json.dumps(metadata),
+                    )
+
+                    # 4b. core.document_chunks with embeddings
+                    for i, (chunk_text, emb) in enumerate(zip(chunks_text, embeddings)):
+                        chunk_id = hashlib.md5(
+                            f"att:{att_id}:{i}".encode()
+                        ).hexdigest()
+                        await conn.execute("""
+                            INSERT INTO core.document_chunks
+                                (id, document_id, chunk_index, total_chunks,
+                                 content, embedding, metadata)
+                            VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                            ON CONFLICT (id) DO NOTHING
+                        """,
+                            chunk_id, child_doc_id, i, len(chunks_text),
+                            chunk_text, _vec_literal(emb),
+                            json.dumps({"case_numbers": case_numbers}),
+                        )
+
+                    # 4c. Link to legal cases
+                    for case_num in case_numbers:
+                        row = await conn.fetchrow(
+                            "SELECT id FROM legal.cases WHERE case_number = $1",
+                            case_num,
+                        )
+                        if row:
+                            await conn.execute("""
+                                INSERT INTO legal.case_documents (case_id, document_id)
+                                VALUES ($1, $2) ON CONFLICT DO NOTHING
+                            """, row["id"], child_doc_id)
+
+                    # 4d. Document relationship: email → attachment
+                    await conn.execute("""
+                        INSERT INTO core.document_relationships
+                            (source_document_id, target_document_id, relationship_type)
+                        VALUES ($1, $2, 'has_attachment')
+                        ON CONFLICT DO NOTHING
+                    """, uuid.UUID(email_doc_id), child_doc_id)
+
+                    # 4e. legal.email_attachments record
+                    if existing_row:
+                        await conn.execute("""
+                            UPDATE legal.email_attachments
+                            SET child_doc_id = $2,
+                                filename = $3,
+                                content_type = $4,
+                                file_size = $5,
+                                extracted_text = $6,
+                                extraction_method = $7,
+                                is_processed = true
+                            WHERE id = $1
+                        """,
+                            att_id, child_doc_id, fname, content_type,
+                            file_size, extracted_text[:100000], extraction_method,
+                        )
+                    else:
+                        await conn.execute("""
+                            INSERT INTO legal.email_attachments
+                                (id, email_doc_id, child_doc_id, filename,
+                                 content_type, file_size, extracted_text,
+                                 extraction_method, is_processed)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+                            ON CONFLICT DO NOTHING
+                        """,
+                            att_id, uuid.UUID(email_doc_id), child_doc_id,
+                            fname, content_type, file_size,
+                            extracted_text[:100000], extraction_method,
+                        )
+
+            text_len = len(extracted_text)
+            log.info(
+                f"    📎 {fname} ({file_size:,} bytes) → "
+                f"{text_len:,} chars, {len(chunks_text)} chunks [{extraction_method}]"
+            )
+            processed += 1
+
+        except Exception as e:
+            log.error(f"    ✗ Attachment failed: {fname}: {e}")
+
+    return processed
+
+
 # ============================================================
 # Main sync logic
 # ============================================================
@@ -582,30 +1280,145 @@ async def get_existing_message_ids(pool: asyncpg.Pool) -> Set[str]:
     return {r["message_id"] for r in rows}
 
 
-async def fetch_domain_emails(
+async def _fetch_recent_target_emails(
     graph: GraphClient,
     mailbox: str,
     domains: List[str],
+    specific_emails: List[str],
+    since: str,
+    existing_msg_ids: Set[str],
+) -> List[Tuple[dict, bytes]]:
+    """Fetch recent mailbox messages and filter locally across from/to/cc/bcc."""
+    results: List[Tuple[dict, bytes]] = []
+    seen_ids: Set[str] = set()
+    skipped_existing = 0
+    matched = 0
+    scanned = 0
+    page_count = 0
+
+    next_link = None
+    filter_expr = f"receivedDateTime ge {since}T00:00:00Z"
+    select = (
+        "id,subject,from,toRecipients,ccRecipients,bccRecipients,"
+        "receivedDateTime,bodyPreview,hasAttachments,internetMessageId"
+    )
+
+    log.info(f"  📧 Scanning recent mail in {mailbox} since {since} across from/to/cc/bcc...")
+
+    while True:
+        if next_link:
+            data = await graph._get(next_link)
+        else:
+            data = await graph.list_messages(
+                mailbox=mailbox,
+                filter_expr=filter_expr,
+                top=250,
+                order_by="receivedDateTime desc",
+                select=select,
+            )
+
+        if not data:
+            break
+
+        messages = data.get("value", [])
+        if not messages:
+            break
+
+        for msg in messages:
+            scanned += 1
+            graph_id = msg.get("id", "")
+            inet_msg_id = msg.get("internetMessageId", "")
+
+            if graph_id in seen_ids:
+                continue
+            seen_ids.add(graph_id)
+
+            if inet_msg_id and inet_msg_id in existing_msg_ids:
+                skipped_existing += 1
+                continue
+
+            if not email_involves_targets(msg, domains, specific_emails):
+                continue
+
+            mime = await graph.get_message_mime(mailbox, graph_id)
+            if mime:
+                results.append((msg, mime))
+                matched += 1
+
+            if matched % 50 == 0 and matched > 0:
+                await asyncio.sleep(1)
+
+        page_count += 1
+        next_link = data.get("@odata.nextLink")
+        if not next_link:
+            break
+
+        log.info(f"    Page {page_count}: {len(messages)} messages, {matched} matches so far...")
+
+    log.info(
+        f"    ✓ mailbox scan complete: {matched} new matching emails fetched"
+        f" from {scanned} recent messages"
+        + (f", {skipped_existing} already in DB" if skipped_existing else "")
+    )
+
+    return results
+
+
+async def fetch_target_emails(
+    graph: GraphClient,
+    mailbox: str,
+    domains: List[str],
+    specific_emails: Optional[List[str]] = None,
     since: Optional[str] = None,
     existing_msg_ids: Set[str] = None,
 ) -> List[Tuple[dict, bytes]]:
     """
-    Fetch all emails involving target domains from a mailbox.
+    Fetch all emails involving target domains or specific email addresses.
 
-    Uses Graph API $filter with OR conditions on sender/recipient domains.
-    Falls back to iterating through all messages if filter fails.
+    Uses Graph API $search for each configured target, then verifies the
+    message actually matches the configured domains / email addresses.
     """
     existing_msg_ids = existing_msg_ids or set()
+    specific_emails = specific_emails or []
+
+    if since:
+        return await _fetch_recent_target_emails(
+            graph=graph,
+            mailbox=mailbox,
+            domains=domains,
+            specific_emails=specific_emails,
+            since=since,
+            existing_msg_ids=existing_msg_ids,
+        )
+
     results: List[Tuple[dict, bytes]] = []  # (metadata, mime_bytes)
     seen_ids: Set[str] = set()
 
-    # Build search queries for each domain
-    # Graph API $search is the most reliable way to find emails by domain
+    search_targets: List[Tuple[str, str]] = []
+    seen_search_terms: Set[Tuple[str, str]] = set()
+
     for domain in domains:
-        log.info(f"  📧 Searching {mailbox} for *@{domain}...")
+        key = ("domain", domain.lower().strip())
+        if key[1] and key not in seen_search_terms:
+            seen_search_terms.add(key)
+            search_targets.append(("domain", domain.strip()))
+
+    for email_addr in specific_emails:
+        key = ("email_address", email_addr.lower().strip())
+        if key[1] and key not in seen_search_terms:
+            seen_search_terms.add(key)
+            search_targets.append(("email_address", email_addr.strip()))
+
+    for target_type, target_value in search_targets:
+        search_value = target_value[2:] if target_type == "domain" and target_value.startswith("*.") else target_value
+
+        if target_type == "domain":
+            log.info(f"  📧 Searching {mailbox} for *@{target_value}...")
+        else:
+            log.info(f"  📧 Searching {mailbox} for {target_value}...")
 
         page_count = 0
-        fetched_this_domain = 0
+        fetched_this_target = 0
         skipped_existing = 0
         next_link = None
 
@@ -614,13 +1427,12 @@ async def fetch_domain_emails(
                 # Follow @odata.nextLink for pagination
                 data = await graph._get(next_link)
             else:
-                # Use $search to find emails involving this domain
                 # Search looks at from, to, cc, subject, and body
                 data = await graph.list_messages(
                     mailbox=mailbox,
-                    search=domain,
+                    search=search_value,
                     top=250,
-                    select="id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,internetMessageId",
+                    select="id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,hasAttachments,internetMessageId",
                 )
 
             if not data:
@@ -634,7 +1446,7 @@ async def fetch_domain_emails(
                 graph_id = msg.get("id", "")
                 inet_msg_id = msg.get("internetMessageId", "")
 
-                # Skip if we've seen this in another domain search
+                # Skip if we've seen this in another target search
                 if graph_id in seen_ids:
                     continue
                 seen_ids.add(graph_id)
@@ -644,8 +1456,8 @@ async def fetch_domain_emails(
                     skipped_existing += 1
                     continue
 
-                # Verify this email actually involves a target domain
-                if not email_involves_domains(msg, domains):
+                # Verify this email actually involves a target domain or specific address
+                if not email_involves_targets(msg, domains, specific_emails):
                     continue
 
                 # Apply date filter if specified
@@ -658,10 +1470,10 @@ async def fetch_domain_emails(
                 mime = await graph.get_message_mime(mailbox, graph_id)
                 if mime:
                     results.append((msg, mime))
-                    fetched_this_domain += 1
+                    fetched_this_target += 1
 
                 # Brief throttle to avoid hitting rate limits
-                if fetched_this_domain % 50 == 0 and fetched_this_domain > 0:
+                if fetched_this_target % 50 == 0 and fetched_this_target > 0:
                     await asyncio.sleep(1)
 
             # Check for next page
@@ -671,14 +1483,32 @@ async def fetch_domain_emails(
             if not next_link:
                 break
 
-            log.info(f"    Page {page_count}: {len(messages)} messages, {fetched_this_domain} new so far...")
+            log.info(f"    Page {page_count}: {len(messages)} messages, {fetched_this_target} new so far...")
 
         log.info(
-            f"    ✓ {domain}: {fetched_this_domain} new emails fetched"
+            f"    ✓ {target_value}: {fetched_this_target} new emails fetched"
             + (f", {skipped_existing} already in DB" if skipped_existing else "")
         )
 
     return results
+
+
+async def fetch_domain_emails(
+    graph: GraphClient,
+    mailbox: str,
+    domains: List[str],
+    since: Optional[str] = None,
+    existing_msg_ids: Set[str] = None,
+) -> List[Tuple[dict, bytes]]:
+    """Backward-compatible wrapper for older callers."""
+    return await fetch_target_emails(
+        graph,
+        mailbox,
+        domains,
+        specific_emails=TARGET_SPECIFIC_EMAILS,
+        since=since,
+        existing_msg_ids=existing_msg_ids,
+    )
 
 
 async def process_and_ingest_email(
@@ -705,17 +1535,45 @@ async def process_and_ingest_email(
         seen_message_ids.add(msg_id)
 
     direction = determine_email_direction(h["from"], mailbox)
+
+    graph_cc = ", ".join(
+        f"{r.get('emailAddress', {}).get('name', '')} <{r.get('emailAddress', {}).get('address', '')}>".strip()
+        for r in (msg_meta.get("ccRecipients") or [])
+        if r.get("emailAddress", {}).get("address")
+    )
+    graph_bcc = ", ".join(
+        f"{r.get('emailAddress', {}).get('name', '')} <{r.get('emailAddress', {}).get('address', '')}>".strip()
+        for r in (msg_meta.get("bccRecipients") or [])
+        if r.get("emailAddress", {}).get("address")
+    )
+    if graph_cc and f"Cc: {graph_cc}" not in parsed["full_text"]:
+        parsed["full_text"] = parsed["full_text"].replace(
+            f"Date: {h['date']}\n\n",
+            f"Cc: {graph_cc}\nDate: {h['date']}\n\n",
+        )
+    if graph_bcc and f"Bcc: {graph_bcc}" not in parsed["full_text"]:
+        parsed["full_text"] = parsed["full_text"].replace(
+            f"Date: {h['date']}\n\n",
+            f"Bcc: {graph_bcc}\nDate: {h['date']}\n\n",
+        )
+
     case_nums = extract_case_numbers_from_text(parsed["full_text"][:5000])
     content_hash = hashlib.sha256(parsed["full_text"].encode()).hexdigest()[:16]
-
-    # Create a stable source_path based on mailbox + message_id
-    source_path = f"graph://{mailbox}/{msg_id or msg_meta.get('id', '')}"
 
     # Filename from subject + date
     subject = h["subject"] or "No Subject"
     date_str = msg_meta.get("receivedDateTime", "")[:10]
     safe_subject = re.sub(r'[^\w\s-]', '', subject)[:60].strip()
     filename = f"{date_str} - {safe_subject}.eml"
+
+    # Create a stable source_path based on mailbox + message_id
+    source_path = f"graph://{mailbox}/{msg_id or msg_meta.get('id', '')}"
+    local_eml_path = persist_graph_mime_copy(
+        mailbox=mailbox,
+        mime_data=mime_data,
+        subject=subject,
+        date_hint=date_str,
+    )
 
     chunks_text = chunker.split(parsed["full_text"])
 
@@ -734,6 +1592,7 @@ async def process_and_ingest_email(
             "source": "graph_api",
             "graph_message_id": msg_meta.get("id", ""),
             "received_date": date_str,
+            "local_eml_path": local_eml_path,
         },
         case_numbers=case_nums,
         email_meta={
@@ -777,6 +1636,24 @@ async def process_and_ingest_email(
         log.error(f"  DB write error for {filename}: {e}")
         return None
 
+    # Process attachments inline
+    att_list = parsed.get("attachments", [])
+    if att_list:
+        try:
+            att_count = await process_email_attachments(
+                pool, embedder, chunker,
+                email_doc_id=doc.doc_id,
+                email_source_path=source_path,
+                email_subject=subject,
+                attachments=att_list,
+                mailbox=mailbox,
+                email_date=date_str,
+            )
+            if att_count > 0:
+                doc.metadata["attachments_processed"] = att_count
+        except Exception as e:
+            log.error(f"  Attachment processing error for {filename}: {e}")
+
     return doc
 
 
@@ -795,7 +1672,7 @@ async def main(
 
     log.info("")
     log.info("╔══════════════════════════════════════════════════════════╗")
-    log.info("║  WDWS Graph API Email Sync                              ║")
+    log.info("║  ACP Graph API Email Sync                               ║")
     log.info("╠══════════════════════════════════════════════════════════╣")
     log.info(f"║  Mailboxes:  {', '.join(mailboxes):<43}║")
     log.info(f"║  Domains:    {', '.join(domains):<43}║")
@@ -817,11 +1694,15 @@ async def main(
             mailboxes = [r["email"] for r in db_mbs]
             log.info(f"  \U0001f4cb Loaded {len(mailboxes)} mailboxes from DB config")
         db_rules = await pool.fetch(
-            "SELECT pattern FROM ops.sync_rules WHERE is_active = true "
-            "AND rule_type = 'domain' ORDER BY priority DESC"
+            "SELECT pattern, rule_type FROM ops.sync_rules WHERE is_active = true "
+            "AND rule_type IN ('domain', 'email_address') ORDER BY priority DESC"
         )
         if db_rules:
-            domains = [r["pattern"] for r in db_rules]
+            domains = [r["pattern"] for r in db_rules if r["rule_type"] == "domain"]
+            db_specific = [r["pattern"] for r in db_rules if r["rule_type"] == "email_address"]
+            if db_specific:
+                TARGET_SPECIFIC_EMAILS.extend(e for e in db_specific if e not in TARGET_SPECIFIC_EMAILS)
+                log.info(f"  \U0001f4cb Loaded {len(db_specific)} specific email rules from DB config")
             log.info(f"  \U0001f4cb Loaded {len(domains)} domain rules from DB config")
     except Exception:
         log.info("  Using default mailboxes and domains (DB config tables not found)")
@@ -862,8 +1743,9 @@ async def main(
         log.info(f"  Fetching from {mb}")
         log.info(f"{'='*60}")
 
-        emails = await fetch_domain_emails(
+        emails = await fetch_target_emails(
             graph, mb, domains,
+            specific_emails=TARGET_SPECIFIC_EMAILS,
             since=since,
             existing_msg_ids=existing_msg_ids,
         )
@@ -936,12 +1818,12 @@ async def main(
     chunker = TextChunker()
     seen_message_ids: Set[str] = set(existing_msg_ids)
 
-    stats = {"ok": 0, "skipped": 0, "errors": 0, "chunks": 0}
+    stats = {"ok": 0, "skipped": 0, "errors": 0, "chunks": 0, "attachments": 0}
     start_time = time.time()
 
     for i, (meta, mime, mb) in enumerate(all_emails, 1):
-        subj = meta.get("subject", "?")[:50]
-        date = meta.get("receivedDateTime", "")[:10]
+        subj = (meta.get("subject") or "?")[:50]
+        date = (meta.get("receivedDateTime") or "")[:10]
 
         try:
             doc = await process_and_ingest_email(
@@ -950,8 +1832,12 @@ async def main(
             if doc:
                 stats["ok"] += 1
                 stats["chunks"] += len(doc.chunks)
+                att_count = doc.metadata.get("attachments_processed", 0)
+                stats["attachments"] += att_count
                 icon = "✓"
                 detail = f"→ {len(doc.chunks)} chunks"
+                if att_count:
+                    detail += f" + {att_count} attachments"
             else:
                 stats["skipped"] += 1
                 icon = "⊘"
@@ -987,11 +1873,17 @@ async def main(
         mailboxes,
     )
 
+    att_db_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM legal.email_attachments WHERE email_doc_id IN "
+        "(SELECT id FROM core.documents WHERE source_path LIKE 'graph://%')"
+    )
+
     log.info("")
     log.info("╔══════════════════════════════════════════════════════════╗")
     log.info("║  EMAIL SYNC COMPLETE                                     ║")
     log.info("╠══════════════════════════════════════════════════════════╣")
     log.info(f"║  New emails:      {stats['ok']:<38}║")
+    log.info(f"║  Attachments:     {stats['attachments']:<38}║")
     log.info(f"║  Skipped:         {stats['skipped']:<38}║")
     log.info(f"║  Errors:          {stats['errors']:<38}║")
     log.info(f"║  New chunks:      {stats['chunks']:<38}║")
@@ -1002,6 +1894,7 @@ async def main(
     log.info(f"║  DB total docs:   {final_docs:<38}║")
     log.info(f"║  DB total chunks: {final_chunks:<38}║")
     log.info(f"║  Mailbox emails:  {email_count:<38}║")
+    log.info(f"║  Attachments (DB):{att_db_count:<38}║")
     log.info("╚══════════════════════════════════════════════════════════╝")
 
     # Finalize sync run record
@@ -1043,8 +1936,235 @@ async def main(
     await pool.close()
 
 
+# ============================================================
+# Backfill attachments for existing Graph API emails
+# ============================================================
+
+async def _load_backfill_mime(
+    row: asyncpg.Record,
+    graph: Optional[GraphClient],
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """Load MIME bytes for an existing email document during attachment backfill."""
+    source_path = row["source_path"] or ""
+    subject = row["subject"] or "No Subject"
+    metadata = row["metadata"] or {}
+
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+
+    local_eml_path = metadata.get("local_eml_path") if isinstance(metadata, dict) else None
+    if local_eml_path:
+        local_path = Path(local_eml_path)
+        if local_path.exists():
+            try:
+                return local_path.read_bytes(), None
+            except Exception as e:
+                return None, f"Failed reading local MIME file from metadata: {e}"
+
+    if source_path.startswith("graph://"):
+        if graph is None:
+            return None, "Graph client unavailable"
+
+        # Format: graph://mailbox/message_id (internet message-id, not Graph internal id)
+        parts = source_path.replace("graph://", "").split("/", 1)
+        if len(parts) != 2:
+            return None, f"Bad graph source_path: {source_path}"
+
+        mb, inet_msg_id = parts
+        search_result = await graph._get(
+            f"{GRAPH_BASE_URL}/users/{mb}/messages",
+            params={
+                "$filter": f"internetMessageId eq '{inet_msg_id}'",
+                "$select": "id,hasAttachments",
+                "$top": "1",
+            },
+        )
+
+        if not search_result or not search_result.get("value"):
+            return None, f"Cannot find message in Graph API: {subject[:50]}"
+
+        graph_id = search_result["value"][0]["id"]
+        mime_data = await graph.get_message_mime(mb, graph_id)
+        if not mime_data:
+            return None, f"MIME download failed: {subject[:50]}"
+        return mime_data, None
+
+    local_path = Path(source_path)
+    if not local_path.exists():
+        return None, f"Local MIME file not found: {source_path}"
+
+    try:
+        return local_path.read_bytes(), None
+    except Exception as e:
+        return None, f"Failed reading local MIME file: {e}"
+
+async def backfill_attachments(
+    mailboxes: List[str] = None,
+    limit: int = 0,
+):
+    """
+    Load MIME data for existing emails that have has_attachments=true but no
+    complete records in legal.email_attachments, then extract & process attachments.
+    """
+    mailboxes = mailboxes or MAILBOXES
+
+    log.info("")
+    log.info("╔══════════════════════════════════════════════════════════╗")
+    log.info("║  ATTACHMENT BACKFILL — Existing Email Records            ║")
+    log.info("╠══════════════════════════════════════════════════════════╣")
+    log.info(f"║  Mailboxes: {', '.join(mailboxes):<44}║")
+    log.info("╚══════════════════════════════════════════════════════════╝")
+    log.info("")
+
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=5)
+
+    # Find existing emails with has_attachments but no attachment records
+    rows = await pool.fetch("""
+         SELECT d.id AS doc_id, d.source_path, d.metadata, em.subject, em.mailbox,
+             em.message_id, em.date_sent
+        FROM legal.email_metadata em
+        JOIN core.documents d ON d.id = em.document_id
+        WHERE em.has_attachments = true
+          AND d.document_type = 'email'
+          AND (
+              NOT EXISTS (
+                  SELECT 1 FROM legal.email_attachments ea
+                  WHERE ea.email_doc_id = d.id
+              )
+              OR EXISTS (
+                  SELECT 1 FROM legal.email_attachments ea
+                  WHERE ea.email_doc_id = d.id
+                    AND ea.child_doc_id IS NULL
+              )
+          )
+        ORDER BY em.date_sent DESC
+    """)
+
+    if not rows:
+        log.info("No emails need attachment backfill — all caught up.")
+        await pool.close()
+        return
+
+    total = len(rows)
+    if limit > 0:
+        rows = rows[:limit]
+        log.info(f"Processing {len(rows)} of {total} emails (--limit {limit})")
+    else:
+        log.info(f"Processing {total} emails with missing attachments")
+
+    graph = None
+    if any((row["source_path"] or "").startswith("graph://") for row in rows):
+        graph = GraphClient()
+        if not await graph.authenticate():
+            log.error("Cannot continue without Graph API authentication")
+            await pool.close()
+            return
+
+    embedder = EmbeddingClient()
+    chunker = TextChunker()
+
+    stats = {"processed": 0, "attachments": 0, "errors": 0, "no_attachments": 0}
+    start_time = time.time()
+
+    for i, row in enumerate(rows, 1):
+        doc_id = str(row["doc_id"])
+        source_path = row["source_path"]
+        subject = row["subject"] or "No Subject"
+        metadata = row["metadata"] or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                metadata = {}
+        mime_data, load_error = await _load_backfill_mime(row, graph)
+        if not mime_data:
+            log.warning(f"  ⊘ {load_error}")
+            stats["errors"] += 1
+            continue
+
+        if source_path.startswith("graph://") and not metadata.get("local_eml_path"):
+            local_eml_path = persist_graph_mime_copy(
+                mailbox=row["mailbox"],
+                mime_data=mime_data,
+                subject=subject,
+                date_hint=(row["date_sent"].isoformat()[:10] if row["date_sent"] else None),
+            )
+            if local_eml_path:
+                metadata["local_eml_path"] = local_eml_path
+                await pool.execute(
+                    "UPDATE core.documents SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid",
+                    uuid.UUID(doc_id),
+                    json.dumps({"local_eml_path": local_eml_path}),
+                )
+
+        # Parse MIME to extract attachments
+        parsed = parse_mime_bytes(mime_data)
+        if not parsed:
+            stats["errors"] += 1
+            continue
+
+        att_list = parsed.get("attachments", [])
+        if not att_list:
+            log.info(f"  [{i}/{len(rows)}] ⊘ {subject[:50]} — no extractable attachments in MIME")
+            stats["no_attachments"] += 1
+            continue
+
+        existing_attachment_rows = await pool.fetch("""
+            SELECT id, filename, content_type, file_size, child_doc_id, is_processed
+            FROM legal.email_attachments
+            WHERE email_doc_id = $1
+            ORDER BY created_at
+        """, uuid.UUID(doc_id))
+
+        # Process attachments
+        try:
+            att_count = await process_email_attachments(
+                pool, embedder, chunker,
+                email_doc_id=doc_id,
+                email_source_path=source_path,
+                email_subject=subject,
+                attachments=att_list,
+                existing_attachment_rows=[dict(r) for r in existing_attachment_rows],
+                mailbox=row["mailbox"],
+                email_date=(row["date_sent"].isoformat()[:10] if row["date_sent"] else None),
+            )
+            stats["processed"] += 1
+            stats["attachments"] += att_count
+            log.info(
+                f"  [{i}/{len(rows)}] ✓ {subject[:50]} — {att_count} attachments"
+            )
+        except Exception as e:
+            log.error(f"  [{i}/{len(rows)}] ✗ {subject[:50]}: {e}")
+            stats["errors"] += 1
+
+        # Throttle to avoid rate limits
+        if i % 10 == 0:
+            await asyncio.sleep(1)
+
+    elapsed = time.time() - start_time
+    log.info("")
+    log.info("╔══════════════════════════════════════════════════════════╗")
+    log.info("║  ATTACHMENT BACKFILL COMPLETE                            ║")
+    log.info("╠══════════════════════════════════════════════════════════╣")
+    log.info(f"║  Emails processed:  {stats['processed']:<36}║")
+    log.info(f"║  Attachments:       {stats['attachments']:<36}║")
+    log.info(f"║  No attachments:    {stats['no_attachments']:<36}║")
+    log.info(f"║  Errors:            {stats['errors']:<36}║")
+    log.info(f"║  Time:              {elapsed:.1f}s{' '*(34-len(f'{elapsed:.1f}s'))}║")
+    log.info(f"║  Embed tokens:      {embedder.total_tokens:<36}║")
+    log.info("╚══════════════════════════════════════════════════════════╝")
+
+    await embedder.close()
+    if graph:
+        await graph.close()
+    await pool.close()
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="WDWS Graph API Email Sync")
+    parser = argparse.ArgumentParser(description="ACP Graph API Email Sync")
     parser.add_argument(
         "--mailbox", "-m", action="append",
         help="Mailbox to scan (can specify multiple). Default: both william@ and athena@"
@@ -1062,12 +2182,26 @@ if __name__ == "__main__":
         "--dry-run", action="store_true",
         help="Show what would be fetched without writing to DB"
     )
+    parser.add_argument(
+        "--backfill-attachments", action="store_true",
+        help="Load MIME and process attachments for existing emails with missing attachment records"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=0,
+        help="Limit number of emails to process (for backfill, 0=all)"
+    )
 
     args = parser.parse_args()
 
-    asyncio.run(main(
-        mailboxes=args.mailbox or MAILBOXES,
-        domains=args.domains,
-        since=args.since,
-        dry_run=args.dry_run,
-    ))
+    if args.backfill_attachments:
+        asyncio.run(backfill_attachments(
+            mailboxes=args.mailbox or MAILBOXES,
+            limit=args.limit,
+        ))
+    else:
+        asyncio.run(main(
+            mailboxes=args.mailbox or MAILBOXES,
+            domains=args.domains,
+            since=args.since,
+            dry_run=args.dry_run,
+        ))

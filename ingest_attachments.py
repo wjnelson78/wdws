@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WDWS Attachment Ingest Pipeline v1.0
+ACP Attachment Ingest Pipeline v1.0
 
 Extracts attachment binaries from .eml source files on disk,
 runs full page-by-page OCR with parallel workers (same quality as ingest.py),
@@ -47,6 +47,17 @@ from PIL import Image
 # ============================================================
 # Configuration
 # ============================================================
+
+# Load .env
+from pathlib import Path as _Path
+_env_file = _Path("/opt/wdws/.env")
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            import os as _os
+            _os.environ.setdefault(_k.strip(), _v.strip())
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -542,7 +553,7 @@ async def write_attachment_document(
 # ============================================================
 
 async def main():
-    parser = argparse.ArgumentParser(description="WDWS Attachment Ingest Pipeline")
+    parser = argparse.ArgumentParser(description="ACP Attachment Ingest Pipeline")
     parser.add_argument("--workers", type=int, default=10, help="OCR parallel workers")
     parser.add_argument("--re-ocr", action="store_true", help="Re-OCR all, even if already linked")
     parser.add_argument("--dry-run", action="store_true", help="Count only, don't process")
@@ -572,7 +583,7 @@ async def main():
     total = len(atts)
     log.info(f"")
     log.info(f"╔{'═'*58}╗")
-    log.info(f"║  WDWS Attachment Ingest Pipeline v1.0{' '*20}║")
+    log.info(f"║  ACP Attachment Ingest Pipeline v1.0{' '*21}║")
     log.info(f"╠{'═'*58}╣")
     log.info(f"║  Attachments to process: {total:<33}║")
     log.info(f"║  OCR workers:           {args.workers:<34}║")

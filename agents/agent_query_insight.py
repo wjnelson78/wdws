@@ -25,7 +25,7 @@ class QueryInsightAgent(BaseAgent):
 
 CONTEXT:
 - 27 MCP tools available via OAuth-secured endpoint
-- Clients: ChatGPT, Claude Desktop
+- Clients: Athena AI, Claude Desktop
 - All tool calls logged to ops.mcp_query_log with arguments, results, duration
 
 YOUR RESPONSIBILITIES:

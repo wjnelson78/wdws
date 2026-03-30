@@ -167,8 +167,8 @@ async def oauth_protected_resource(request: Request) -> JSONResponse:
 
 # ── OAuth Proxy Handlers ─────────────────────────────────────
 # These proxy /authorize, /token, /register, /revoke to the real
-# WDWS MCP OAuth server running on port 9200. This keeps the entire
-# OAuth flow on imessage.12432.net from ChatGPT's perspective.
+# ACP MCP OAuth server running on port 9200. This keeps the entire
+# OAuth flow on imessage.12432.net from the AI client's perspective.
 
 async def proxy_authorize(request: Request) -> Response:
     """Proxy GET /authorize to the WDWS OAuth server."""
@@ -470,11 +470,11 @@ app = Starlette(
         Route("/.well-known/oauth-authorization-server/{path:path}", oauth_metadata_handler, methods=["GET"]),
         Route("/.well-known/openid-configuration", oauth_metadata_handler, methods=["GET"]),
         Route("/.well-known/openid-configuration/{path:path}", oauth_metadata_handler, methods=["GET"]),
-        # Also handle /{base}/.well-known/... patterns ChatGPT tries
+        # Also handle /{base}/.well-known/... patterns AI clients try
         Route("/mcp/sse/.well-known/oauth-authorization-server", oauth_metadata_handler, methods=["GET"]),
         Route("/mcp/sse/.well-known/openid-configuration", oauth_metadata_handler, methods=["GET"]),
         Route("/mcp/sse/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
-        # OAuth endpoints — proxied to WDWS MCP server (port 9200)
+        # OAuth endpoints — proxied to ACP MCP server (port 9200)
         Route("/authorize", proxy_authorize, methods=["GET"]),
         Route("/token", proxy_token, methods=["POST"]),
         Route("/register", proxy_register, methods=["POST"]),

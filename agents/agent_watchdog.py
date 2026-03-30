@@ -43,6 +43,7 @@ from framework import BaseAgent, RunContext
 from config import (
     OPENAI_API_KEY, GRAPH_TENANT_ID, GRAPH_CLIENT_ID,
     GRAPH_CLIENT_SECRET, GRAPH_SENDER_EMAIL, ALERT_EMAIL,
+    MCP_PORT,
 )
 from email_util import send_email, build_notification_html
 
@@ -64,9 +65,34 @@ THRESHOLDS = {
     "inode_percent":     {"warning": 80, "critical": 95},
     "load_1m_ratio":     {"warning": 2.0, "critical": 4.0},  # load / cpu_count
     "db_conn_percent":   {"warning": 70, "critical": 90},
+    "mcp_p95_ms":         {"warning": 2500, "critical": 5000},
+    "mcp_p99_ms":         {"warning": 15000, "critical": 25000},
+    "agent_p95_ms":       {"warning": 15000, "critical": 30000},
     "zombie_processes":  {"warning": 3, "critical": 10},
     "oom_kills":         {"warning": 1, "critical": 3},
     "ssh_failures":      {"warning": 10, "critical": 50},
+}
+
+# ── Latency regression detection ───────────────────────────
+LATENCY_REGRESSION_WINDOW_MIN = int(os.getenv("LATENCY_REGRESSION_WINDOW_MIN", "30"))
+LATENCY_REGRESSION_MIN_CALLS = int(os.getenv("LATENCY_REGRESSION_MIN_CALLS", "20"))
+LATENCY_REGRESSION_MIN_AGENT_RUNS = int(os.getenv("LATENCY_REGRESSION_MIN_AGENT_RUNS", "5"))
+LATENCY_REGRESSION_RATIO = float(os.getenv("LATENCY_REGRESSION_RATIO", "1.5"))
+LATENCY_REGRESSION_DELTA_MS = float(os.getenv("LATENCY_REGRESSION_DELTA_MS", "500"))
+LATENCY_REGRESSION_HUMAN_RATIO = float(os.getenv("LATENCY_REGRESSION_HUMAN_RATIO", "2.0"))
+LATENCY_REGRESSION_HUMAN_P95_MS = float(os.getenv("LATENCY_REGRESSION_HUMAN_P95_MS", "5000"))
+
+# Slow scheduled batch agents — excluded from fleet p95 regression tracking.
+# These run infrequently (hourly/daily/weekly) or are known heavy-LLM agents
+# expected to take many seconds; pooling them with fast real-time agents
+# produces false positives in p95 regression detection.
+LATENCY_REGRESSION_AGENT_EXCLUDE = {
+    # Heavy reasoning / infrequent agents
+    "athena", "daily-digest",
+    # Hourly / weekly / on-demand agents
+    "db-tuner", "self-healing", "dba", "software-engineer",
+    "case-strategy", "retention", "timeline", "quality-eval",
+    "scorecard", "query-insight", "data-quality",
 }
 
 # ── Services to monitor ─────────────────────────────────────
@@ -153,6 +179,46 @@ WHEN TO ESCALATE TO HUMAN:
         issues = []
         actions = []
 
+        # ── 0. Load runtime config (Athena may override via remember_for) ──
+        # Module-level constants act as defaults; DB memory overrides at runtime.
+        self._rt_thresholds = {
+            **THRESHOLDS,
+            **(await ctx.recall("thresholds") or {}),
+        }
+        _recall_exclude = await ctx.recall("latency_exclude_list") or []
+        self._rt_latency_exclude = set(
+            list(LATENCY_REGRESSION_AGENT_EXCLUDE)
+            + list(_recall_exclude)
+        )
+        self._rt_latency_window = int(
+            await ctx.recall("latency_regression_window_min")
+            or LATENCY_REGRESSION_WINDOW_MIN
+        )
+        self._rt_latency_ratio = float(
+            await ctx.recall("latency_regression_ratio")
+            or LATENCY_REGRESSION_RATIO
+        )
+        self._rt_latency_delta_ms = float(
+            await ctx.recall("latency_regression_delta_ms")
+            or LATENCY_REGRESSION_DELTA_MS
+        )
+        self._rt_human_ratio = float(
+            await ctx.recall("latency_regression_human_ratio")
+            or LATENCY_REGRESSION_HUMAN_RATIO
+        )
+        self._rt_human_p95_ms = float(
+            await ctx.recall("latency_regression_human_p95_ms")
+            or LATENCY_REGRESSION_HUMAN_P95_MS
+        )
+        self._rt_min_calls = int(
+            await ctx.recall("latency_regression_min_calls")
+            or LATENCY_REGRESSION_MIN_CALLS
+        )
+        self._rt_min_agent_runs = int(
+            await ctx.recall("latency_regression_min_agent_runs")
+            or LATENCY_REGRESSION_MIN_AGENT_RUNS
+        )
+
         # ── 1. System Resources ──────────────────────────────
         res = await self._collect_system_metrics(ctx)
         metrics.update(res)
@@ -211,6 +277,11 @@ WHEN TO ESCALATE TO HUMAN:
             issues.append({"severity": "critical", "category": "database",
                            "title": f"{db_metrics['deadlocks']} deadlocks detected",
                            "route_to": "db-tuner"})
+
+        # ── 5b. Latency Regression Detection ────────────────
+        latency_issues, latency_metrics = await self._detect_latency_regressions(ctx, metrics)
+        metrics.update(latency_metrics)
+        issues += latency_issues
 
         # ── 6. Cloudflare Tunnel ─────────────────────────────
         tunnel_ok = await self._check_cloudflare_tunnel(ctx)
@@ -360,9 +431,10 @@ WHEN TO ESCALATE TO HUMAN:
             ("load_1m_ratio", "Load average"),
             ("zombie_processes", "Zombie processes"),
         ]
+        rt_thresh = getattr(self, "_rt_thresholds", THRESHOLDS)
         for key, label in checks:
             val = metrics.get(key, 0)
-            thresh = THRESHOLDS.get(key, {})
+            thresh = rt_thresh.get(key, {})
             if val >= thresh.get("critical", 999):
                 issues.append({
                     "severity": "critical", "category": "resources",
@@ -460,6 +532,8 @@ WHEN TO ESCALATE TO HUMAN:
             return False
 
         try:
+            if name == "wdws-mcp":
+                await self._resolve_wdws_mcp_port_conflict(ctx)
             subprocess.run(
                 ["systemctl", "restart", name], timeout=15, check=True)
             counts[key] = count + 1
@@ -475,6 +549,63 @@ WHEN TO ESCALATE TO HUMAN:
             await ctx.finding("critical", "service",
                 f"Failed to restart {name}: {e}")
             return False
+
+    async def _resolve_wdws_mcp_port_conflict(self, ctx) -> bool:
+        """Kill stray unmanaged MCP listeners blocking the wdws-mcp systemd unit."""
+        status = await ctx.service_status("wdws-mcp")
+        journal = await ctx.journal("wdws-mcp", lines=60, since="15 minutes ago")
+        if "address already in use" not in journal:
+            return False
+
+        listener = await ctx.shell(
+            f"ss -ltnp | grep ':{MCP_PORT} '",
+            timeout=10,
+        )
+        if not listener.get("success") or "pid=" not in listener.get("stdout", ""):
+            return False
+
+        match = re.search(r"pid=(\d+)", listener["stdout"])
+        if not match:
+            return False
+
+        pid = match.group(1)
+        if pid == str(status.get("pid") or ""):
+            return False
+
+        owner = await ctx.shell(f"ps -p {pid} -o args=", timeout=10)
+        owner_cmd = owner.get("stdout", "").strip()
+        if "mcp_server_v2.py" not in owner_cmd:
+            await ctx.finding(
+                "critical",
+                "service-port-conflict",
+                f"wdws-mcp is blocked by another process on port {MCP_PORT}",
+                owner_cmd or f"Unknown process owns port {MCP_PORT}",
+                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+            )
+            return False
+
+        kill = await ctx.shell(f"kill {pid}", timeout=10)
+        if not kill.get("success"):
+            await ctx.finding(
+                "critical",
+                "service-port-conflict",
+                f"Failed to clear wdws-mcp port conflict on {MCP_PORT}",
+                kill.get("stderr", "")[:500] or f"Could not kill PID {pid}",
+                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+            )
+            return False
+
+        await ctx.action(
+            f"Killed stray MCP process PID {pid} blocking wdws-mcp on port {MCP_PORT}"
+        )
+        await ctx.finding(
+            "warning",
+            "service-port-conflict",
+            "Cleared stray MCP listener blocking wdws-mcp",
+            owner_cmd,
+            {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+        )
+        return True
 
     # ═══════════════════════════════════════════════════════════
     # 3. journalctl Log Analysis
@@ -573,6 +704,180 @@ WHEN TO ESCALATE TO HUMAN:
                            datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
 
         return issues
+
+    # ═══════════════════════════════════════════════════════════
+    # 4b. Latency Regression Detection
+    # ═══════════════════════════════════════════════════════════
+    async def _detect_latency_regressions(self, ctx, system_metrics: dict = None) -> tuple[list, dict]:
+        issues = []
+        metrics = {}
+        p = await ctx.db()
+
+        window = getattr(self, "_rt_latency_window", LATENCY_REGRESSION_WINDOW_MIN)
+        prev_window = window * 2
+
+        # ── MCP query latency regression ──────────────────
+        try:
+            curr = await p.fetchrow("""
+                SELECT COUNT(*) AS cnt,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,
+                       PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99
+                FROM ops.mcp_query_log
+                WHERE created_at > now() - interval '1 minute' * $1
+            """, window)
+
+            prev = await p.fetchrow("""
+                SELECT COUNT(*) AS cnt,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,
+                       PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99
+                FROM ops.mcp_query_log
+                WHERE created_at <= now() - interval '1 minute' * $1
+                  AND created_at > now() - interval '1 minute' * $2
+            """, window, prev_window)
+
+            curr_cnt = int(curr["cnt"] or 0) if curr else 0
+            prev_cnt = int(prev["cnt"] or 0) if prev else 0
+            curr_p95 = float(curr["p95"] or 0) if curr else 0
+            curr_p99 = float(curr["p99"] or 0) if curr else 0
+            prev_p95 = float(prev["p95"] or 0) if prev else 0
+            prev_p99 = float(prev["p99"] or 0) if prev else 0
+
+            metrics.update({
+                "mcp_p95_ms": round(curr_p95, 1),
+                "mcp_p99_ms": round(curr_p99, 1),
+                "mcp_calls_window": curr_cnt,
+                "mcp_prev_p95_ms": round(prev_p95, 1),
+                "mcp_prev_p99_ms": round(prev_p99, 1),
+                "mcp_prev_calls_window": prev_cnt,
+            })
+
+            _min_calls = getattr(self, "_rt_min_calls", LATENCY_REGRESSION_MIN_CALLS)
+            _ratio_thresh = getattr(self, "_rt_latency_ratio", LATENCY_REGRESSION_RATIO)
+            _delta_thresh = getattr(self, "_rt_latency_delta_ms", LATENCY_REGRESSION_DELTA_MS)
+            _human_ratio = getattr(self, "_rt_human_ratio", LATENCY_REGRESSION_HUMAN_RATIO)
+            _human_p95 = getattr(self, "_rt_human_p95_ms", LATENCY_REGRESSION_HUMAN_P95_MS)
+            if (curr_cnt >= _min_calls
+                    and prev_cnt >= _min_calls
+                    and prev_p95 > 0):
+                ratio = curr_p95 / prev_p95
+                delta = curr_p95 - prev_p95
+                if ratio >= _ratio_thresh and delta >= _delta_thresh:
+                    severity = (
+                        "critical"
+                        if ratio >= _human_ratio and curr_p95 >= _human_p95
+                        else "warning"
+                    )
+                    title = (f"MCP p95 latency regression: {int(prev_p95)}ms → {int(curr_p95)}ms "
+                             f"(+{int(delta)}ms, x{ratio:.2f})")
+                    issues.append({
+                        "severity": severity,
+                        "category": "performance",
+                        "title": title,
+                        "route_to": "db-tuner",
+                        "escalate_human": severity == "critical",
+                        "detail": f"Window: last {window}m vs prior {window}m; calls {curr_cnt} vs {prev_cnt}",
+                    })
+                    await ctx.finding(
+                        severity, "performance", title,
+                        f"Window: last {window}m vs prior {window}m",
+                        {
+                            "curr_p95": curr_p95,
+                            "prev_p95": prev_p95,
+                            "curr_p99": curr_p99,
+                            "prev_p99": prev_p99,
+                            "curr_calls": curr_cnt,
+                            "prev_calls": prev_cnt,
+                            "ratio": ratio,
+                            "delta_ms": delta,
+                            "system_context": {
+                                k: v for k, v in (system_metrics or {}).items()
+                                if isinstance(v, (int, float, bool))
+                            },
+                        },
+                    )
+        except Exception as e:
+            self.log.warning("Latency regression check (MCP) failed: %s", e)
+
+        # ── Agent run latency regression ───────────────────
+        try:
+            _excl = list(getattr(self, "_rt_latency_exclude", LATENCY_REGRESSION_AGENT_EXCLUDE))
+            _min_agent_runs = getattr(self, "_rt_min_agent_runs", LATENCY_REGRESSION_MIN_AGENT_RUNS)
+            _ratio_thresh = getattr(self, "_rt_latency_ratio", LATENCY_REGRESSION_RATIO)
+            _delta_thresh = getattr(self, "_rt_latency_delta_ms", LATENCY_REGRESSION_DELTA_MS)
+            _human_ratio = getattr(self, "_rt_human_ratio", LATENCY_REGRESSION_HUMAN_RATIO)
+            _human_p95 = getattr(self, "_rt_human_p95_ms", LATENCY_REGRESSION_HUMAN_P95_MS)
+            curr = await p.fetchrow("""
+                SELECT COUNT(*) AS cnt,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95
+                FROM ops.agent_runs
+                WHERE status = 'success'
+                  AND agent_id != ALL($2::text[])
+                  AND started_at > now() - interval '1 minute' * $1
+            """, window, _excl)
+
+            prev = await p.fetchrow("""
+                SELECT COUNT(*) AS cnt,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95
+                FROM ops.agent_runs
+                WHERE status = 'success'
+                  AND agent_id != ALL($3::text[])
+                  AND started_at <= now() - interval '1 minute' * $1
+                  AND started_at > now() - interval '1 minute' * $2
+            """, window, prev_window, _excl)
+
+            curr_cnt = int(curr["cnt"] or 0) if curr else 0
+            prev_cnt = int(prev["cnt"] or 0) if prev else 0
+            curr_p95 = float(curr["p95"] or 0) if curr else 0
+            prev_p95 = float(prev["p95"] or 0) if prev else 0
+
+            metrics.update({
+                "agent_p95_ms": round(curr_p95, 1),
+                "agent_runs_window": curr_cnt,
+                "agent_prev_p95_ms": round(prev_p95, 1),
+                "agent_prev_runs_window": prev_cnt,
+            })
+
+            if (curr_cnt >= _min_agent_runs
+                    and prev_cnt >= _min_agent_runs
+                    and prev_p95 > 0):
+                ratio = curr_p95 / prev_p95
+                delta = curr_p95 - prev_p95
+                if ratio >= _ratio_thresh and delta >= _delta_thresh:
+                    severity = (
+                        "critical"
+                        if ratio >= _human_ratio and curr_p95 >= _human_p95
+                        else "warning"
+                    )
+                    title = (f"Agent p95 latency regression: {int(prev_p95)}ms → {int(curr_p95)}ms "
+                             f"(+{int(delta)}ms, x{ratio:.2f})")
+                    issues.append({
+                        "severity": severity,
+                        "category": "performance",
+                        "title": title,
+                        "route_to": "self-healing",
+                        "escalate_human": severity == "critical",
+                        "detail": f"Window: last {window}m vs prior {window}m; runs {curr_cnt} vs {prev_cnt}",
+                    })
+                    await ctx.finding(
+                        severity, "performance", title,
+                        f"Window: last {window}m vs prior {window}m",
+                        {
+                            "curr_p95": curr_p95,
+                            "prev_p95": prev_p95,
+                            "curr_runs": curr_cnt,
+                            "prev_runs": prev_cnt,
+                            "ratio": ratio,
+                            "delta_ms": delta,
+                            "system_context": {
+                                k: v for k, v in (system_metrics or {}).items()
+                                if isinstance(v, (int, float, bool))
+                            },
+                        },
+                    )
+        except Exception as e:
+            self.log.warning("Latency regression check (agent) failed: %s", e)
+
+        return issues, metrics
 
     # ═══════════════════════════════════════════════════════════
     # 4. Database Deep Health
@@ -774,7 +1079,7 @@ WHEN TO ESCALATE TO HUMAN:
                 json={
                     "mode": "block",
                     "configuration": {"target": "ip", "value": ip},
-                    "notes": f"WDWS Watchdog: {reason} [{datetime.now(timezone.utc).isoformat()}]",
+                    "notes": f"ACP Watchdog: {reason} [{datetime.now(timezone.utc).isoformat()}]",
                 })
             if resp.status_code not in (200, 409):
                 self.log.warning("CF WAF block failed for %s: %s", ip, resp.text[:200])
@@ -896,15 +1201,22 @@ WHEN TO ESCALATE TO HUMAN:
 
     async def _escalate_to_human(self, ctx, title: str,
                                   severity: str, sections: list):
-        """Send an alert email via Graph API. Rate limited: max 1 per 30 min per category."""
-        # Rate limit
+        """Route alert: critical → immediate email; everything else → daily digest queue."""
+        if severity != "critical":
+            # Non-critical issues are collected and reported once per day.
+            await ctx.queue_notification(title, sections, severity=severity)
+            self.log.info("📬 Queued for daily digest: %s (%s)", title, severity)
+            return
+
+        # ── Critical only: send immediately ─────────────────
+        # Rate limit: max 1 immediate email per 30 min
         last_email = await ctx.recall("last_human_email", "")
         if last_email:
             try:
-                hrs = ((datetime.now(timezone.utc) -
-                        datetime.fromisoformat(last_email)).total_seconds() / 60)
-                if hrs < 30:
-                    self.log.info("Email rate limited — last sent %d min ago", hrs)
+                mins = ((datetime.now(timezone.utc) -
+                         datetime.fromisoformat(last_email)).total_seconds() / 60)
+                if mins < 30:
+                    self.log.info("Critical email rate limited — last sent %d min ago", mins)
                     return
             except Exception:
                 pass
@@ -912,7 +1224,7 @@ WHEN TO ESCALATE TO HUMAN:
         body_html = build_notification_html(
             title=f"🚨 {title}",
             sections=sections,
-            footer="Athena Cognitive Platform — Watchdog Agent v3")
+            footer="Athena Cognitive Platform - Developed by William Nelson 2016")
 
         result = await send_email(
             tenant_id=GRAPH_TENANT_ID,
@@ -920,19 +1232,19 @@ WHEN TO ESCALATE TO HUMAN:
             client_secret=GRAPH_CLIENT_SECRET,
             sender=GRAPH_SENDER_EMAIL,
             to_recipients=[ALERT_EMAIL],
-            subject=f"[WDWS {severity.upper()}] {title}",
+            subject=f"[ACP CRITICAL] {title}",
             body_html=body_html,
-            importance="high" if severity == "critical" else "normal")
+            importance="high")
 
         if result["status"] == "sent":
             await ctx.remember("last_human_email",
                                datetime.now(timezone.utc).isoformat())
-            await ctx.action(f"Escalated to human via email: {title}")
-            self.log.info("📧 Alert email sent: %s", title)
+            await ctx.action(f"🚨 Critical alert sent to human: {title}")
+            self.log.info("📧 Critical alert email sent: %s", title)
         else:
-            self.log.error("Email send failed: %s", result.get("error"))
+            self.log.error("Critical alert email failed: %s", result.get("error"))
             await ctx.finding("warning", "notifications",
-                f"Failed to send alert email: {result.get('error', 'unknown')}",
+                f"Failed to send critical alert email: {result.get('error', 'unknown')}",
                 f"Tried to send: {title}")
 
     # ═══════════════════════════════════════════════════════════

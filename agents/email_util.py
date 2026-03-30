@@ -131,7 +131,7 @@ async def send_email(
 def build_notification_html(
     title: str,
     sections: list[dict],
-    footer: str = "Athena Cognitive Platform — AI Agent",
+    footer: str = "Athena Cognitive Platform - Developed by William Nelson 2016",
 ) -> str:
     """
     Build a styled HTML email for agent notifications.
@@ -173,13 +173,38 @@ def build_notification_html(
 </div>
 """
 
+    status_badges = {
+        "success": ("✅", "Resolved automatically — no action required"),
+        "error":   ("🔴", "Needs manual attention"),
+        "warning": ("🔍", "Awaiting review — no changes applied"),
+        "info":    ("ℹ️",  "For your information"),
+        "code":    ("🔧", "Code change recorded"),
+    }
+
     for section in sections:
         stype = section.get("type", "info")
         accent, _, bg = colors.get(stype, colors["info"])
         heading = section.get("heading", "")
         content = section.get("content", "")
+        plain_summary = section.get("plain_summary", "")
 
-        html += f"""
+        if plain_summary:
+            badge_icon, badge_label = status_badges.get(stype, status_badges["info"])
+            html += f"""
+<div style="background:{bg}10;border:1px solid {accent}40;border-radius:10px;padding:20px;margin-bottom:16px">
+  <div style="font-size:12px;font-weight:700;color:{accent};text-transform:uppercase;letter-spacing:0.8px;margin-bottom:14px">{heading}</div>
+  <div style="font-size:15px;color:#f1f5f9;line-height:1.8;margin-bottom:16px">{plain_summary}</div>
+  <div style="display:inline-block;font-size:12px;font-weight:600;color:{accent};padding:6px 14px;background:{accent}18;border-radius:20px;margin-bottom:14px">{badge_icon}&nbsp; {badge_label}</div>
+  <div style="border-top:1px solid {accent}20;padding-top:12px">
+    <details>
+      <summary style="cursor:pointer;font-size:12px;color:#64748b;user-select:none;list-style:none;outline:none">▶ View technical details</summary>
+      <div style="font-size:12px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;font-family:'Consolas','Courier New',monospace;margin-top:12px;padding:14px;background:#0a1120;border-radius:6px;border:1px solid #1e293b;overflow-x:auto">{content}</div>
+    </details>
+  </div>
+</div>
+"""
+        else:
+            html += f"""
 <div style="background:{bg}10;border:1px solid {accent}40;border-radius:8px;padding:16px;margin-bottom:12px">
   <div style="font-size:14px;font-weight:600;color:{accent};margin-bottom:8px">{heading}</div>
   <div style="font-size:13px;color:#cbd5e1;line-height:1.6;white-space:pre-wrap">{content}</div>
@@ -189,8 +214,7 @@ def build_notification_html(
     html += f"""
 <!-- Footer -->
 <div style="text-align:center;padding:16px;color:#475569;font-size:11px;border-top:1px solid #1e293b;margin-top:16px">
-  {footer}<br>
-  <span style="color:#334155">Powered by GPT Codex · Microsoft Graph API · PostgreSQL</span>
+  {footer}
 </div>
 
 </div>

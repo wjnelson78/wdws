@@ -1,5 +1,5 @@
 """
-WDWS Agent System — Configuration
+ACP Agent System — Configuration
 ===================================
 All config loaded from /opt/wdws/.env via environment variables.
 No secrets are hardcoded. Missing required vars will raise on import.
@@ -32,7 +32,7 @@ DATABASE_URL = _require("DATABASE_URL")
 
 # ── OpenAI ───────────────────────────────────────────────────
 OPENAI_API_KEY = _require("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("AGENT_LLM_MODEL", "gpt-4o")
+OPENAI_MODEL = os.getenv("AGENT_LLM_MODEL", "gpt-5.4")
 OPENAI_EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 AGENT_LLM_MODEL_HIGH = os.getenv("AGENT_LLM_MODEL_HIGH", OPENAI_MODEL)
 AGENT_LLM_MODEL_LOW = os.getenv("AGENT_LLM_MODEL_LOW", OPENAI_MODEL)
@@ -72,7 +72,7 @@ GRAPH_CLIENT_ID = _require("GRAPH_CLIENT_ID")
 GRAPH_CLIENT_SECRET = _require("GRAPH_CLIENT_SECRET")
 GRAPH_SENDER_EMAIL = os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me")
 
-# ── OpenAI Codex (Code Doctor) ───────────────────────────────
+# ── Athena AI Code Generation (Code Doctor) ──────────────────
 CODEX_MODEL = os.getenv("CODEX_MODEL", "gpt-5.2-codex")
 AGENT_LLM_MODEL_CODEX = os.getenv("AGENT_LLM_MODEL_CODEX", CODEX_MODEL)
 

@@ -247,7 +247,7 @@ async def api_mcp_analytics(request):
 <section id="tab-mcp" class="hidden">
   <div class="section-title">🔑 OAuth Client Accounts</div>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">
-    Manage AI clients (ChatGPT, Claude Desktop) connected via OAuth 2.0 to the MCP server at
+    Manage AI clients (Athena AI, Claude Desktop) connected via OAuth 2.0 to the MCP server at
     <code style="color:var(--cyan)">klunky.12432.net</code>
   </p>
   <div id="mcp-clients-grid"><div class="empty-state"><span class="spinner"></span></div></div>
@@ -548,7 +548,7 @@ async function loadQueryLog(){
       </tr>`;
     }
     html += '</tbody></table>';
-    if (!entries.length) html = '<div class="empty-state">No queries logged yet. Data will appear here once ChatGPT or Claude Desktop makes MCP tool calls.</div>';
+    if (!entries.length) html = '<div class="empty-state">No queries logged yet. Data will appear here once Athena AI or Claude Desktop makes MCP tool calls.</div>';
     $('qlog-table').innerHTML = html;
   } catch(e) {
     $('qlog-table').innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>';

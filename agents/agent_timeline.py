@@ -53,11 +53,11 @@ Be precise with dates. If a date is uncertain, note it."""
 
         # ── Get cases with recent documents ──────────────────
         cases = await ctx.query("""
-            SELECT c.id, c.case_number, c.case_title, c.filed_date,
+            SELECT c.id, c.case_number, c.case_title, c.date_filed,
                    COUNT(cd.document_id) as doc_count
             FROM legal.cases c
             JOIN legal.case_documents cd ON c.id = cd.case_id
-            GROUP BY c.id, c.case_number, c.case_title, c.filed_date
+            GROUP BY c.id, c.case_number, c.case_title, c.date_filed
             HAVING COUNT(cd.document_id) > 2
             ORDER BY c.case_number
         """)
@@ -66,13 +66,13 @@ Be precise with dates. If a date is uncertain, note it."""
             # Get documents with dates for this case
             docs = await ctx.query("""
                 SELECT d.id, d.title, d.document_type, d.created_at,
-                       COALESCE(f.filing_date, d.created_at) as event_date,
-                       LEFT(d.full_content_preview, 500) as preview
+                       COALESCE(f.actual_filing_date, d.created_at::date) as event_date,
+                       LEFT(d.full_content, 500) as preview
                 FROM core.documents d
                 JOIN legal.case_documents cd ON d.id = cd.document_id
                 LEFT JOIN legal.filing_metadata f ON d.id = f.document_id
                 WHERE cd.case_id = $1
-                ORDER BY COALESCE(f.filing_date, d.created_at)
+                ORDER BY COALESCE(f.actual_filing_date, d.created_at::date)
             """, case["id"])
 
             if len(docs) < 3:
@@ -80,12 +80,12 @@ Be precise with dates. If a date is uncertain, note it."""
 
             # Get emails related to this case
             emails = await ctx.query("""
-                SELECT e.id, e.subject, e.sender, e.email_date, e.direction
+                SELECT e.document_id, e.subject, e.sender, e.date_sent, e.direction
                 FROM legal.email_metadata e
                 JOIN core.documents d ON d.id::text LIKE '%'
                 JOIN legal.case_documents cd ON d.id = cd.document_id
                 WHERE cd.case_id = $1
-                ORDER BY e.email_date
+                ORDER BY e.date_sent
                 LIMIT 50
             """, case["id"])
 
@@ -95,10 +95,10 @@ Be precise with dates. If a date is uncertain, note it."""
             if docs:
                 timeline_data = {
                     "case": case["case_number"],
-                    "filed": str(case.get("filed_date", "")),
+                    "filed": str(case.get("date_filed", "")),
                     "documents": [{"date": str(d["event_date"]), "title": d["title"],
                                   "type": d["document_type"]} for d in docs],
-                    "emails": [{"date": str(e["email_date"]), "subject": e["subject"],
+                    "emails": [{"date": str(e["date_sent"]), "subject": e["subject"],
                                "from": e["sender"], "direction": e["direction"]}
                               for e in emails[:20]],
                 }

@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from framework import BaseAgent, RunContext, get_llm
+from config import (
+    GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET,
+    GRAPH_SENDER_EMAIL, SCORECARD_EMAIL,
+)
+from email_util import send_email, build_notification_html
 
 # ── Eval config ─────────────────────────────────────────────
 EVAL_CASES_PATH = Path(__file__).parent / "evals" / "eval_cases.json"
@@ -26,6 +31,13 @@ EVAL_TOP_K = int(os.getenv("EVAL_TOP_K", "8"))
 EVAL_SEM_WEIGHT = float(os.getenv("EVAL_SEM_WEIGHT", "0.7"))
 EVAL_FT_WEIGHT = float(os.getenv("EVAL_FT_WEIGHT", "0.3"))
 EVAL_RRF_K = int(os.getenv("EVAL_RRF_K", "60"))
+EVAL_PASS_RATE_REGRESSION_THRESHOLD = float(
+    os.getenv("EVAL_PASS_RATE_REGRESSION_THRESHOLD", "0.1")
+)
+EVAL_PASS_RATE_REGRESSION_CRITICAL = float(
+    os.getenv("EVAL_PASS_RATE_REGRESSION_CRITICAL", "0.2")
+)
+EVAL_MIN_CASES_FOR_REGRESSION = int(os.getenv("EVAL_MIN_CASES_FOR_REGRESSION", "5"))
 
 # ── Safety patterns ─────────────────────────────────────────
 PII_PATTERNS = {
@@ -241,6 +253,96 @@ class QualityEvalAgent(BaseAgent):
 
         pass_rate = (metrics["passed"] / max(metrics["total_cases"], 1))
         metrics["pass_rate"] = round(pass_rate, 3)
+
+        # ── Regression detection (pass rate drop) ─────────────
+        prev = await p.fetchrow(
+            """
+            SELECT metrics
+            FROM ops.agent_runs
+            WHERE agent_id = 'quality-eval'
+              AND id <> $1
+              AND metrics ? 'pass_rate'
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            self._run_id,
+        )
+
+        prev_rate = None
+        if prev and prev.get("metrics"):
+            prev_metrics = prev["metrics"]
+            if isinstance(prev_metrics, str):
+                try:
+                    prev_metrics = json.loads(prev_metrics)
+                except Exception:
+                    prev_metrics = {}
+            try:
+                prev_rate = float(prev_metrics.get("pass_rate"))
+            except (TypeError, ValueError):
+                prev_rate = None
+
+        if prev_rate is not None and metrics["total_cases"] >= EVAL_MIN_CASES_FOR_REGRESSION:
+            delta = round(prev_rate - pass_rate, 3)
+            metrics["pass_rate_delta"] = delta
+            metrics["prev_pass_rate"] = prev_rate
+
+            if delta >= EVAL_PASS_RATE_REGRESSION_THRESHOLD:
+                severity = "critical" if delta >= EVAL_PASS_RATE_REGRESSION_CRITICAL or pass_rate < 0.6 else "warning"
+                title = f"Eval pass rate regression: -{delta:.2f}"
+                detail = (
+                    f"Previous pass rate: {prev_rate:.2f}\n"
+                    f"Current pass rate: {pass_rate:.2f}\n"
+                    f"Cases: {metrics['total_cases']} | Failed: {metrics['failed']}"
+                )
+
+                await ctx.finding(
+                    severity,
+                    "evals",
+                    title,
+                    detail,
+                    {
+                        "prev_pass_rate": prev_rate,
+                        "current_pass_rate": pass_rate,
+                        "delta": delta,
+                        "failed_cases": failures[:5],
+                    },
+                )
+
+                _sections = [
+                    {
+                        "heading": "Regression Detected",
+                        "content": detail,
+                        "type": "error" if severity == "critical" else "warning",
+                    },
+                    {
+                        "heading": "Recent Failures (sample)",
+                        "content": json.dumps(failures[:3], indent=2),
+                        "type": "info",
+                    },
+                ]
+
+                if severity == "critical":
+                    # Critical regression (pass rate < 60%) — send immediately
+                    body_html = build_notification_html(
+                        title="Eval Pass Rate Regression",
+                        sections=_sections,
+                        footer="Athena Cognitive Platform - Developed by William Nelson 2016",
+                    )
+                    await send_email(
+                        tenant_id=GRAPH_TENANT_ID,
+                        client_id=GRAPH_CLIENT_ID,
+                        client_secret=GRAPH_CLIENT_SECRET,
+                        sender=GRAPH_SENDER_EMAIL,
+                        to_recipients=[SCORECARD_EMAIL],
+                        subject="[ACP CRITICAL] Eval Pass Rate Regression",
+                        body_html=body_html,
+                        importance="high",
+                    )
+                else:
+                    # Non-critical regression — queue for daily digest
+                    await ctx.queue_notification(
+                        "Eval Pass Rate Regression", _sections, severity="warning"
+                    )
 
         if metrics["failed"]:
             severity = "warning" if pass_rate >= 0.6 else "critical"

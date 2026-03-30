@@ -319,7 +319,7 @@ async def oauth_register(request: Request) -> JSONResponse:
     except:
         return JSONResponse({"error": "invalid_request"}, status_code=400)
     
-    # Set defaults for public clients (ChatGPT uses token_endpoint_auth_method=none)
+    # Set defaults for public clients (AI clients use token_endpoint_auth_method=none)
     if data.get("token_endpoint_auth_method") == "none":
         data.setdefault("grant_types", ["authorization_code", "refresh_token"])
         data.setdefault("response_types", ["code"])
@@ -422,7 +422,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search",
-            description="Search for documents in Paperless-ngx (ChatGPT-compatible).",
+            description="Search for documents in Paperless-ngx (MCP-compatible).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -446,7 +446,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="fetch",
-            description="Fetch a document by ID and return full text (ChatGPT-compatible).",
+            description="Fetch a document by ID and return full text (MCP-compatible).",
             inputSchema={
                 "type": "object",
                 "properties": {

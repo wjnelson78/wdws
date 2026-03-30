@@ -79,11 +79,11 @@ COMPLIANCE:
 
         pii_docs = await ctx.query("""
             SELECT id, title, domain,
-                   LEFT(full_content_preview, 2000) as preview
+                   LEFT(full_content, 2000) as preview
             FROM core.documents
-            WHERE full_content_preview IS NOT NULL
-              AND (full_content_preview ~ '\\d{3}-\\d{2}-\\d{4}'
-                   OR full_content_preview ~ '\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}')
+            WHERE full_content IS NOT NULL
+              AND (full_content ~ '\\d{3}-\\d{2}-\\d{4}'
+                   OR full_content ~ '\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}')
             LIMIT 50
         """)
         metrics["pii_found"] = len(pii_docs)
@@ -91,7 +91,7 @@ COMPLIANCE:
         if pii_docs:
             await ctx.finding("warning", "privacy",
                 f"PII detected in {len(pii_docs)} document previews",
-                "SSN or card number patterns found in full_content_preview fields",
+                "SSN or card number patterns found in full_content fields",
                 {"doc_ids": [d["id"] for d in pii_docs[:10]]})
 
         # ── Check for expired data ───────────────────────────

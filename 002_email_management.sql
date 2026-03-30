@@ -1,5 +1,5 @@
 -- ============================================================
--- WDWS Schema Migration 002: Email Sync Management
+-- ACP Schema Migration 002: Email Sync Management
 -- PostgreSQL 17 + pgvector 0.8.0
 --
 -- Adds tables for:
@@ -127,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_class_data
     ON ops.ai_classifications USING GIN (classification jsonb_path_ops);
 
 COMMENT ON TABLE ops.ai_classifications IS
-  'AI agent classifications of emails — case associations, entity extraction, urgency scoring, summaries, categories. Produced by GPT-4o-mini analysis.';
+  'AI agent classifications of emails — case associations, entity extraction, urgency scoring, summaries, categories. Produced by Athena AI analysis.';
 
 -- ────────────────────────────────────────────────────────────
 -- Seed Data — initial mailboxes and rules from current config
@@ -142,7 +142,9 @@ INSERT INTO ops.sync_rules (name, rule_type, pattern, description) VALUES
     ('Snohomish County', 'domain', 'snoco.org',
      'Snohomish County government domain'),
     ('Snohomish County WA', 'domain', 'co.snohomish.wa.us',
-     'Snohomish County Washington state domain')
+    'Snohomish County Washington state domain'),
+    ('Ninth Circuit', 'domain', 'ca9.uscourts.gov',
+    'Ninth Circuit court email domain')
 ON CONFLICT (rule_type, pattern) DO NOTHING;
 
 -- ────────────────────────────────────────────────────────────
