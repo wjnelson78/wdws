@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Athena Cognitive Platform MCP Server v2.0 — PostgreSQL-native with OAuth 2.0.
+Athena Cognitive Engine MCP Server v2.0 — PostgreSQL-native with OAuth 2.0.
 
 Single MCP server consolidating all domains:
   • Legal cases (court filings, emails, attachments)
@@ -649,7 +649,7 @@ auth_settings = AuthSettings(
 )
 
 mcp = FastMCP(
-    "Athena Cognitive Platform",
+    "Athena Cognitive Engine",
     instructions=(
         "William Nelson's unified document intelligence server. "
         "Provides full CRUD access to legal cases, court filings, emails, "
@@ -2366,7 +2366,7 @@ async def system_health() -> str:
 
         return json.dumps({
             "status": "healthy",
-            "server": "Athena Cognitive Platform MCP Server v2.0",
+            "server": "Athena Cognitive Engine MCP Server v2.0",
             "database_time": _ser(db_time["ts"]),
             "postgres_version": db_time["ver"][:50],
             "pool_size": pool_size,
@@ -2446,7 +2446,7 @@ Use the search_medical_records tool."""
 # ══════════════════════════════════════════════════════════════
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Athena Cognitive Platform MCP Server v2.0")
+    parser = argparse.ArgumentParser(description="Athena Cognitive Engine MCP Server v2.0")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
