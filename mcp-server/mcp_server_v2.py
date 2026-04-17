@@ -24,30 +24,36 @@ Transport:
 """
 
 import os
+import subprocess
 import sys
 import json
 import asyncio
 import base64
 import email as email_lib
+import html
 import re
 import hashlib
 import logging
 import mimetypes
 import secrets
+import shutil
 import time
 import uuid
+import xml.etree.ElementTree as ET
+import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta, timezone
 from email import policy
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional, Sequence
+from urllib.parse import quote
 
 import asyncpg
 import httpx
 from pydantic import AnyUrl
 from cryptography.fernet import Fernet, InvalidToken
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -74,17 +80,17 @@ WRITE_OP = ToolAnnotations(readOnlyHint=False)
 DESTRUCTIVE = ToolAnnotations(destructiveHint=True)
 
 # ── Logging ──────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-log = logging.getLogger("athena-mcp")
+sys.path.insert(0, "/opt/wdws")
+try:
+    from athena_logging import setup_logging, get_logger
+    setup_logging("mcp-server")
+    log = get_logger()
+except ImportError:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    log = logging.getLogger("athena-mcp")
 
 # ── Config ───────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws",
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -93,8 +99,24 @@ GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMS = 3072
+DEFAULT_ATHENA_MAILBOX = (os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me") or "athena@seattleseahawks.me").strip()
+ATHENA_EMAIL_DRAFT_MODEL = os.getenv("ATHENA_EMAIL_DRAFT_MODEL", os.getenv("AGENT_LLM_MODEL_HIGH", "gpt-5.4"))
+GRAPH_ATTACHMENT_SIMPLE_LIMIT = 3 * 1024 * 1024
+GRAPH_ATTACHMENT_UPLOAD_CHUNK_SIZE = 320 * 1024 * 10
+from embedding_service import embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, _vec_literal
+EMBEDDING_DIMS = EMBEDDING_DIMENSIONS   # 1024 (BGE-M3 local)
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+TRANSFER_DIR = Path(os.getenv("TRANSFER_DIR", "/opt/wdws/data/transfers"))
+TRANSFER_UPLOAD_DIR = TRANSFER_DIR / "upload"
+TRANSFER_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+TRANSFER_SESSION_FILE_LIMIT = int(os.getenv("TRANSFER_SESSION_FILE_LIMIT", str(100 * 1024 * 1024)))
+TRANSFER_UPLOAD_SESSION_TTL_SECONDS = int(os.getenv("TRANSFER_UPLOAD_SESSION_TTL_SECONDS", "3600"))
+TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS = int(os.getenv("TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS", "900"))
+TRANSFER_UPLOAD_MAX_CHUNK_SIZE = int(os.getenv("TRANSFER_UPLOAD_MAX_CHUNK_SIZE", str(4 * 1024 * 1024)))
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+OCR_DPI = 150
 BASE_URL = os.getenv("MCP_BASE_URL", "https://klunky.12432.net")
 OAUTH_CLIENT_SECRET_KEY = os.getenv("OAUTH_CLIENT_SECRET_KEY", "").strip()
 RAG_SEMANTIC_WEIGHT_DEFAULT = float(os.getenv("RAG_SEMANTIC_WEIGHT", "0.7"))
@@ -119,6 +141,7 @@ if "claude-desktop" not in CLIENT_SECRETS:
 if "chatgpt" not in CLIENT_SECRETS:
     CLIENT_SECRETS["chatgpt"] = os.getenv("CHATGPT_CLIENT_SECRET", "")
 CLIENT_SECRETS = {k: v for k, v in CLIENT_SECRETS.items() if v}
+FULL_SCOPE_FIRST_PARTY_CLIENT_IDS = {"claude-desktop", "chatgpt"}
 
 if OAUTH_CLIENT_SECRET_KEY:
     log.info("OAuth client secret encryption enabled")
@@ -129,6 +152,7 @@ else:
 pool: Optional[asyncpg.Pool] = None
 _graph_access_token: Optional[str] = None
 _graph_token_expires_at: float = 0.0
+_transfer_schema_ready = False
 
 # ── Schema Alias Resolution ─────────────────────────────────
 # Transparently rewrites column name variations (filed_date → date_filed, etc.)
@@ -244,6 +268,378 @@ async def _graph_get_bytes(url: str) -> bytes:
         resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
         resp.raise_for_status()
         return resp.content
+
+
+def _require_scope(required_scope: str) -> None:
+    token_info = _get_auth_token()
+    if token_info is None:
+        raise PermissionError("Authenticated OAuth access is required")
+
+    scopes = getattr(token_info, "scopes", None) or []
+    if isinstance(scopes, str):
+        scopes = scopes.split()
+    normalized = {str(scope).lower() for scope in scopes}
+    if "admin" in normalized:
+        return
+    if required_scope.lower() not in normalized:
+        raise PermissionError(
+            f"This tool requires OAuth scope '{required_scope}'. Re-authorize the MCP client with write access."
+        )
+
+
+def _current_client_id() -> str:
+    try:
+        token_info = _get_auth_token()
+        return token_info.client_id if token_info else "anonymous"
+    except Exception:
+        return "anonymous"
+
+
+def _normalize_scope_list(scopes: Optional[Sequence[str]]) -> list[str]:
+    normalized: list[str] = []
+    for scope in scopes or []:
+        value = str(scope).strip().lower()
+        if value and value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
+def _registered_client_scopes(client: OAuthClientInformationFull) -> list[str]:
+    return _normalize_scope_list((client.scope or "").split()) or ["read"]
+
+
+def _granted_scopes_for_client(
+    client: OAuthClientInformationFull,
+    requested_scopes: Optional[Sequence[str]],
+) -> list[str]:
+    """Resolve the scopes that should be embedded into a token.
+
+    Claude.ai / Claude Desktop and ChatGPT currently reconnect through the MCP
+    OAuth flow asking for only the minimum `read` scope, even when the Athena
+    client registration explicitly allows richer trusted scopes. That causes
+    previously working write tools like `send_mail_message(...)` to fail after a
+    reconnect. For these first-party clients, always issue their full registered
+    scope set so reconnects preserve historical behavior.
+    """
+    registered_scopes = _registered_client_scopes(client)
+    if client.client_id in FULL_SCOPE_FIRST_PARTY_CLIENT_IDS:
+        return registered_scopes
+
+    requested = _normalize_scope_list(requested_scopes)
+    if not requested:
+        return registered_scopes
+
+    granted = [scope for scope in requested if scope in registered_scopes]
+    return granted or registered_scopes
+
+
+def _normalize_mailbox(mailbox: Optional[str]) -> str:
+    value = (mailbox or DEFAULT_ATHENA_MAILBOX or "athena@seattleseahawks.me").strip().lower()
+    if not value or "@" not in value:
+        raise ValueError("A valid mailbox email address is required")
+    return value
+
+
+def _split_csv_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items = value
+    else:
+        items = str(value).split(",")
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _recipient_objects(value: Any) -> list[dict[str, dict[str, str]]]:
+    return [{"emailAddress": {"address": addr}} for addr in _split_csv_list(value)]
+
+
+def _normalize_importance(value: Optional[str], *, default: str = "normal") -> str:
+    normalized = (value or default).strip().lower()
+    if normalized not in {"low", "normal", "high"}:
+        raise ValueError("importance must be one of: low, normal, high")
+    return normalized.capitalize()
+
+
+def _html_to_text(value: str) -> str:
+    text = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
+
+
+def _text_to_html(value: str) -> str:
+    parts = [p.strip() for p in str(value).replace("\r\n", "\n").split("\n\n") if p.strip()]
+    if not parts:
+        return "<p></p>"
+    rendered = []
+    for part in parts:
+        escaped = html.escape(part).replace("\n", "<br>")
+        rendered.append(f"<p>{escaped}</p>")
+    return "\n".join(rendered)
+
+
+def _prepare_email_body(body: str, body_content_type: str = "html") -> tuple[str, str, str]:
+    content_type = (body_content_type or "html").strip().lower()
+    if content_type not in {"html", "text"}:
+        raise ValueError("body_content_type must be 'html' or 'text'")
+
+    raw = (body or "").strip()
+    if content_type == "html":
+        body_html = raw if re.search(r"<[^>]+>", raw) else _text_to_html(raw)
+        body_text = _html_to_text(body_html)
+        return body_html, body_text, "HTML"
+
+    body_text = raw
+    body_html = _text_to_html(raw)
+    return body_html, body_text, "Text"
+
+
+async def _graph_request(
+    method: str,
+    url: str,
+    *,
+    json_body: Optional[dict] = None,
+    data: Any = None,
+    params: Optional[dict] = None,
+    headers: Optional[dict] = None,
+    timeout: float = 60.0,
+) -> dict:
+    token = await _get_graph_access_token()
+    request_headers = {"Authorization": f"Bearer {token}"}
+    if headers:
+        request_headers.update(headers)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.request(
+            method,
+            url,
+            headers=request_headers,
+            json=json_body,
+            data=data,
+            params=params,
+        )
+        resp.raise_for_status()
+        if not resp.content:
+            return {}
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" in content_type.lower():
+            return resp.json()
+        return {"raw_text": resp.text}
+
+
+async def _graph_create_draft(mailbox: str, message_payload: dict) -> dict:
+    return await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages",
+        json_body=message_payload,
+        headers={"Content-Type": "application/json"},
+    )
+
+
+async def _graph_patch_message(mailbox: str, message_id: str, payload: dict) -> dict:
+    return await _graph_request(
+        "PATCH",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_id}",
+        json_body=payload,
+        headers={"Content-Type": "application/json"},
+    )
+
+
+async def _graph_send_draft(mailbox: str, message_id: str) -> None:
+    await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_id}/send",
+        headers={"Content-Length": "0"},
+    )
+
+
+async def _graph_add_small_attachment(mailbox: str, message_id: str, attachment: dict) -> dict:
+    payload = {
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        "name": attachment["filename"],
+        "contentType": attachment["mime_type"],
+        "contentBytes": base64.b64encode(attachment["data"]).decode("ascii"),
+    }
+    return await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_id}/attachments",
+        json_body=payload,
+        headers={"Content-Type": "application/json"},
+        timeout=120.0,
+    )
+
+
+async def _graph_add_large_attachment(mailbox: str, message_id: str, attachment: dict) -> dict:
+    session = await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_id}/attachments/createUploadSession",
+        json_body={
+            "AttachmentItem": {
+                "attachmentType": "file",
+                "name": attachment["filename"],
+                "size": len(attachment["data"]),
+            }
+        },
+        headers={"Content-Type": "application/json"},
+        timeout=120.0,
+    )
+
+    upload_url = session.get("uploadUrl")
+    if not upload_url:
+        raise RuntimeError(f"Graph upload session did not return uploadUrl for {attachment['filename']}")
+
+    data = attachment["data"]
+    final_response = None
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        start = 0
+        total = len(data)
+        while start < total:
+            end = min(start + GRAPH_ATTACHMENT_UPLOAD_CHUNK_SIZE, total) - 1
+            chunk = data[start:end + 1]
+            final_response = await client.put(
+                upload_url,
+                headers={
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": str(len(chunk)),
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                },
+                content=chunk,
+            )
+            if final_response.status_code not in (200, 201, 202):
+                raise RuntimeError(
+                    f"Graph large attachment upload failed for {attachment['filename']}: "
+                    f"HTTP {final_response.status_code} {final_response.text[:300]}"
+                )
+            start = end + 1
+
+    return {
+        "name": attachment["filename"],
+        "size": len(data),
+        "upload": "session",
+        "location": final_response.headers.get("Location") if final_response else None,
+    }
+
+
+async def _resolve_document_attachments(attachment_document_ids: Any) -> list[dict]:
+    attachments = []
+    for document_id in _split_csv_list(attachment_document_ids):
+        info, payload = await _load_original_document_bytes(document_id)
+        filename = info.get("filename") or f"document-{document_id}.bin"
+        mime_type = info.get("mime_type") or _guess_mime_type(filename)
+        attachments.append({
+            "document_id": document_id,
+            "filename": filename,
+            "mime_type": mime_type,
+            "data": payload,
+            "source_kind": info.get("source_kind"),
+            "original_available": info.get("original_available", False),
+        })
+    return attachments
+
+
+async def _attach_documents_to_message(mailbox: str, message_id: str, attachment_document_ids: Any) -> list[dict]:
+    attachments = await _resolve_document_attachments(attachment_document_ids)
+    uploaded = []
+    for attachment in attachments:
+        if len(attachment["data"]) < GRAPH_ATTACHMENT_SIMPLE_LIMIT:
+            result = await _graph_add_small_attachment(mailbox, message_id, attachment)
+            uploaded.append({
+                "document_id": attachment["document_id"],
+                "filename": attachment["filename"],
+                "size": len(attachment["data"]),
+                "upload": "simple",
+                "attachment_id": result.get("id"),
+            })
+        else:
+            result = await _graph_add_large_attachment(mailbox, message_id, attachment)
+            uploaded.append({
+                "document_id": attachment["document_id"],
+                "filename": attachment["filename"],
+                "size": len(attachment["data"]),
+                "upload": result.get("upload", "session"),
+                "attachment_location": result.get("location"),
+            })
+    return uploaded
+
+
+def _message_summary(message: dict) -> dict:
+    return {
+        "message_id": message.get("id"),
+        "internet_message_id": message.get("internetMessageId"),
+        "conversation_id": message.get("conversationId"),
+        "subject": message.get("subject"),
+        "importance": message.get("importance"),
+        "is_read": message.get("isRead"),
+        "is_draft": message.get("isDraft"),
+        "has_attachments": message.get("hasAttachments"),
+        "is_read_receipt_requested": message.get("isReadReceiptRequested"),
+        "is_delivery_receipt_requested": message.get("isDeliveryReceiptRequested"),
+        "received_at": message.get("receivedDateTime"),
+        "sent_at": message.get("sentDateTime"),
+        "body_preview": message.get("bodyPreview"),
+        "web_link": message.get("webLink"),
+        "from": message.get("from"),
+        "to_recipients": message.get("toRecipients", []),
+        "cc_recipients": message.get("ccRecipients", []),
+        "bcc_recipients": message.get("bccRecipients", []),
+        "reply_to": message.get("replyTo", []),
+        "categories": message.get("categories", []),
+    }
+
+
+async def _create_reply_draft(mailbox: str, message_id: str, *, reply_all: bool) -> dict:
+    graph_message_id = await _graph_resolve_message_graph_id(mailbox, message_id)
+    action = "createReplyAll" if reply_all else "createReply"
+    draft = await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_message_id}/{action}",
+        headers={"Content-Length": "0"},
+    )
+    if not draft.get("id"):
+        raise RuntimeError(f"Graph did not return a draft ID for {action}")
+    return draft
+
+
+async def _draft_email_completion(prompt: str, tone: str, recipient_name: Optional[str]) -> dict:
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is required to draft emails")
+
+    system_prompt = (
+        "You are Athena AI drafting polished, well-formatted professional email messages. "
+        "Return JSON only with keys subject, body_html, body_text, tone_used, and checklist. "
+        "Use clean HTML paragraphs and bullet lists where appropriate. "
+        "Keep the message concise, professional, and action-oriented."
+    )
+    recipient_line = recipient_name or "the recipient"
+    user_prompt = (
+        f"Tone: {tone}\n"
+        f"Recipient: {recipient_line}\n"
+        f"Mailbox sender: {DEFAULT_ATHENA_MAILBOX}\n"
+        f"Draft purpose and key details:\n{prompt}\n\n"
+        "Respond with valid JSON only."
+    )
+
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            json={
+                "model": ATHENA_EMAIL_DRAFT_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.3,
+                "response_format": {"type": "json_object"},
+                "max_tokens": 1200,
+            },
+        )
+        resp.raise_for_status()
+        return json.loads(resp.json()["choices"][0]["message"]["content"])
 
 
 async def _graph_resolve_message_graph_id(mailbox: str, message_ref: str) -> str:
@@ -409,6 +805,211 @@ async def _load_original_document_bytes(document_id: str) -> tuple[dict, bytes]:
     raise RuntimeError(f"No downloadable source found for document {document_id}")
 
 
+_CONTENT_RANGE_RE = re.compile(r"^bytes (\d+)-(\d+)/(\d+)$")
+_RANGE_HEADER_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def _content_disposition_value(filename: str, disposition: str = "attachment") -> str:
+    safe_name = (filename or "download.bin").replace("\r", " ").replace("\n", " ").replace('"', "'")
+    return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{quote(safe_name)}"
+
+
+def _normalize_download_disposition(disposition: Optional[str]) -> str:
+    value = (disposition or "attachment").strip().lower()
+    return value if value in {"attachment", "inline"} else "attachment"
+
+
+def _safe_upload_filename(filename: str) -> str:
+    candidate = (filename or "upload.bin").strip()
+    cleaned = re.sub(r"[^\w\-.]", "_", candidate)
+    return cleaned or "upload.bin"
+
+
+def _build_upload_save_path(domain: str, filename: str) -> Path:
+    safe_name = _safe_upload_filename(filename)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    domain_dir = UPLOAD_DIR / domain
+    domain_dir.mkdir(parents=True, exist_ok=True)
+    save_path = domain_dir / f"{ts}_{safe_name}"
+    if save_path.exists():
+        save_path = domain_dir / f"{ts}_{uuid.uuid4().hex[:8]}_{safe_name}"
+    return save_path
+
+
+def _default_document_type_for_extension(ext: str) -> str:
+    if ext in (".xlsx", ".xls", ".csv"):
+        return "spreadsheet"
+    if ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
+        return "image"
+    return "document"
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _append_bytes_to_file(path: Path, data: bytes) -> None:
+    with path.open("ab") as handle:
+        handle.write(data)
+
+
+def _next_expected_ranges(next_offset: int, total_size: int) -> list[str]:
+    return [] if next_offset >= total_size else [f"{next_offset}-"]
+
+
+def _parse_content_range(value: str) -> tuple[int, int, int]:
+    match = _CONTENT_RANGE_RE.match((value or "").strip())
+    if not match:
+        raise ValueError("Content-Range must be in the form 'bytes start-end/total'")
+    start, end, total = (int(match.group(i)) for i in range(1, 4))
+    if total <= 0:
+        raise ValueError("Content-Range total size must be greater than zero")
+    if start < 0 or end < start or end >= total:
+        raise ValueError("Content-Range values are invalid")
+    return start, end, total
+
+
+def _parse_range_header(value: Optional[str], total_size: int) -> tuple[int, int] | None:
+    if not value:
+        return None
+    match = _RANGE_HEADER_RE.match(value.strip())
+    if not match:
+        raise ValueError("Range must be in the form 'bytes=start-end'")
+
+    start_raw, end_raw = match.groups()
+    if start_raw == "" and end_raw == "":
+        raise ValueError("Range header is empty")
+
+    if start_raw == "":
+        suffix = int(end_raw)
+        if suffix <= 0:
+            raise ValueError("Range suffix must be greater than zero")
+        start = max(total_size - suffix, 0)
+        end = total_size - 1
+    else:
+        start = int(start_raw)
+        end = total_size - 1 if end_raw == "" else int(end_raw)
+
+    if start >= total_size:
+        raise IndexError("Range start exceeds file size")
+    if end >= total_size:
+        end = total_size - 1
+    if start > end:
+        raise ValueError("Range start must be less than or equal to the range end")
+    return start, end
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+async def _resolve_original_document_download(document_id: str) -> dict:
+    p = await get_pool()
+    doc = await p.fetchrow(
+        "SELECT id, filename, title, source_path, document_type, metadata, full_content "
+        "FROM core.documents WHERE id = $1::uuid",
+        document_id,
+    )
+    if not doc:
+        raise RuntimeError(f"Document not found: {document_id}")
+
+    filename = doc["filename"] or f"document-{document_id}.bin"
+    source_path = (doc["source_path"] or "").strip()
+
+    if source_path.startswith("graph://"):
+        if doc["document_type"] in ("email", "eml"):
+            mailbox, message_ref = source_path[len("graph://"):].split("/messages/", 1)
+            graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+            payload = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+            out_name = filename if filename.lower().endswith(".eml") else f"{Path(filename).stem or 'message'}.eml"
+            return {
+                "document_id": str(doc["id"]),
+                "filename": out_name,
+                "mime_type": "message/rfc822",
+                "source_kind": "graph_email",
+                "original_available": True,
+                "content_bytes": payload,
+                "total_size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+
+        att = await p.fetchrow(
+            """
+            SELECT filename, content_type, file_size, metadata
+            FROM legal.email_attachments
+            WHERE download_document_id = $1::uuid
+            """,
+            document_id,
+        )
+        if att:
+            metadata = att["metadata"] if isinstance(att["metadata"], dict) else {}
+            parent_ref = (metadata or {}).get("parent_graph_ref")
+            if parent_ref:
+                mailbox, message_ref = parent_ref.split("/", 1)
+                graph_id = await _graph_resolve_message_graph_id(mailbox, message_ref)
+                mime_bytes = await _graph_get_bytes(f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_id}/$value")
+                attachments = _extract_all_mime_attachments(mime_bytes)
+                matched = _match_attachment_bytes(attachments, att["filename"], att["content_type"], att["file_size"])
+                if matched:
+                    payload = matched["data"]
+                    return {
+                        "document_id": str(doc["id"]),
+                        "filename": att["filename"] or filename,
+                        "mime_type": att["content_type"] or _guess_mime_type(att["filename"] or filename),
+                        "source_kind": "graph_attachment",
+                        "original_available": True,
+                        "content_bytes": payload,
+                        "total_size": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+            raise RuntimeError(f"Attachment bytes not found in parent email for document {document_id}")
+
+    local_path = source_path
+    if local_path.startswith("file://"):
+        local_path = local_path[7:]
+    if local_path and os.path.exists(local_path):
+        local_file = Path(local_path)
+        total_size = local_file.stat().st_size
+        return {
+            "document_id": str(doc["id"]),
+            "filename": local_file.name or filename,
+            "mime_type": _guess_mime_type(local_file.name or filename),
+            "source_kind": "filesystem",
+            "original_available": True,
+            "local_path": str(local_file),
+            "total_size": total_size,
+            "sha256": await asyncio.to_thread(_file_sha256, local_file),
+        }
+
+    if doc["full_content"]:
+        payload = (doc["full_content"] or "").encode("utf-8")
+        export_name = filename if "." in filename else f"{filename}.txt"
+        return {
+            "document_id": str(doc["id"]),
+            "filename": export_name,
+            "mime_type": "text/plain; charset=utf-8",
+            "source_kind": "database_export",
+            "original_available": False,
+            "content_bytes": payload,
+            "total_size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+
+    raise RuntimeError(f"No downloadable source found for document {document_id}")
+
+
 
 
 # ── Tool-call logging ────────────────────────────────────────
@@ -534,17 +1135,46 @@ def logged_tool(func):
             )
     return wrapper
 
-# ── Embedding helper ─────────────────────────────────────────
+# ── Redis cache ─────────────────────────────────────────────
+_redis_client = None
+
+async def _get_redis():
+    global _redis_client
+    if _redis_client is None:
+        _redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+        try:
+            import redis.asyncio as aioredis
+            _redis_client = aioredis.from_url(_redis_url, socket_timeout=2)
+            await _redis_client.ping()
+        except Exception as e:
+            log.warning("Redis not available for caching: %s", e)
+            _redis_client = None
+    return _redis_client
+
+# ── Embedding helper (local BGE-M3) with Redis cache ─────────
 async def _embed_query(text: str) -> list[float]:
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": EMBEDDING_MODEL, "input": text, "dimensions": EMBEDDING_DIMS},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    # Check Redis cache first (5-minute TTL on embeddings)
+    cache_key = f"emb:{hashlib.md5(text.encode()).hexdigest()}"
+    try:
+        r = await _get_redis()
+        if r:
+            cached = await r.get(cache_key)
+            if cached:
+                return json.loads(cached)
+    except Exception:
+        pass  # Cache miss or error, proceed to local model
+
+    embedding = embed_query_sync(text)
+
+    # Cache the result
+    try:
+        r = await _get_redis()
+        if r:
+            await r.setex(cache_key, 300, json.dumps(embedding))
+    except Exception:
+        pass
+
+    return embedding
 
 
 _CASE_NUMBER_PATTERNS = [
@@ -650,6 +1280,49 @@ CREATE TABLE IF NOT EXISTS ops.oauth_refresh_tokens (
 ALTER TABLE IF EXISTS ops.oauth_clients
     ADD COLUMN IF NOT EXISTS client_secret_enc TEXT;
 """
+
+TRANSFER_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS ops.file_transfer_sessions (
+    session_id   UUID PRIMARY KEY,
+    direction    TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
+    token_hash   TEXT NOT NULL UNIQUE,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    client_id    TEXT,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    domain       TEXT,
+    title        TEXT,
+    document_type TEXT,
+    description  TEXT,
+    disposition  TEXT,
+    total_size   BIGINT NOT NULL DEFAULT 0,
+    next_offset  BIGINT NOT NULL DEFAULT 0,
+    temp_path    TEXT,
+    document_id  UUID,
+    sha256       TEXT,
+    metadata     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at   TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_transfer_sessions_expires_at
+    ON ops.file_transfer_sessions (expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_file_transfer_sessions_direction_status
+    ON ops.file_transfer_sessions (direction, status);
+"""
+
+
+async def _ensure_transfer_schema():
+    global _transfer_schema_ready
+    if _transfer_schema_ready:
+        return
+    p = await get_pool()
+    await p.execute(TRANSFER_SCHEMA_SQL)
+    _transfer_schema_ready = True
+    log.info("Transfer session schema ensured")
 
 
 def _hash_secret(secret: str) -> str:
@@ -780,6 +1453,7 @@ class PostgresOAuthProvider:
     ) -> str:
         await self._ensure_schema()
         p = await get_pool()
+        granted_scopes = _granted_scopes_for_client(client, params.scopes)
 
         # Generate authorization code (256 bits of entropy)
         code = secrets.token_urlsafe(32)
@@ -790,7 +1464,7 @@ class PostgresOAuthProvider:
                 (code, client_id, scopes, code_challenge, redirect_uri,
                  redirect_uri_provided_explicitly, resource, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        """, code, client.client_id, params.scopes or [],
+        """, code, client.client_id, granted_scopes,
              params.code_challenge, str(params.redirect_uri),
              params.redirect_uri_provided_explicitly,
              params.resource, expires_at)
@@ -834,6 +1508,7 @@ class PostgresOAuthProvider:
     ) -> OAuthToken:
         await self._ensure_schema()
         p = await get_pool()
+        granted_scopes = _granted_scopes_for_client(client, authorization_code.scopes)
 
         # Delete the used auth code
         await p.execute(
@@ -850,13 +1525,13 @@ class PostgresOAuthProvider:
         await p.execute("""
             INSERT INTO ops.oauth_access_tokens (token, client_id, scopes, resource, expires_at)
             VALUES ($1, $2, $3, $4, $5)
-        """, access_token, client.client_id, authorization_code.scopes,
+        """, access_token, client.client_id, granted_scopes,
              authorization_code.resource, now_ts + expires_in)
 
         await p.execute("""
             INSERT INTO ops.oauth_refresh_tokens (token, client_id, scopes, expires_at)
             VALUES ($1, $2, $3, $4)
-        """, refresh_token, client.client_id, authorization_code.scopes,
+        """, refresh_token, client.client_id, granted_scopes,
              now_ts + 86400 * 30)  # 30 day refresh
 
         # Update last_used
@@ -870,7 +1545,7 @@ class PostgresOAuthProvider:
             access_token=access_token,
             token_type="Bearer",
             expires_in=expires_in,
-            scope=" ".join(authorization_code.scopes) if authorization_code.scopes else None,
+            scope=" ".join(granted_scopes) if granted_scopes else None,
             refresh_token=refresh_token,
         )
 
@@ -931,7 +1606,7 @@ class PostgresOAuthProvider:
         # New tokens
         new_access = secrets.token_urlsafe(48)
         new_refresh = secrets.token_urlsafe(48)
-        use_scopes = scopes if scopes else refresh_token.scopes
+        use_scopes = _granted_scopes_for_client(client, scopes if scopes else refresh_token.scopes)
         expires_in = 86400
         now_ts = int(time.time())
 
@@ -978,6 +1653,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
     log.info("Athena MCP Server v2 starting up...")
     p = await get_pool()
     await p.execute(OAUTH_SCHEMA_SQL)
+    await _ensure_transfer_schema()
     log.info("OAuth schema ready, pool connected")
     try:
         yield {}
@@ -1010,7 +1686,7 @@ This is a HYBRID system with TWO powerful search capabilities:
 
 1️⃣ **VECTOR SEARCH (pgvector)** - Semantic similarity search
    • Finds documents by MEANING, not just keywords
-   • Uses embeddings (3072-dimensional vectors)
+   • Uses embeddings (1024-dimensional vectors via BGE-M3)
    • Best for: "Find documents about X", natural language queries
    • Tools: semantic_search(), rag_query()
    • Example: Find all docs related to "employment discrimination" even without exact phrase
@@ -1046,10 +1722,11 @@ INVESTIGATION METHODOLOGY
 ═══════════════════════════════════════════════════════════════════════════════════════════
 1. **START EVERY SESSION**: Call get_agent_context('athena') to load your memories and context
 2. **DOCUMENT EVERYTHING**: Use create_note() to record findings, questions, and tasks
-3. **WORK ITERATIVELY**: Break complex analysis into steps, documenting progress
-4. **USE BULK TOOLS**: Prefer get_case_report() and get_all_cases_summary() over multiple queries
-5. **TRACK INVESTIGATIONS**: Use get_investigation_summary() to see status and open items
-6. **PERSIST KNOWLEDGE**: Use save_memory() for insights that should survive across sessions
+3. **PRESERVE DELIVERABLES**: Use create_document() or upload_document() whenever you create a substantive artifact William may want searchable later — memos, reports, drafts, code notes, research summaries, or supporting files
+4. **WORK ITERATIVELY**: Break complex analysis into steps, documenting progress
+5. **USE BULK TOOLS**: Prefer get_case_report() and get_all_cases_summary() over multiple queries
+6. **TRACK INVESTIGATIONS**: Use get_investigation_summary() to see status and open items
+7. **PERSIST KNOWLEDGE**: Use save_memory() for insights that should survive across sessions
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 NOTE TYPES FOR DOCUMENTATION
@@ -1071,7 +1748,8 @@ During Investigation:
   3. get_case_report(case_number) → Get full case details
   4. rag_query/semantic_search → Find relevant documents
   5. create_note(..., note_type='finding') → Document what you discover
-  6. create_note(..., note_type='task') → Track follow-up items
+    6. create_document(...) / upload_document(...) → Preserve substantial work product in Athena when it should remain searchable
+    7. create_note(..., note_type='task') → Track follow-up items
 
 Session End:
   7. save_memory('athena', 'session_summary', {...}) → Persist key insights
@@ -1092,6 +1770,8 @@ ORIGINAL DOCUMENT ACCESS
 • Use `fetch_document(document_id)` to inspect document metadata and confirm the download hint.
 • Use `fetch_attachments(email_document_id)` to enumerate email attachments and obtain each
     attachment's `download_document_id`.
+• Prefer `create_document_download_session(document_id)` when the client can follow a raw HTTP
+    download URL without base64.
 • Use `download_original_document(document_id, offset, chunk_size)` to retrieve exhibit-grade
     original bytes in base64 chunks.
 • For email messages, the original should be retrieved as `.eml` / `message/rfc822` bytes.
@@ -1103,8 +1783,9 @@ ORIGINAL DOCUMENT ACCESS
 Recommended retrieval workflow:
     1. Search or fetch the target document.
     2. If it is an email with attachments, call `fetch_attachments`.
-    3. Call `download_original_document` with the document ID (or `download_document_id`).
-    4. Repeat with `next_offset` until `is_last_chunk` is true.
+     3. Prefer `create_document_download_session` and fetch the returned `download_url`.
+     4. If the client cannot follow URLs, call `download_original_document` and repeat with
+         `next_offset` until `is_last_chunk` is true.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 CORE PRINCIPLES
@@ -1164,12 +1845,381 @@ def _mcp_discovery_payload(base_url: str) -> dict[str, Any]:
     }
 
 
+def _build_transfer_url(direction: str, token: str) -> str:
+    return f"{BASE_URL.rstrip('/')}/transfer/{direction}/{token}"
+
+
+def _upload_session_status_payload(
+    row: asyncpg.Record,
+    token: str,
+    *,
+    next_offset: Optional[int] = None,
+    status: Optional[str] = None,
+) -> dict[str, Any]:
+    offset = int(row["next_offset"] if next_offset is None else next_offset)
+    expires_at = row["expires_at"]
+    metadata = _json_object(row["metadata"])
+    total_size = int(row["total_size"])
+    payload = {
+        "session_id": str(row["session_id"]),
+        "status": status or row["status"],
+        "filename": row["filename"],
+        "content_type": row["content_type"],
+        "domain": row["domain"],
+        "title": row["title"],
+        "document_type": row["document_type"],
+        "total_size": total_size,
+        "next_offset": offset,
+        "next_expected_ranges": _next_expected_ranges(offset, total_size),
+        "nextExpectedRanges": _next_expected_ranges(offset, total_size),
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "expirationDateTime": expires_at.isoformat() if expires_at else None,
+        "upload_url": _build_transfer_url("upload", token),
+        "status_url": _build_transfer_url("upload", token),
+        "cancel_url": _build_transfer_url("upload", token),
+        "max_chunk_size": TRANSFER_UPLOAD_MAX_CHUNK_SIZE,
+    }
+    if row["document_id"]:
+        payload["document_id"] = str(row["document_id"])
+    if metadata.get("ingest_result"):
+        payload["ingest_result"] = metadata["ingest_result"]
+    if metadata.get("error"):
+        payload["error"] = metadata["error"]
+    return payload
+
+
 @mcp.custom_route("/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
 @mcp.custom_route("/mcp/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
 @mcp.custom_route(f"{MCP_ENDPOINT_PATH}/.well-known/mcp.json", methods=["GET"], include_in_schema=False)
 async def mcp_well_known(request: Request) -> JSONResponse:
     """Publish MCP discovery metadata for clients that probe well-known routes."""
     return JSONResponse(_mcp_discovery_payload(_get_public_base_url(request)))
+
+
+@mcp.custom_route("/transfer/upload/{token}", methods=["GET", "PUT", "DELETE"], include_in_schema=False)
+async def transfer_upload_session(request: Request) -> Response:
+    await _ensure_transfer_schema()
+    token = str(request.path_params.get("token", "") or "").strip()
+    if not token:
+        return JSONResponse({"error": "Missing transfer token"}, status_code=400)
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    p = await get_pool()
+
+    if request.method == "DELETE":
+        temp_path = None
+        async with p.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1 FOR UPDATE",
+                    token_hash,
+                )
+                if not row or row["direction"] != "upload":
+                    return JSONResponse({"error": "Upload session not found"}, status_code=404)
+                if row["status"] == "completed":
+                    return JSONResponse(_upload_session_status_payload(row, token), status_code=409)
+                metadata = _json_object(row["metadata"])
+                metadata["cancelled_at"] = datetime.now(timezone.utc).isoformat()
+                await conn.execute(
+                    """
+                    UPDATE ops.file_transfer_sessions
+                    SET status = 'cancelled', updated_at = now(), metadata = $2::jsonb
+                    WHERE session_id = $1
+                    """,
+                    row["session_id"],
+                    json.dumps(metadata),
+                )
+                temp_path = row["temp_path"]
+        if temp_path:
+            await asyncio.to_thread(Path(temp_path).unlink, missing_ok=True)
+        return Response(status_code=204)
+
+    if request.method == "GET":
+        row = await p.fetchrow(
+            "SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1",
+            token_hash,
+        )
+        if not row or row["direction"] != "upload":
+            return JSONResponse({"error": "Upload session not found"}, status_code=404)
+        if row["status"] != "completed" and row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
+            metadata = _json_object(row["metadata"])
+            metadata["error"] = metadata.get("error") or "Upload session expired"
+            await p.execute(
+                """
+                UPDATE ops.file_transfer_sessions
+                SET status = 'expired', updated_at = now(), metadata = $2::jsonb
+                WHERE session_id = $1
+                """,
+                row["session_id"],
+                json.dumps(metadata),
+            )
+            if row["temp_path"]:
+                await asyncio.to_thread(Path(row["temp_path"]).unlink, missing_ok=True)
+            return JSONResponse(_upload_session_status_payload(row, token, status="expired"), status_code=410)
+
+        current_size = row["next_offset"]
+        if row["temp_path"] and Path(row["temp_path"]).exists():
+            current_size = Path(row["temp_path"]).stat().st_size
+            if current_size != row["next_offset"]:
+                await p.execute(
+                    "UPDATE ops.file_transfer_sessions SET next_offset = $2, updated_at = now() WHERE session_id = $1",
+                    row["session_id"],
+                    current_size,
+                )
+        return JSONResponse(_upload_session_status_payload(row, token, next_offset=int(current_size)))
+
+    body = await request.body()
+    if len(body) > TRANSFER_UPLOAD_MAX_CHUNK_SIZE:
+        return JSONResponse(
+            {"error": f"Chunk exceeds {TRANSFER_UPLOAD_MAX_CHUNK_SIZE} byte limit"},
+            status_code=413,
+        )
+
+    try:
+        start, end, total = _parse_content_range(request.headers.get("content-range", ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if len(body) != (end - start + 1):
+        return JSONResponse({"error": "Chunk length does not match Content-Range"}, status_code=400)
+
+    completed = False
+    session_id = None
+    temp_path_str = ""
+    upload_domain = DEFAULT_DOCUMENT_DOMAIN
+    upload_filename = ""
+    upload_title = None
+    upload_document_type = None
+    upload_description = None
+    expected_sha256 = None
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1 FOR UPDATE",
+                token_hash,
+            )
+            if not row or row["direction"] != "upload":
+                return JSONResponse({"error": "Upload session not found"}, status_code=404)
+
+            if row["status"] in {"completed", "cancelled", "failed", "expired"}:
+                return JSONResponse(_upload_session_status_payload(row, token), status_code=409)
+
+            if row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
+                metadata = _json_object(row["metadata"])
+                metadata["error"] = metadata.get("error") or "Upload session expired"
+                await conn.execute(
+                    """
+                    UPDATE ops.file_transfer_sessions
+                    SET status = 'expired', updated_at = now(), metadata = $2::jsonb
+                    WHERE session_id = $1
+                    """,
+                    row["session_id"],
+                    json.dumps(metadata),
+                )
+                if row["temp_path"]:
+                    await asyncio.to_thread(Path(row["temp_path"]).unlink, missing_ok=True)
+                return JSONResponse(_upload_session_status_payload(row, token, status="expired"), status_code=410)
+
+            if total != int(row["total_size"]):
+                return JSONResponse({"error": "Content-Range total does not match the upload session size"}, status_code=409)
+
+            temp_path = Path(row["temp_path"])
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            current_size = temp_path.stat().st_size if temp_path.exists() else 0
+            if current_size != row["next_offset"]:
+                await conn.execute(
+                    "UPDATE ops.file_transfer_sessions SET next_offset = $2, updated_at = now() WHERE session_id = $1",
+                    row["session_id"],
+                    current_size,
+                )
+
+            if start != current_size:
+                mismatch_payload = _upload_session_status_payload(row, token, next_offset=int(current_size))
+                mismatch_payload["error"] = "Chunk start does not match the next expected offset"
+                return JSONResponse(
+                    mismatch_payload,
+                    status_code=416,
+                    headers={"Content-Range": f"bytes */{row['total_size']}"},
+                )
+
+            await asyncio.to_thread(_append_bytes_to_file, temp_path, body)
+            next_offset = end + 1
+            metadata = _json_object(row["metadata"])
+            metadata["last_chunk_size"] = len(body)
+            metadata["last_uploaded_at"] = datetime.now(timezone.utc).isoformat()
+            await conn.execute(
+                """
+                UPDATE ops.file_transfer_sessions
+                SET next_offset = $2,
+                    status = $3,
+                    updated_at = now(),
+                    expires_at = $4,
+                    metadata = $5::jsonb
+                WHERE session_id = $1
+                """,
+                row["session_id"],
+                next_offset,
+                "processing" if next_offset >= total else "uploading",
+                datetime.now(timezone.utc) + timedelta(seconds=TRANSFER_UPLOAD_SESSION_TTL_SECONDS),
+                json.dumps(metadata),
+            )
+
+            completed = next_offset >= total
+            session_id = row["session_id"]
+            temp_path_str = row["temp_path"]
+            upload_domain = row["domain"] or DEFAULT_DOCUMENT_DOMAIN
+            upload_filename = row["filename"]
+            upload_title = row["title"]
+            upload_document_type = row["document_type"]
+            upload_description = row["description"]
+            expected_sha256 = (row["sha256"] or "").strip().lower() or None
+
+    if not completed:
+        row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
+        return JSONResponse(_upload_session_status_payload(row, token), status_code=202)
+
+    temp_path = Path(temp_path_str)
+    if expected_sha256:
+        actual_sha256 = await asyncio.to_thread(_file_sha256, temp_path)
+        if actual_sha256.lower() != expected_sha256:
+            await p.execute(
+                """
+                UPDATE ops.file_transfer_sessions
+                SET status = 'failed', updated_at = now(), metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+                WHERE session_id = $1
+                """,
+                session_id,
+                json.dumps({"error": "Uploaded file hash did not match expected sha256"}),
+            )
+            row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
+            return JSONResponse(_upload_session_status_payload(row, token), status_code=409)
+
+    final_path = _build_upload_save_path(upload_domain, upload_filename)
+    await asyncio.to_thread(shutil.move, str(temp_path), str(final_path))
+
+    try:
+        ingest_result = await _ingest_saved_upload(
+            final_path,
+            upload_filename,
+            upload_domain,
+            upload_title,
+            upload_document_type,
+            upload_description,
+            "mcp-upload-session",
+        )
+    except Exception as exc:
+        await p.execute(
+            """
+            UPDATE ops.file_transfer_sessions
+            SET status = 'failed', updated_at = now(), metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+            WHERE session_id = $1
+            """,
+            session_id,
+            json.dumps({"error": f"Upload finished but ingest failed: {exc}"}),
+        )
+        row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
+        return JSONResponse(_upload_session_status_payload(row, token), status_code=500)
+
+    await p.execute(
+        """
+        UPDATE ops.file_transfer_sessions
+        SET status = 'completed',
+            next_offset = total_size,
+            document_id = $2::uuid,
+            completed_at = now(),
+            updated_at = now(),
+            metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+        WHERE session_id = $1
+        """,
+        session_id,
+        uuid.UUID(ingest_result["document_id"]),
+        json.dumps({"ingest_result": ingest_result}),
+    )
+    row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
+    return JSONResponse(
+        _upload_session_status_payload(row, token),
+        status_code=201,
+        headers={"X-Document-Id": ingest_result["document_id"]},
+    )
+
+
+@mcp.custom_route("/transfer/download/{token}", methods=["GET", "HEAD"], include_in_schema=False)
+async def transfer_download_session(request: Request) -> Response:
+    await _ensure_transfer_schema()
+    token = str(request.path_params.get("token", "") or "").strip()
+    if not token:
+        return JSONResponse({"error": "Missing transfer token"}, status_code=400)
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    p = await get_pool()
+    row = await p.fetchrow(
+        "SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1",
+        token_hash,
+    )
+    if not row or row["direction"] != "download" or not row["document_id"]:
+        return JSONResponse({"error": "Download session not found"}, status_code=404)
+
+    if row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
+        await p.execute(
+            "UPDATE ops.file_transfer_sessions SET status = 'expired', updated_at = now() WHERE session_id = $1",
+            row["session_id"],
+        )
+        return JSONResponse({"error": "Download session expired"}, status_code=410)
+
+    try:
+        download = await _resolve_original_document_download(str(row["document_id"]))
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+    disposition = _normalize_download_disposition(row["disposition"])
+    filename = download["filename"]
+    mime_type = download["mime_type"]
+    total_size = int(download["total_size"])
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": _content_disposition_value(filename, disposition),
+        "Content-Length": str(total_size),
+        "ETag": f'"{download["sha256"]}"',
+        "X-Document-Id": download["document_id"],
+        "X-Original-Available": "true" if download.get("original_available") else "false",
+        "X-Source-Kind": download.get("source_kind", "unknown"),
+    }
+
+    range_header = request.headers.get("range")
+    if range_header:
+        try:
+            start, end = _parse_range_header(range_header, total_size)
+        except IndexError:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total_size}", "Accept-Ranges": "bytes"})
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+        headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
+        headers["Content-Length"] = str(end - start + 1)
+        if request.method == "HEAD":
+            return Response(status_code=206, headers=headers, media_type=mime_type)
+
+        if download.get("local_path"):
+            body = await asyncio.to_thread(Path(download["local_path"]).read_bytes)
+            body = body[start:end + 1]
+        else:
+            body = download.get("content_bytes", b"")[start:end + 1]
+        return Response(content=body, status_code=206, media_type=mime_type, headers=headers)
+
+    if request.method == "HEAD":
+        return Response(status_code=200, headers=headers, media_type=mime_type)
+
+    if download.get("local_path"):
+        file_headers = {k: v for k, v in headers.items() if k not in {"Content-Disposition", "Content-Length"}}
+        return FileResponse(
+            download["local_path"],
+            media_type=mime_type,
+            filename=filename,
+            headers=file_headers,
+            content_disposition_type=disposition,
+        )
+
+    return Response(content=download.get("content_bytes", b""), media_type=mime_type, headers=headers)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1196,11 +2246,11 @@ async def search(query: str) -> dict:
         rows = await p.fetch("""
             SELECT c.document_id, d.title, d.filename, d.source_path,
                    d.domain, d.document_type,
-                   (c.embedding::halfvec(3072) <=> $1::halfvec(3072)) AS distance
+                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance
             FROM core.document_chunks c
             JOIN core.documents d ON c.document_id = d.id
             WHERE c.embedding IS NOT NULL
-            ORDER BY c.embedding::halfvec(3072) <=> $1::halfvec(3072)
+            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
             LIMIT $2
         """, vec_str, limit * 3)
 
@@ -1283,7 +2333,7 @@ async def semantic_search(query: str, domain: Optional[str] = None,
 
     Args:
         query: Natural language search query (describe what you're looking for)
-        domain: Filter by domain (legal, medical, paperless) or omit for all
+        domain: Filter by domain (for example general, coding, legal, medical, paperless, web) or omit for all
         case_number: Filter to a specific case (partial match, e.g. "26-2-00762")
         limit: Max results (1-50, default 20)
     """
@@ -1319,13 +2369,13 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             SELECT c.id AS chunk_id, d.id AS doc_id, d.title, d.filename,
                    d.domain, d.document_type, d.source_path,
                    c.content, c.chunk_index,
-                   (c.embedding::halfvec(3072) <=> $1::halfvec(3072)) AS distance,
+                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
                    em.sender, em.subject, em.date_sent
             FROM core.document_chunks c
             JOIN core.documents d ON c.document_id = d.id
             LEFT JOIN legal.email_metadata em ON d.id = em.document_id
             {where}
-            ORDER BY c.embedding::halfvec(3072) <=> $1::halfvec(3072)
+            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
             LIMIT ${idx}
         """, *params)
 
@@ -1843,7 +2893,7 @@ async def search_by_date_range(
     Args:
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
-        domain: Filter by domain (legal, medical, paperless)
+        domain: Filter by domain (for example general, coding, legal, medical, paperless, web)
         document_type: Filter by type (email, court_filing, email_attachment, note, etc.)
         limit: Max results (default 50)
     """
@@ -1928,9 +2978,10 @@ async def fetch_document(document_id: str, include_chunks: bool = False) -> str:
             "updated_at": _ser(doc["updated_at"]),
             "full_content": doc["full_content"],
             "download": {
-                "tool": "download_original_document",
+                "preferred_tool": "create_document_download_session",
+                "fallback_tool": "download_original_document",
                 "available": True,
-                "note": "Call download_original_document(document_id, offset, chunk_size) until is_last_chunk is true to reconstruct the original file.",
+                "note": "Prefer create_document_download_session(document_id) for a raw HTTP download URL. Use download_original_document(document_id, offset, chunk_size) only when a client cannot follow side-channel URLs.",
             },
         }
 
@@ -2109,8 +3160,1189 @@ async def fetch_attachments(email_document_id: str) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 @logged_tool
-async def download_original_document(document_id: str, offset: int = 0, chunk_size: int = 262144) -> str:
-    """Download the original document bytes in base64 chunks.
+async def list_mailbox_messages(
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    folder: str = "inbox",
+    top: int = 25,
+    unread_only: bool = False,
+    search: Optional[str] = None,
+    importance: Optional[str] = None,
+) -> str:
+    """Read live mailbox messages directly from Microsoft Graph.
+
+    Args:
+        mailbox: Mailbox to read (defaults to Athena's mailbox)
+        folder: Mail folder such as inbox, sentitems, drafts, archive
+        top: Maximum number of messages to return (1-100, default 25)
+        unread_only: If true, only return unread messages
+        search: Optional Graph mailbox search query
+        importance: Optional filter — low, normal, or high
+    """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        top = min(max(top, 1), 100)
+
+        filter_parts = []
+        if unread_only:
+            filter_parts.append("isRead eq false")
+        if importance:
+            filter_parts.append(f"importance eq '{_normalize_importance(importance).lower()}'")
+
+        params = {
+            "$top": top,
+            "$select": (
+                "id,internetMessageId,conversationId,subject,from,toRecipients,ccRecipients,"
+                "receivedDateTime,sentDateTime,bodyPreview,importance,isRead,isDraft,"
+                "hasAttachments,isReadReceiptRequested,isDeliveryReceiptRequested,webLink,categories"
+            ),
+        }
+        if filter_parts:
+            params["$filter"] = " and ".join(filter_parts)
+        if search:
+            params["$search"] = f'"{search}"'
+        else:
+            params["$orderby"] = "receivedDateTime desc"
+
+        if search:
+            data = await _graph_request(
+                "GET",
+                f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{folder}/messages",
+                params=params,
+                headers={"ConsistencyLevel": "eventual"},
+            )
+        else:
+            data = await _graph_get_json(
+                f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{folder}/messages",
+                params=params,
+            )
+        messages = [_message_summary(message) for message in data.get("value", [])]
+        return json.dumps({
+            "mailbox": mailbox,
+            "folder": folder,
+            "messages": messages,
+            "count": len(messages),
+        })
+    except Exception as e:
+        log.error("list_mailbox_messages error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def get_mailbox_message(
+    message_id: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    include_body: bool = True,
+    include_attachments: bool = True,
+) -> str:
+    """Fetch a live mailbox message directly from Microsoft Graph.
+
+    Args:
+        message_id: Graph message ID or RFC internet message ID
+        mailbox: Mailbox to read from (defaults to Athena's mailbox)
+        include_body: Include full message body content
+        include_attachments: Include attachment metadata
+    """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        graph_message_id = await _graph_resolve_message_graph_id(mailbox, message_id)
+        params = {
+            "$select": (
+                "id,internetMessageId,conversationId,subject,from,sender,toRecipients,ccRecipients,"
+                "bccRecipients,replyTo,receivedDateTime,sentDateTime,bodyPreview,body,importance,"
+                "isRead,isDraft,hasAttachments,isReadReceiptRequested,isDeliveryReceiptRequested,"
+                "webLink,categories"
+            )
+        }
+        message = await _graph_get_json(
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_message_id}",
+            params=params,
+        )
+
+        result = _message_summary(message)
+        result["mailbox"] = mailbox
+        if include_body:
+            result["body"] = message.get("body")
+        if include_attachments and message.get("hasAttachments"):
+            attachment_data = await _graph_get_json(
+                f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_message_id}/attachments",
+                params={"$select": "id,name,contentType,size,isInline"},
+            )
+            result["attachments"] = attachment_data.get("value", [])
+
+        return json.dumps(result)
+    except Exception as e:
+        log.error("get_mailbox_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def draft_email_message(
+    prompt: str,
+    recipient_name: Optional[str] = None,
+    tone: str = "professional",
+) -> str:
+    """Generate a polished email draft Athena can send or use in a reply.
+
+    Args:
+        prompt: Purpose, facts, and any must-include points for the message
+        recipient_name: Optional recipient display name for salutation tuning
+        tone: professional, warm, firm, concise, diplomatic, or follow-up
+    """
+    try:
+        draft = await _draft_email_completion(prompt, tone, recipient_name)
+        body_html = draft.get("body_html") or _text_to_html(draft.get("body_text", ""))
+        body_text = draft.get("body_text") or _html_to_text(body_html)
+        return json.dumps({
+            "subject": (draft.get("subject") or "Draft email").strip(),
+            "body_html": body_html,
+            "body_text": body_text,
+            "tone_used": draft.get("tone_used") or tone,
+            "checklist": draft.get("checklist") or [],
+            "model": ATHENA_EMAIL_DRAFT_MODEL,
+        })
+    except Exception as e:
+        log.error("draft_email_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def send_mail_message(
+    to_recipients: str,
+    subject: str,
+    body: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    cc_recipients: Optional[str] = None,
+    bcc_recipients: Optional[str] = None,
+    body_content_type: str = "html",
+    importance: str = "normal",
+    request_read_receipt: bool = False,
+    request_delivery_receipt: bool = False,
+    attachment_document_ids: Optional[str] = None,
+) -> str:
+    """Create, attach, and send a new email from Athena's mailbox via Graph.
+
+    To attach files Athena creates, pass document IDs returned by create_document or upload_document.
+
+    Args:
+        to_recipients: Comma-separated recipient email addresses
+        subject: Message subject
+        body: Email body text or HTML
+        mailbox: Mailbox to send from (defaults to Athena's mailbox)
+        cc_recipients: Optional comma-separated CC recipients
+        bcc_recipients: Optional comma-separated BCC recipients
+        body_content_type: html or text (default html)
+        importance: low, normal, or high
+        request_read_receipt: Request a read receipt
+        request_delivery_receipt: Request a delivery receipt
+        attachment_document_ids: Optional comma-separated Athena document IDs to attach
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        to_objects = _recipient_objects(to_recipients)
+        if not to_objects:
+            raise ValueError("At least one recipient is required")
+
+        body_html, body_text, graph_content_type = _prepare_email_body(body, body_content_type)
+        draft_payload = {
+            "subject": subject.strip(),
+            "importance": _normalize_importance(importance),
+            "body": {
+                "contentType": graph_content_type,
+                "content": body_html if graph_content_type == "HTML" else body_text,
+            },
+            "toRecipients": to_objects,
+            "ccRecipients": _recipient_objects(cc_recipients),
+            "bccRecipients": _recipient_objects(bcc_recipients),
+            "isReadReceiptRequested": bool(request_read_receipt),
+            "isDeliveryReceiptRequested": bool(request_delivery_receipt),
+        }
+        draft = await _graph_create_draft(mailbox, draft_payload)
+        draft_id = draft.get("id")
+        if not draft_id:
+            raise RuntimeError("Graph did not return a draft message ID")
+
+        uploaded_attachments = []
+        if attachment_document_ids:
+            uploaded_attachments = await _attach_documents_to_message(mailbox, draft_id, attachment_document_ids)
+
+        await _graph_send_draft(mailbox, draft_id)
+        return json.dumps({
+            "status": "sent",
+            "mailbox": mailbox,
+            "draft_id": draft_id,
+            "subject": subject.strip(),
+            "to_recipients": _split_csv_list(to_recipients),
+            "cc_recipients": _split_csv_list(cc_recipients),
+            "bcc_recipients": _split_csv_list(bcc_recipients),
+            "importance": _normalize_importance(importance).lower(),
+            "read_receipt_requested": bool(request_read_receipt),
+            "delivery_receipt_requested": bool(request_delivery_receipt),
+            "attachments": uploaded_attachments,
+        })
+    except Exception as e:
+        log.error("send_mail_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+async def _reply_to_mail_message_impl(
+    *,
+    message_id: str,
+    body: str,
+    mailbox: str,
+    reply_all: bool,
+    body_content_type: str,
+    importance: Optional[str],
+    request_read_receipt: Optional[bool],
+    request_delivery_receipt: Optional[bool],
+    attachment_document_ids: Optional[str],
+) -> str:
+    _require_scope("write")
+    mailbox = _normalize_mailbox(mailbox)
+    body_html, body_text, graph_content_type = _prepare_email_body(body, body_content_type)
+    draft = await _create_reply_draft(mailbox, message_id, reply_all=reply_all)
+    draft_id = draft.get("id")
+    if not draft_id:
+        raise RuntimeError("Graph did not return a reply draft ID")
+
+    patch_payload: dict[str, Any] = {
+        "body": {
+            "contentType": graph_content_type,
+            "content": body_html if graph_content_type == "HTML" else body_text,
+        },
+    }
+    if importance:
+        patch_payload["importance"] = _normalize_importance(importance)
+    if request_read_receipt is not None:
+        patch_payload["isReadReceiptRequested"] = bool(request_read_receipt)
+    if request_delivery_receipt is not None:
+        patch_payload["isDeliveryReceiptRequested"] = bool(request_delivery_receipt)
+
+    updated = await _graph_patch_message(mailbox, draft_id, patch_payload)
+    uploaded_attachments = []
+    if attachment_document_ids:
+        uploaded_attachments = await _attach_documents_to_message(mailbox, draft_id, attachment_document_ids)
+
+    await _graph_send_draft(mailbox, draft_id)
+    return json.dumps({
+        "status": "sent",
+        "mailbox": mailbox,
+        "reply_all": reply_all,
+        "source_message_id": message_id,
+        "draft_id": draft_id,
+        "subject": updated.get("subject") or draft.get("subject"),
+        "importance": (updated.get("importance") or draft.get("importance") or "normal").lower(),
+        "read_receipt_requested": updated.get("isReadReceiptRequested"),
+        "delivery_receipt_requested": updated.get("isDeliveryReceiptRequested"),
+        "attachments": uploaded_attachments,
+    })
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def reply_to_mail_message(
+    message_id: str,
+    body: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    body_content_type: str = "html",
+    importance: Optional[str] = None,
+    request_read_receipt: Optional[bool] = None,
+    request_delivery_receipt: Optional[bool] = None,
+    attachment_document_ids: Optional[str] = None,
+) -> str:
+    """Reply to a message from Athena's mailbox using a draft flow.
+
+    This flow supports attachment_document_ids, so Athena can attach documents she generated.
+
+    Args:
+        message_id: Graph message ID or RFC internet message ID to reply to
+        body: Reply body text or HTML
+        mailbox: Mailbox to send from (defaults to Athena's mailbox)
+        body_content_type: html or text (default html)
+        importance: Optional low, normal, or high importance override
+        request_read_receipt: Optional read receipt flag for the outgoing reply
+        request_delivery_receipt: Optional delivery receipt flag for the outgoing reply
+        attachment_document_ids: Optional comma-separated Athena document IDs to attach
+    """
+    try:
+        return await _reply_to_mail_message_impl(
+            message_id=message_id,
+            body=body,
+            mailbox=mailbox,
+            reply_all=False,
+            body_content_type=body_content_type,
+            importance=importance,
+            request_read_receipt=request_read_receipt,
+            request_delivery_receipt=request_delivery_receipt,
+            attachment_document_ids=attachment_document_ids,
+        )
+    except Exception as e:
+        log.error("reply_to_mail_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def reply_all_mail_message(
+    message_id: str,
+    body: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    body_content_type: str = "html",
+    importance: Optional[str] = None,
+    request_read_receipt: Optional[bool] = None,
+    request_delivery_receipt: Optional[bool] = None,
+    attachment_document_ids: Optional[str] = None,
+) -> str:
+    """Reply-all to a message from Athena's mailbox using a draft flow.
+
+    This flow supports attachment_document_ids, so Athena can attach generated documents.
+
+    Args:
+        message_id: Graph message ID or RFC internet message ID to reply-all to
+        body: Reply-all body text or HTML
+        mailbox: Mailbox to send from (defaults to Athena's mailbox)
+        body_content_type: html or text (default html)
+        importance: Optional low, normal, or high importance override
+        request_read_receipt: Optional read receipt flag for the outgoing reply-all
+        request_delivery_receipt: Optional delivery receipt flag for the outgoing reply-all
+        attachment_document_ids: Optional comma-separated Athena document IDs to attach
+    """
+    try:
+        return await _reply_to_mail_message_impl(
+            message_id=message_id,
+            body=body,
+            mailbox=mailbox,
+            reply_all=True,
+            body_content_type=body_content_type,
+            importance=importance,
+            request_read_receipt=request_read_receipt,
+            request_delivery_receipt=request_delivery_receipt,
+            attachment_document_ids=attachment_document_ids,
+        )
+    except Exception as e:
+        log.error("reply_all_mail_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def update_mail_message(
+    message_id: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    importance: Optional[str] = None,
+    is_read: Optional[bool] = None,
+    request_read_receipt: Optional[bool] = None,
+    request_delivery_receipt: Optional[bool] = None,
+    categories: Optional[str] = None,
+) -> str:
+    """Update a mailbox message via Graph.
+
+    Use this to mark a message important, mark it read/unread, or adjust receipt flags.
+
+    Args:
+        message_id: Graph message ID or RFC internet message ID
+        mailbox: Mailbox to update in (defaults to Athena's mailbox)
+        importance: Optional low, normal, or high
+        is_read: Optional true/false to mark read or unread
+        request_read_receipt: Optional read receipt flag
+        request_delivery_receipt: Optional delivery receipt flag
+        categories: Optional comma-separated Outlook categories
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        graph_message_id = await _graph_resolve_message_graph_id(mailbox, message_id)
+        payload: dict[str, Any] = {}
+        if importance:
+            payload["importance"] = _normalize_importance(importance)
+        if is_read is not None:
+            payload["isRead"] = bool(is_read)
+        if request_read_receipt is not None:
+            payload["isReadReceiptRequested"] = bool(request_read_receipt)
+        if request_delivery_receipt is not None:
+            payload["isDeliveryReceiptRequested"] = bool(request_delivery_receipt)
+        if categories:
+            payload["categories"] = _split_csv_list(categories)
+        if not payload:
+            raise ValueError("At least one updatable field must be provided")
+
+        updated = await _graph_patch_message(mailbox, graph_message_id, payload)
+        result = _message_summary(updated)
+        result["mailbox"] = mailbox
+        return json.dumps(result)
+    except Exception as e:
+        log.error("update_mail_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║           DOCUMENT CREATION (text) & UPLOAD (binary)         ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def create_document(
+    title: str,
+    content: str,
+    domain: str = "general",
+    document_type: str = "document",
+    filename: Optional[str] = None,
+    description: Optional[str] = None,
+    file_format: str = "md",
+) -> str:
+    """Create and ingest a new document from text content into Athena.
+
+    USE THIS when Claude creates a durable artifact that should be preserved in Athena —
+    analyses, summaries, memos, reports, coding notes, research digests, or other work product.
+    The content is saved as a file, chunked, embedded, and made searchable.
+    Unlike upload_document (which needs base64 binary), this accepts plain text directly.
+
+    Args:
+        title: Document title (e.g. "Nelson v Starbucks Case Summary")
+        content: The full document text content (markdown, plain text, etc.)
+        domain: Classification domain (default "general"). Call list_document_domains() if you're unsure which domain to use.
+        document_type: Type — "document", "report", "memo", "analysis", "letter", "summary", "brief"
+        filename: Optional filename (auto-generated from title if omitted)
+        description: Optional notes about the document
+        file_format: File extension — "md", "txt" (default "md")
+    """
+    try:
+        domain = await _normalize_document_domain(domain)
+        if not content or len(content.strip()) < 10:
+            return json.dumps({"error": "Content is too short (minimum 10 characters)"})
+
+        # Generate filename
+        if not filename:
+            safe_title = re.sub(r'[^\w\-]', '_', title)[:80]
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{ts}_{safe_title}.{file_format}"
+
+        # Save to disk
+        domain_dir = UPLOAD_DIR / domain
+        domain_dir.mkdir(parents=True, exist_ok=True)
+        save_path = domain_dir / filename
+        if save_path.exists():
+            save_path = domain_dir / f"{uuid.uuid4().hex[:8]}_{filename}"
+        save_path.write_text(content, encoding="utf-8")
+        log.info("Created document: %s (%d chars)", save_path, len(content))
+
+        # Chunk
+        chunks = _chunk_text_upload(content)
+        if not chunks:
+            chunks = [content[:CHUNK_SIZE]]
+
+        # Embed
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(chunks), 2000):
+            batch = chunks[i:i + 2000]
+            try:
+                embs = await _embed_batch_upload(batch)
+                all_embeddings.extend(embs)
+            except Exception as e:
+                log.error("Embedding failed for %s: %s", filename, e)
+                all_embeddings.extend([[0.0] * EMBEDDING_DIMS] * len(batch))
+
+        doc_id = str(uuid.uuid4())
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+        meta = {
+            "source": "claude-desktop-created",
+            "created_by": "claude-desktop",
+            "preserved_by": "athena-cognitive-engine",
+            "preserve_requested": True,
+            "file_type": file_format,
+            "file_size": len(content.encode("utf-8")),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "local_attachment_path": str(save_path),
+        }
+        if description:
+            meta["description"] = description
+
+        p = await get_pool()
+        async with p.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("""
+                    INSERT INTO core.documents
+                        (id, domain, source_path, filename, document_type, title,
+                         content_hash, total_chunks, full_content, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                """,
+                    uuid.UUID(doc_id), domain, str(save_path), filename,
+                    document_type, title, content_hash, len(chunks),
+                    content[:500000], json.dumps(meta),
+                )
+                for i, (chunk_text, emb) in enumerate(zip(chunks, all_embeddings)):
+                    chunk_id = hashlib.md5(f"{save_path}:{i}".encode()).hexdigest()
+                    vec_literal = "[" + ",".join(f"{v:.6f}" for v in emb) + "]"
+                    await conn.execute("""
+                        INSERT INTO core.document_chunks
+                            (id, document_id, chunk_index, total_chunks,
+                             content, embedding, metadata)
+                        VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                        ON CONFLICT (id) DO NOTHING
+                    """,
+                        chunk_id, uuid.UUID(doc_id), i, len(chunks),
+                        chunk_text, vec_literal, json.dumps({}),
+                    )
+                await conn.execute("""
+                    INSERT INTO ops.ingestion_jobs
+                        (source, domain, status, documents_processed, chunks_processed,
+                         documents_failed, completed_at, metadata)
+                    VALUES ($1, $2, 'completed', 1, $3, 0, now(), $4::jsonb)
+                """,
+                    "claude-desktop-created", domain, len(chunks),
+                    json.dumps({"filename": filename, "document_id": doc_id}),
+                )
+
+        return json.dumps({
+            "status": "ingested",
+            "document_id": doc_id,
+            "filename": filename,
+            "title": title,
+            "domain": domain,
+            "document_type": document_type,
+            "file_size": len(content.encode("utf-8")),
+            "saved_to": str(save_path),
+            "text_length": len(content),
+            "chunks_created": len(chunks),
+            "searchable": True,
+        })
+    except Exception as e:
+        log.error("create_document error: %s", e)
+        return json.dumps({"error": str(e)})
+
+def _extract_pdf_text_upload(pdf_path: Path) -> str:
+    try:
+        from pdf2image import convert_from_path, pdfinfo_from_path
+        import pytesseract
+        try:
+            info = pdfinfo_from_path(str(pdf_path))
+            num_pages = info.get("Pages", 0)
+        except Exception:
+            num_pages = 0
+        if num_pages > 0:
+            parts = []
+            for pn in range(1, num_pages + 1):
+                try:
+                    images = convert_from_path(str(pdf_path), dpi=OCR_DPI, first_page=pn, last_page=pn, thread_count=1)
+                    if images:
+                        txt = pytesseract.image_to_string(images[0])
+                        if txt and txt.strip():
+                            parts.append(f"[Page {pn}]\n{txt}")
+                        del images
+                except Exception:
+                    pass
+            return "\n\n".join(parts)
+        else:
+            images = convert_from_path(str(pdf_path), dpi=OCR_DPI, thread_count=1)
+            return "\n\n".join(f"[Page {i}]\n{pytesseract.image_to_string(img)}" for i, img in enumerate(images, 1) if pytesseract.image_to_string(img).strip())
+    except Exception:
+        try:
+            result = subprocess.run(["pdftotext", "-layout", str(pdf_path), "-"], capture_output=True, text=True, timeout=60)
+            return result.stdout
+        except Exception:
+            return ""
+
+def _extract_docx_text_upload(docx_path: Path) -> str:
+    try:
+        with zipfile.ZipFile(docx_path) as z:
+            with z.open("word/document.xml") as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                return "\n".join("".join(r.text or "" for r in p.findall(".//w:t", ns)) for p in root.findall(".//w:p", ns) if "".join(r.text or "" for r in p.findall(".//w:t", ns)))
+    except Exception:
+        return ""
+
+def _extract_text_for_upload(file_path: Path) -> str:
+    ext = file_path.suffix.lower()
+    if ext == ".pdf":
+        return _extract_pdf_text_upload(file_path)
+    elif ext in (".docx", ".doc"):
+        return _extract_docx_text_upload(file_path)
+    elif ext in (".md", ".txt", ".csv", ".json"):
+        try:
+            return file_path.read_text(errors="replace")
+        except Exception:
+            return ""
+    elif ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif"):
+        try:
+            import pytesseract
+            from PIL import Image
+            return pytesseract.image_to_string(Image.open(file_path))
+        except Exception:
+            return ""
+    return ""
+
+def _chunk_text_upload(text: str) -> list[str]:
+    if not text:
+        return []
+    chunks, current, total = [], [], 0
+    for para in text.split("\n\n"):
+        if not para.strip():
+            continue
+        if total + len(para) > CHUNK_SIZE and current:
+            chunks.append("\n\n".join(current))
+            # Keep overlap
+            while total > CHUNK_OVERLAP and len(current) > 1:
+                total -= len(current[0])
+                current.pop(0)
+        current.append(para)
+        total += len(para)
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks or [text[:CHUNK_SIZE]]
+
+async def _embed_batch_upload(texts: list[str]) -> list[list[float]]:
+    return embed_texts_sync(texts)
+
+
+async def _ingest_saved_upload(
+    save_path: Path,
+    filename: str,
+    domain: str,
+    title: Optional[str],
+    document_type: Optional[str],
+    description: Optional[str],
+    source_label: str,
+) -> dict[str, Any]:
+    ext = save_path.suffix.lower() or Path(filename).suffix.lower()
+    file_size = save_path.stat().st_size
+    text = await asyncio.to_thread(_extract_text_for_upload, save_path)
+
+    doc_id = str(uuid.uuid4())
+    doc_title = title or Path(filename).stem.replace("_", " ").replace("-", " ")
+    meta = {
+        "source": source_label,
+        "created_by": _current_client_id(),
+        "preserved_by": "athena-cognitive-engine",
+        "preserve_requested": True,
+        "file_type": ext.lstrip("."),
+        "file_size": file_size,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "local_attachment_path": str(save_path),
+    }
+    if description:
+        meta["description"] = description
+
+    resolved_document_type = document_type or _default_document_type_for_extension(ext)
+    p = await get_pool()
+
+    if not text or len(text.strip()) < 10:
+        async with p.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO core.documents
+                    (id, domain, source_path, filename, document_type, title,
+                     content_hash, total_chunks, full_content, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, 0, '', $8::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                uuid.UUID(doc_id),
+                domain,
+                str(save_path),
+                filename,
+                resolved_document_type,
+                doc_title,
+                await asyncio.to_thread(_file_sha256, save_path),
+                json.dumps(meta),
+            )
+        return {
+            "status": "saved",
+            "document_id": doc_id,
+            "filename": filename,
+            "file_size": file_size,
+            "saved_to": str(save_path),
+            "ingested": False,
+            "warning": "Text extraction returned no content — original saved but not searchable",
+        }
+
+    chunks = _chunk_text_upload(text)
+    log.info("Uploading %s: %d chars, %d chunks", filename, len(text), len(chunks))
+
+    all_embeddings: list[list[float]] = []
+    for i in range(0, len(chunks), 2000):
+        batch = chunks[i:i + 2000]
+        try:
+            embs = await _embed_batch_upload(batch)
+            all_embeddings.extend(embs)
+        except Exception as e:
+            log.error("Embedding failed for %s: %s", filename, e)
+            all_embeddings.extend([[0.0] * EMBEDDING_DIMS] * len(batch))
+
+    content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO core.documents
+                    (id, domain, source_path, filename, document_type, title,
+                     content_hash, total_chunks, full_content, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                uuid.UUID(doc_id),
+                domain,
+                str(save_path),
+                filename,
+                resolved_document_type,
+                doc_title,
+                content_hash,
+                len(chunks),
+                text[:500000],
+                json.dumps(meta),
+            )
+            for i, (chunk_text, emb) in enumerate(zip(chunks, all_embeddings)):
+                chunk_id = hashlib.md5(f"{save_path}:{i}".encode()).hexdigest()
+                vec_literal = "[" + ",".join(f"{v:.6f}" for v in emb) + "]"
+                await conn.execute(
+                    """
+                    INSERT INTO core.document_chunks
+                        (id, document_id, chunk_index, total_chunks,
+                         content, embedding, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    chunk_id,
+                    uuid.UUID(doc_id),
+                    i,
+                    len(chunks),
+                    chunk_text,
+                    vec_literal,
+                    json.dumps({}),
+                )
+            await conn.execute(
+                """
+                INSERT INTO ops.ingestion_jobs
+                    (source, domain, status, documents_processed, chunks_processed,
+                     documents_failed, completed_at, metadata)
+                VALUES ($1, $2, 'completed', 1, $3, 0, now(), $4::jsonb)
+                """,
+                source_label,
+                domain,
+                len(chunks),
+                json.dumps({"filename": filename, "document_id": doc_id}),
+            )
+
+    return {
+        "status": "ingested",
+        "document_id": doc_id,
+        "filename": filename,
+        "title": doc_title,
+        "domain": domain,
+        "document_type": resolved_document_type,
+        "file_size": file_size,
+        "saved_to": str(save_path),
+        "text_length": len(text),
+        "chunks_created": len(chunks),
+        "searchable": True,
+    }
+
+
+DEFAULT_DOCUMENT_DOMAIN_SPECS = (
+    {
+        "name": "general",
+        "label": "General",
+        "description": "General notes, summaries, memos, and other catch-all documents.",
+        "sort_order": 10,
+    },
+    {
+        "name": "legal",
+        "label": "Legal",
+        "description": "Court filings, legal correspondence, case analysis, and litigation work product.",
+        "sort_order": 20,
+    },
+    {
+        "name": "medical",
+        "label": "Medical",
+        "description": "Medical records, care notes, treatment summaries, and health documentation.",
+        "sort_order": 30,
+    },
+    {
+        "name": "paperless",
+        "label": "Paperless",
+        "description": "Documents synchronized from Paperless-ngx or equivalent paper archive workflows.",
+        "sort_order": 40,
+    },
+    {
+        "name": "web",
+        "label": "Web",
+        "description": "Web-crawled pages, website captures, and online reference material.",
+        "sort_order": 50,
+    },
+    {
+        "name": "coding",
+        "label": "Coding",
+        "description": "Code notes, architecture docs, implementation plans, debugging writeups, and engineering artifacts.",
+        "sort_order": 60,
+    },
+    {
+        "name": "research",
+        "label": "Research",
+        "description": "Background research, source digests, investigation summaries, and exploratory notes.",
+        "sort_order": 70,
+    },
+    {
+        "name": "business",
+        "label": "Business",
+        "description": "Business plans, strategy documents, vendor notes, and operational paperwork.",
+        "sort_order": 80,
+    },
+    {
+        "name": "finance",
+        "label": "Finance",
+        "description": "Financial analyses, invoices, budgets, statements, and related supporting material.",
+        "sort_order": 90,
+    },
+    {
+        "name": "personal",
+        "label": "Personal",
+        "description": "Personal reference material, household notes, and non-business miscellaneous documents.",
+        "sort_order": 100,
+    },
+    {
+        "name": "operations",
+        "label": "Operations",
+        "description": "Runbooks, process docs, service notes, and administrative operations artifacts.",
+        "sort_order": 110,
+    },
+)
+DEFAULT_DOCUMENT_DOMAIN = "general"
+DEFAULT_DOCUMENT_DOMAINS = tuple(spec["name"] for spec in DEFAULT_DOCUMENT_DOMAIN_SPECS)
+_DOCUMENT_DOMAIN_CACHE: dict[str, Any] = {
+    "domains": [dict(spec) for spec in DEFAULT_DOCUMENT_DOMAIN_SPECS],
+    "expires_at": 0.0,
+}
+
+
+def _document_domain_names(catalog: Sequence[dict[str, Any]]) -> tuple[str, ...]:
+    names = [str(item.get("name", "")).strip().lower() for item in catalog if item.get("name")]
+    return tuple(dict.fromkeys(names)) or DEFAULT_DOCUMENT_DOMAINS
+
+
+async def _get_document_domain_catalog(force_refresh: bool = False) -> list[dict[str, Any]]:
+    now = time.time()
+    if not force_refresh and now < float(_DOCUMENT_DOMAIN_CACHE.get("expires_at", 0.0)):
+        return [dict(item) for item in _DOCUMENT_DOMAIN_CACHE.get("domains", [])]
+
+    catalog = [dict(spec) for spec in DEFAULT_DOCUMENT_DOMAIN_SPECS]
+    try:
+        p = await get_pool()
+        async with p.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT name, label, description, is_active, sort_order
+                FROM core.document_domains
+                WHERE is_active = true
+                ORDER BY sort_order, name
+            """)
+
+        if rows:
+            catalog = [
+                {
+                    "name": (row["name"] or "").strip().lower(),
+                    "label": row["label"] or row["name"],
+                    "description": row["description"] or "",
+                    "is_active": bool(row["is_active"]),
+                    "sort_order": row["sort_order"] or 100,
+                }
+                for row in rows
+                if row["name"]
+            ]
+    except Exception as e:
+        log.warning("Falling back to default document domains: %s", e)
+
+    _DOCUMENT_DOMAIN_CACHE["domains"] = [dict(item) for item in catalog]
+    _DOCUMENT_DOMAIN_CACHE["expires_at"] = now + 300.0
+    return [dict(item) for item in catalog]
+
+
+async def _normalize_document_domain(domain: str) -> str:
+    normalized = (domain or "").strip().lower()
+    valid_domains = _document_domain_names(await _get_document_domain_catalog())
+    if normalized not in valid_domains:
+        allowed = ", ".join(valid_domains)
+        raise ValueError(f"domain must be one of: {allowed}")
+    return normalized
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def list_document_domains() -> str:
+    """List the currently available Athena document domains and how to use them.
+
+    Use this when choosing a domain for create_document, upload_document, or create_note.
+    The results come from Athena's domain registry when available, with safe defaults if the
+    registry is unavailable.
+    """
+    try:
+        catalog = await _get_document_domain_catalog(force_refresh=True)
+        return json.dumps({
+            "default_domain": DEFAULT_DOCUMENT_DOMAIN,
+            "count": len(catalog),
+            "domains": catalog,
+            "guidance": "Use create_document or upload_document to preserve substantial Claude-created artifacts in Athena.",
+        })
+    except Exception as e:
+        log.error("list_document_domains error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def create_document_upload_session(
+    filename: str,
+    file_size: int,
+    domain: str = DEFAULT_DOCUMENT_DOMAIN,
+    content_type: Optional[str] = None,
+    title: Optional[str] = None,
+    document_type: Optional[str] = None,
+    description: Optional[str] = None,
+    sha256: Optional[str] = None,
+    expires_in_seconds: Optional[int] = None,
+) -> str:
+    """Create a Graph-style raw HTTP upload session for a document.
+
+    This is the preferred alternative to base64 uploads for larger files or clients
+    that can send raw bytes over HTTP. Upload raw chunks to the returned `upload_url`
+    with `PUT` and a `Content-Range` header, then `GET` the same URL for status or
+    `DELETE` it to cancel.
+
+    Args:
+        filename: Original filename with extension.
+        file_size: Total file size in bytes.
+        domain: Athena document domain for the eventual stored document.
+        content_type: Optional MIME type (guessed from filename if omitted).
+        title: Optional human-readable title.
+        document_type: Optional Athena document type.
+        description: Optional notes stored with the document.
+        sha256: Optional expected SHA-256 hex digest used to verify the completed upload.
+        expires_in_seconds: Optional TTL for the upload session.
+    """
+    try:
+        _require_scope("write")
+        await _ensure_transfer_schema()
+
+        normalized_domain = await _normalize_document_domain(domain)
+        normalized_filename = _safe_upload_filename(filename)
+        total_size = int(file_size)
+        if total_size <= 0:
+            return json.dumps({"error": "file_size must be greater than zero"})
+        if total_size > TRANSFER_SESSION_FILE_LIMIT:
+            return json.dumps({"error": f"File exceeds {TRANSFER_SESSION_FILE_LIMIT} byte limit"})
+
+        normalized_sha256 = (sha256 or "").strip().lower() or None
+        if normalized_sha256 and not re.fullmatch(r"[0-9a-f]{64}", normalized_sha256):
+            return json.dumps({"error": "sha256 must be a 64-character hexadecimal digest"})
+
+        ttl = max(60, min(int(expires_in_seconds or TRANSFER_UPLOAD_SESSION_TTL_SECONDS), 86400))
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        session_id = uuid.uuid4()
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        temp_path = TRANSFER_UPLOAD_DIR / f"{session_id}.part"
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path.touch(exist_ok=True)
+
+        guessed_content_type = content_type or _guess_mime_type(normalized_filename)
+        initial_metadata = {
+            "transport": "raw-http",
+            "created_via": "create_document_upload_session",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        p = await get_pool()
+        await p.execute(
+            """
+            INSERT INTO ops.file_transfer_sessions
+                (session_id, direction, token_hash, status, client_id, filename,
+                 content_type, domain, title, document_type, description,
+                 total_size, next_offset, temp_path, sha256, metadata, expires_at)
+            VALUES ($1, 'upload', $2, 'pending', $3, $4,
+                    $5, $6, $7, $8, $9,
+                    $10, 0, $11, $12, $13::jsonb, $14)
+            """,
+            session_id,
+            token_hash,
+            _current_client_id(),
+            normalized_filename,
+            guessed_content_type,
+            normalized_domain,
+            title,
+            document_type,
+            description,
+            total_size,
+            str(temp_path),
+            normalized_sha256,
+            json.dumps(initial_metadata),
+            expires_at,
+        )
+
+        return json.dumps({
+            "session_id": str(session_id),
+            "filename": normalized_filename,
+            "content_type": guessed_content_type,
+            "domain": normalized_domain,
+            "total_size": total_size,
+            "upload_url": _build_transfer_url("upload", token),
+            "status_url": _build_transfer_url("upload", token),
+            "cancel_url": _build_transfer_url("upload", token),
+            "method": "PUT",
+            "max_chunk_size": TRANSFER_UPLOAD_MAX_CHUNK_SIZE,
+            "expires_at": expires_at.isoformat(),
+            "expirationDateTime": expires_at.isoformat(),
+            "next_expected_ranges": ["0-"],
+            "nextExpectedRanges": ["0-"],
+            "sha256": normalized_sha256,
+            "note": "Upload raw bytes with PUT + Content-Range. GET the same URL for status; DELETE cancels the session.",
+        })
+    except Exception as e:
+        log.error("create_document_upload_session error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def create_document_download_session(
+    document_id: str,
+    disposition: str = "attachment",
+    expires_in_seconds: Optional[int] = None,
+) -> str:
+    """Create a raw HTTP download URL for a document's original bytes.
+
+    Prefer this over `download_original_document` whenever the client can follow a URL,
+    because the bytes travel outside MCP JSON payloads and avoid base64 truncation.
+
+    Args:
+        document_id: UUID of the document to download.
+        disposition: `attachment` or `inline`.
+        expires_in_seconds: Optional TTL for the download session.
+    """
+    try:
+        await _ensure_transfer_schema()
+        normalized_disposition = _normalize_download_disposition(disposition)
+        ttl = max(60, min(int(expires_in_seconds or TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS), 86400))
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        descriptor = await _resolve_original_document_download(document_id)
+
+        session_id = uuid.uuid4()
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        metadata = {
+            "transport": "raw-http",
+            "source_kind": descriptor.get("source_kind"),
+            "original_available": descriptor.get("original_available", False),
+            "sha256": descriptor.get("sha256"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        p = await get_pool()
+        await p.execute(
+            """
+            INSERT INTO ops.file_transfer_sessions
+                (session_id, direction, token_hash, status, client_id, filename,
+                 content_type, disposition, total_size, document_id, metadata, expires_at)
+            VALUES ($1, 'download', $2, 'ready', $3, $4,
+                    $5, $6, $7, $8::uuid, $9::jsonb, $10)
+            """,
+            session_id,
+            token_hash,
+            _current_client_id(),
+            descriptor["filename"],
+            descriptor["mime_type"],
+            normalized_disposition,
+            int(descriptor["total_size"]),
+            document_id,
+            json.dumps(metadata),
+            expires_at,
+        )
+
+        return json.dumps({
+            "session_id": str(session_id),
+            "document_id": document_id,
+            "filename": descriptor["filename"],
+            "mime_type": descriptor["mime_type"],
+            "total_size": int(descriptor["total_size"]),
+            "sha256": descriptor["sha256"],
+            "disposition": normalized_disposition,
+            "download_url": _build_transfer_url("download", token),
+            "method": "GET",
+            "supports_range": True,
+            "expires_at": expires_at.isoformat(),
+            "expirationDateTime": expires_at.isoformat(),
+            "original_available": descriptor.get("original_available", False),
+            "source_kind": descriptor.get("source_kind", "unknown"),
+        })
+    except Exception as e:
+        log.error("create_document_download_session error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def upload_document(
+    filename: str,
+    file_data_base64: str,
+    domain: str = DEFAULT_DOCUMENT_DOMAIN,
+    title: Optional[str] = None,
+    document_type: Optional[str] = None,
+    description: Optional[str] = None,
+) -> str:
+    """Upload a document to Athena Cognitive Engine for storage and ingestion.
+
+    Use this to save documents created by Claude Desktop (DOCX, PDF, MD, TXT,
+    images, XLSX) into the knowledge base. The original file is preserved on disk
+    and the content is extracted, chunked, embedded, and indexed for semantic search.
+
+    Args:
+        filename: Original filename with extension (e.g. "report.docx", "analysis.pdf")
+        file_data_base64: The file content encoded as base64
+        domain: Classification domain (default "general"). Call list_document_domains() if you're unsure which domain to use.
+        title: Human-readable title (auto-derived from filename if omitted)
+        document_type: Document type — "document", "report", "letter", "memo", etc.
+        description: Optional description or notes about the document
+    """
+    try:
+        domain = await _normalize_document_domain(domain)
+        try:
+            file_bytes = base64.b64decode(file_data_base64)
+        except Exception:
+            return json.dumps({"error": "Invalid base64 data"})
+
+        if len(file_bytes) < 10:
+            return json.dumps({"error": "File is too small or empty"})
+        if len(file_bytes) > TRANSFER_SESSION_FILE_LIMIT:
+            return json.dumps({"error": f"File exceeds {TRANSFER_SESSION_FILE_LIMIT} byte limit"})
+
+        save_path = _build_upload_save_path(domain, filename)
+        save_path.write_bytes(file_bytes)
+        log.info("Saved uploaded file: %s (%d bytes)", save_path, len(file_bytes))
+
+        result = await _ingest_saved_upload(
+            save_path,
+            filename,
+            domain,
+            title,
+            document_type,
+            description,
+            "claude-desktop-upload",
+        )
+        return json.dumps(result)
+    except Exception as e:
+        log.error("upload_document error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def download_original_document(
+    document_id: str,
+    offset: int = 0,
+    chunk_size: int = 262144,
+) -> str:
+    """Download original source bytes for a document in base64 chunks.
 
     This is the exhibit-grade retrieval path for source emails, attachments,
     and filesystem-backed documents. Call repeatedly with increasing offsets
@@ -2311,7 +4543,7 @@ async def rag_query(
 
     Args:
         question: The question to answer (natural language)
-        domain: Restrict to domain (legal, medical, paperless) or omit for all
+        domain: Restrict to domain (for example general, coding, legal, medical, paperless, web) or omit for all
         case_number: Filter to a specific case (partial match, e.g. "26-2-00762")
         top_k: Number of context chunks to retrieve (default 15)
         semantic_weight: Optional weight for semantic results (default 0.7)
@@ -2371,13 +4603,13 @@ async def rag_query(
         sem_rows = await p.fetch(f"""
             SELECT c.id AS chunk_id, c.document_id, c.content, c.chunk_index,
                    d.title, d.filename, d.document_type, d.domain,
-                   (c.embedding::halfvec(3072) <=> $1::halfvec(3072)) AS distance,
+                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
                    em.sender, em.date_sent, em.subject
             FROM core.document_chunks c
             JOIN core.documents d ON c.document_id = d.id
             LEFT JOIN legal.email_metadata em ON d.id = em.document_id
             WHERE c.embedding IS NOT NULL {sem_where}
-            ORDER BY c.embedding::halfvec(3072) <=> $1::halfvec(3072)
+            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
             LIMIT ${sem_idx}
         """, *sem_params)
 
@@ -2585,27 +4817,58 @@ async def create_note(
     domain: str = "legal",
     case_number: Optional[str] = None,
     tags: Optional[str] = None,
+    document_type: str = "note",
 ) -> str:
-    """Create a new note/document in the database.
+    """Create a new document/note in Athena and make it fully searchable.
+
+    Saves the original as a file on disk, chunks for large documents, embeds all
+    chunks for semantic search, and optionally links to a legal case.
+
+    Use this whenever Claude creates content that should be preserved in Athena —
+    analyses, summaries, memos, research notes, case briefs, letters, etc.
 
     Args:
-        title: Note title
-        content: Note content (text/markdown)
-        domain: Domain (legal, medical, paperless) — default legal
-        case_number: Optional case number to associate with
-        tags: Comma-separated tags to apply
+        title: Document title (e.g. "Nelson v Starbucks Case Analysis")
+        content: Full document text (markdown or plain text, any length)
+        domain: Domain for the note (default legal). Available domains are registry-backed and can include values like general, coding, research, legal, medical, paperless, or web.
+        case_number: Optional case number to associate (e.g. "24-2-01031-31")
+        tags: Comma-separated tags (e.g. "analysis,nelson,important")
+        document_type: Type — "note", "analysis", "memo", "summary", "brief", "letter", "report"
     """
     p = await get_pool()
     try:
+        domain = await _normalize_document_domain(domain)
         doc_id = str(uuid.uuid4())
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
-        await p.execute("""
-            INSERT INTO core.documents (id, domain, document_type, title, full_content, content_hash, metadata)
-            VALUES ($1::uuid, $2, 'note', $3, $4, $5, $6)
-        """, doc_id, domain, title, content, content_hash,
-             json.dumps({"source": "mcp_server", "created_by": "ai_assistant"}))
+        # Save to disk as a file
+        safe_title = re.sub(r'[^\w\-]', '_', title)[:80]
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{ts}_{safe_title}.md"
+        domain_dir = UPLOAD_DIR / domain
+        domain_dir.mkdir(parents=True, exist_ok=True)
+        save_path = domain_dir / filename
+        save_path.write_text(f"# {title}\n\n{content}", encoding="utf-8")
 
+        meta = {
+            "source": "claude-desktop-created",
+            "created_by": "ai_assistant",
+            "preserved_by": "athena-cognitive-engine",
+            "preserve_requested": True,
+            "file_type": "md",
+            "file_size": len(content.encode("utf-8")),
+            "local_attachment_path": str(save_path),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        await p.execute("""
+            INSERT INTO core.documents (id, domain, source_path, filename, document_type,
+                                        title, full_content, content_hash, total_chunks, metadata)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, 0, $9::jsonb)
+        """, doc_id, domain, str(save_path), filename, document_type,
+             title, content[:500000], content_hash, json.dumps(meta))
+
+        # Case linking
         if case_number:
             case = await p.fetchrow(
                 "SELECT id FROM legal.cases WHERE case_number ILIKE $1",
@@ -2613,10 +4876,11 @@ async def create_note(
             )
             if case:
                 await p.execute(
-                    "INSERT INTO legal.case_documents (case_id, document_id) VALUES ($1, $2::uuid)",
+                    "INSERT INTO legal.case_documents (case_id, document_id) VALUES ($1, $2::uuid) ON CONFLICT DO NOTHING",
                     case["id"], doc_id,
                 )
 
+        # Tags
         if tags:
             for tag_name in tags.split(","):
                 tag_name = tag_name.strip().lower()
@@ -2631,19 +4895,46 @@ async def create_note(
                         VALUES ($1::uuid, $2) ON CONFLICT DO NOTHING
                     """, doc_id, tag["id"])
 
+        # Chunk and embed
+        chunks_created = 0
         try:
-            vec = await _embed_query(f"{title}\n\n{content}")
-            vec_str = "[" + ",".join(str(v) for v in vec) + "]"
-            chunk_id = f"{doc_id}_0"
-            await p.execute("""
-                INSERT INTO core.document_chunks (id, document_id, chunk_index, total_chunks, content, embedding, token_count)
-                VALUES ($1, $2::uuid, 0, 1, $3, $4::halfvec(3072), $5)
-            """, chunk_id, doc_id, content, vec_str, len(content.split()))
-            await p.execute("UPDATE core.documents SET total_chunks = 1 WHERE id = $1::uuid", doc_id)
+            chunks = _chunk_text_upload(content) if len(content) > CHUNK_SIZE else [content]
+            all_embeddings = []
+            for i in range(0, len(chunks), 2000):
+                batch = chunks[i:i + 2000]
+                try:
+                    embs = await _embed_batch_upload(batch)
+                    all_embeddings.extend(embs)
+                except Exception:
+                    all_embeddings.extend([[0.0] * EMBEDDING_DIMS] * len(batch))
+
+            for i, (chunk_text, emb) in enumerate(zip(chunks, all_embeddings)):
+                chunk_id = hashlib.md5(f"{save_path}:{i}".encode()).hexdigest()
+                vec_str = "[" + ",".join(f"{v:.6f}" for v in emb) + "]"
+                await p.execute("""
+                    INSERT INTO core.document_chunks
+                        (id, document_id, chunk_index, total_chunks, content, embedding, metadata)
+                    VALUES ($1, $2::uuid, $3, $4, $5, $6::halfvec(1024), '{}'::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                """, chunk_id, doc_id, i, len(chunks), chunk_text, vec_str)
+
+            await p.execute("UPDATE core.documents SET total_chunks = $1 WHERE id = $2::uuid",
+                            len(chunks), doc_id)
+            chunks_created = len(chunks)
         except Exception as embed_err:
             log.warning("Note created but embedding failed: %s", embed_err)
 
-        return json.dumps({"success": True, "document_id": doc_id, "title": title})
+        return json.dumps({
+            "success": True,
+            "document_id": doc_id,
+            "title": title,
+            "domain": domain,
+            "document_type": document_type,
+            "saved_to": str(save_path),
+            "chunks_created": chunks_created,
+            "searchable": chunks_created > 0,
+            "text_length": len(content),
+        })
     except Exception as e:
         log.error("create_note error: %s", e)
         return json.dumps({"error": str(e)})
@@ -3253,7 +5544,7 @@ async def get_agent_context(agent_id: str) -> str:
 # ══════════════════════════════════════════════════════════════
 
 @mcp.tool(annotations=WRITE_OP)
-async def create_note(
+async def create_agent_note(
     agent_id: str,
     title: str,
     content: str,
@@ -3263,9 +5554,9 @@ async def create_note(
     priority: int = 5
 ) -> str:
     """
-    Create a note to document findings, questions, or tasks during an investigation.
-    Use this to track your analysis, record evidence, or create follow-up tasks.
-    
+    Create an internal agent note for investigation tracking (stored in ops.agent_notes).
+    For creating documents that William should see, use create_note instead.
+
     - agent_id: Your identifier (e.g., 'athena')
     - title: Brief descriptive title
     - content: Full note content (can be detailed)
@@ -3273,7 +5564,7 @@ async def create_note(
     - case_number: Optional case number to link the note to
     - tags: Optional comma-separated tags (e.g., 'urgent,discovery,witness')
     - priority: 1 (highest) to 10 (lowest), default 5
-    
+
     Returns the created note ID for future reference.
     """
     p = await get_pool()
@@ -3633,6 +5924,523 @@ async def get_all_cases_summary() -> str:
         return json.dumps({"error": str(e)})
 
 
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 LEGAL DEADLINE TOOLS                         ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+@mcp.tool()
+async def add_case_deadline(
+    case_number: str,
+    title: str,
+    deadline_date: str,
+    deadline_type: str = "filing",
+    priority: str = "normal",
+    description: str = "",
+) -> str:
+    """Add a deadline for a legal case.
+
+    Args:
+        case_number: Case number (e.g. "24-2-01031-31")
+        title: Short description of the deadline
+        deadline_date: Date in YYYY-MM-DD format
+        deadline_type: Type — "filing", "hearing", "discovery", "response", "trial", "other"
+        priority: Priority — "critical", "high", "normal", "low"
+        description: Optional detailed description
+    """
+    try:
+        from datetime import date as date_type
+        dl_date = date_type.fromisoformat(deadline_date)
+        p = await get_pool()
+        case = await p.fetchrow(
+            "SELECT id FROM legal.cases WHERE case_number ILIKE $1 LIMIT 1",
+            f"%{case_number}%",
+        )
+        if not case:
+            return json.dumps({"error": f"Case not found: {case_number}"})
+        row = await p.fetchrow("""
+            INSERT INTO legal.case_deadlines
+                (case_id, title, deadline_date, deadline_type, priority, description, reminder_days)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+        """, case["id"], title, dl_date, deadline_type, priority, description, [7, 3, 1])
+        await _log_access("add_case_deadline", f"{case_number}: {title}", 1)
+        return json.dumps({
+            "status": "created", "deadline_id": row["id"],
+            "case_number": case_number, "title": title,
+            "deadline_date": deadline_date, "priority": priority,
+        })
+    except Exception as e:
+        log.error("add_case_deadline error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_upcoming_deadlines(days: int = 30, case_number: Optional[str] = None) -> str:
+    """List upcoming legal deadlines across all cases.
+
+    Args:
+        days: Look ahead window in days (default 30)
+        case_number: Optional — filter to a specific case
+    """
+    try:
+        p = await get_pool()
+        cutoff = date.today() + timedelta(days=days)
+        if case_number:
+            rows = await p.fetch("""
+                SELECT d.id, d.title, d.deadline_date, d.deadline_type,
+                       d.priority, d.status, d.description,
+                       c.case_number, c.case_title
+                FROM legal.case_deadlines d
+                JOIN legal.cases c ON d.case_id = c.id
+                WHERE d.deadline_date <= $1 AND d.status = 'pending'
+                  AND c.case_number ILIKE $2
+                ORDER BY d.deadline_date
+            """, cutoff, f"%{case_number}%")
+        else:
+            rows = await p.fetch("""
+                SELECT d.id, d.title, d.deadline_date, d.deadline_type,
+                       d.priority, d.status, d.description,
+                       c.case_number, c.case_title
+                FROM legal.case_deadlines d
+                JOIN legal.cases c ON d.case_id = c.id
+                WHERE d.deadline_date <= $1 AND d.status = 'pending'
+                ORDER BY d.deadline_date
+            """, cutoff)
+
+        today = date.today()
+        deadlines = [{
+            "deadline_id": r["id"], "case_number": r["case_number"],
+            "case_name": r["case_name"], "title": r["title"],
+            "deadline_date": str(r["deadline_date"]),
+            "days_remaining": (r["deadline_date"] - today).days,
+            "deadline_type": r["deadline_type"], "priority": r["priority"],
+            "status": "OVERDUE" if (r["deadline_date"] - today).days < 0 else r["status"],
+            "description": r["description"] or "",
+        } for r in rows]
+
+        await _log_access("list_upcoming_deadlines", f"{days} days", len(deadlines))
+        return json.dumps({"deadlines": deadlines, "count": len(deadlines), "window_days": days})
+    except Exception as e:
+        log.error("list_upcoming_deadlines error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def complete_deadline(deadline_id: int) -> str:
+    """Mark a legal deadline as completed.
+
+    Args:
+        deadline_id: ID of the deadline to mark complete
+    """
+    try:
+        p = await get_pool()
+        result = await p.execute("""
+            UPDATE legal.case_deadlines
+            SET status = 'completed', completed_at = now(), updated_at = now()
+            WHERE id = $1 AND status = 'pending'
+        """, deadline_id)
+        if result == "UPDATE 1":
+            return json.dumps({"status": "completed", "deadline_id": deadline_id})
+        return json.dumps({"error": f"Deadline {deadline_id} not found or already completed"})
+    except Exception as e:
+        log.error("complete_deadline error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_legal_templates(category: Optional[str] = None) -> str:
+    """List available legal document templates.
+
+    Args:
+        category: Optional filter — "motion", "letter", "declaration", "discovery", "pleading"
+    """
+    try:
+        p = await get_pool()
+        if category:
+            rows = await p.fetch("""
+                SELECT id, name, category, description, jurisdiction, court_type, variables
+                FROM legal.document_templates WHERE is_active = true AND category = $1
+                ORDER BY name
+            """, category)
+        else:
+            rows = await p.fetch("""
+                SELECT id, name, category, description, jurisdiction, court_type, variables
+                FROM legal.document_templates WHERE is_active = true
+                ORDER BY category, name
+            """)
+        templates = [{"id": r["id"], "name": r["name"], "category": r["category"],
+                       "description": r["description"], "jurisdiction": r["jurisdiction"],
+                       "court_type": r["court_type"], "variables": r["variables"]} for r in rows]
+        return json.dumps({"templates": templates, "count": len(templates)})
+    except Exception as e:
+        log.error("list_legal_templates error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def fill_legal_template(template_id: int, variables: str) -> str:
+    """Fill a legal document template with provided variables.
+
+    Args:
+        template_id: ID of the template (from list_legal_templates)
+        variables: JSON string of variable name/value pairs
+    """
+    try:
+        import re as re_mod
+        p = await get_pool()
+        row = await p.fetchrow("""
+            SELECT id, name, template_body, variables as var_defs
+            FROM legal.document_templates WHERE id = $1 AND is_active = true
+        """, template_id)
+        if not row:
+            return json.dumps({"error": f"Template {template_id} not found"})
+        vars_dict = json.loads(variables) if isinstance(variables, str) else variables
+        body = row["template_body"]
+        var_defs = row["var_defs"] if isinstance(row["var_defs"], list) else json.loads(row["var_defs"] or "[]")
+        for v in var_defs:
+            if v.get("default_value") and v["name"] not in vars_dict:
+                vars_dict[v["name"]] = v["default_value"]
+        placeholders = set(re_mod.findall(r'\{\{(\w+)\}\}', body))
+        rendered = body
+        filled, missing = {}, []
+        for ph in placeholders:
+            if ph in vars_dict:
+                rendered = rendered.replace(f"{{{{{ph}}}}}", str(vars_dict[ph]))
+                filled[ph] = str(vars_dict[ph])
+            else:
+                missing.append(ph)
+        await _log_access("fill_legal_template", row["name"], 1)
+        return json.dumps({"template_name": row["name"], "rendered_document": rendered,
+                           "variables_filled": filled, "variables_missing": missing})
+    except Exception as e:
+        log.error("fill_legal_template error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 PERSONAL ASSISTANT TOOLS                     ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def create_task(
+    title: str,
+    due_date: Optional[str] = None,
+    due_time: Optional[str] = None,
+    priority: str = "normal",
+    category: str = "personal",
+    description: Optional[str] = None,
+) -> str:
+    """Create a task or reminder for William.
+
+    Use this whenever William asks to be reminded of something, needs to track a to-do,
+    or when you identify an action item he should follow up on.
+
+    Args:
+        title: What needs to be done (e.g. "Call James Reed about deposition")
+        due_date: When it's due in YYYY-MM-DD format (optional)
+        due_time: Time in HH:MM format, 24-hour (optional)
+        priority: "critical", "high", "normal", or "low"
+        category: "personal", "legal", "medical", "financial", "errands"
+        description: Additional details or context
+    """
+    try:
+        from datetime import date as date_type, time as time_type
+        p = await get_pool()
+        dl_date = date_type.fromisoformat(due_date) if due_date else None
+        dl_time = time_type.fromisoformat(due_time) if due_time else None
+
+        row = await p.fetchrow("""
+            INSERT INTO core.tasks
+                (title, description, due_date, due_time, priority, category, source)
+            VALUES ($1, $2, $3, $4, $5, $6, 'claude-desktop')
+            RETURNING id
+        """, title, description, dl_date, dl_time, priority, category)
+
+        await _log_access("create_task", title, 1)
+        return json.dumps({
+            "status": "created", "task_id": row["id"], "title": title,
+            "due_date": due_date, "due_time": due_time, "priority": priority,
+            "category": category,
+        })
+    except Exception as e:
+        log.error("create_task error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def list_tasks(
+    status: str = "pending",
+    category: Optional[str] = None,
+    days_ahead: int = 7,
+) -> str:
+    """List William's tasks and reminders.
+
+    Args:
+        status: Filter — "pending", "completed", or "all"
+        category: Filter by category (optional)
+        days_ahead: How far ahead to look for due dates (default 7)
+    """
+    try:
+        p = await get_pool()
+        cutoff = date.today() + timedelta(days=days_ahead)
+        conditions = []
+        params = []
+        idx = 1
+
+        if status != "all":
+            conditions.append(f"status = ${idx}")
+            params.append(status)
+            idx += 1
+        if category:
+            conditions.append(f"category = ${idx}")
+            params.append(category)
+            idx += 1
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        rows = await p.fetch(f"""
+            SELECT id, title, description, due_date, due_time, priority,
+                   category, status, created_at
+            FROM core.tasks
+            {where}
+            ORDER BY COALESCE(due_date, '2099-12-31'), priority
+            LIMIT 50
+        """, *params)
+
+        today = date.today()
+        tasks = []
+        for r in rows:
+            t = {
+                "task_id": r["id"], "title": r["title"],
+                "due_date": str(r["due_date"]) if r["due_date"] else None,
+                "due_time": str(r["due_time"]) if r["due_time"] else None,
+                "priority": r["priority"], "category": r["category"],
+                "status": r["status"],
+            }
+            if r["description"]:
+                t["description"] = r["description"]
+            if r["due_date"]:
+                days_left = (r["due_date"] - today).days
+                t["days_remaining"] = days_left
+                if days_left < 0:
+                    t["overdue"] = True
+            tasks.append(t)
+
+        return json.dumps({"tasks": tasks, "count": len(tasks)})
+    except Exception as e:
+        log.error("list_tasks error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def complete_task(task_id: int) -> str:
+    """Mark a task as completed.
+
+    Args:
+        task_id: ID of the task to complete
+    """
+    try:
+        p = await get_pool()
+        result = await p.execute("""
+            UPDATE core.tasks
+            SET status = 'completed', completed_at = now(), updated_at = now()
+            WHERE id = $1 AND status = 'pending'
+        """, task_id)
+        if result == "UPDATE 1":
+            return json.dumps({"status": "completed", "task_id": task_id})
+        return json.dumps({"error": f"Task {task_id} not found or already completed"})
+    except Exception as e:
+        log.error("complete_task error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def get_calendar(days_ahead: int = 7) -> str:
+    """Get William's upcoming calendar events.
+
+    Args:
+        days_ahead: How many days ahead to look (default 7)
+    """
+    try:
+        p = await get_pool()
+        now = datetime.now(timezone.utc)
+        end = now + timedelta(days=days_ahead)
+
+        rows = await p.fetch("""
+            SELECT id, subject, start_time, end_time, location,
+                   organizer, is_all_day, importance
+            FROM core.calendar_events
+            WHERE start_time BETWEEN $1 AND $2
+              AND NOT is_cancelled
+            ORDER BY start_time
+        """, now, end)
+
+        events = [{
+            "subject": r["subject"],
+            "start": r["start_time"].isoformat(),
+            "end": r["end_time"].isoformat(),
+            "location": r["location"] or "",
+            "organizer": r["organizer"] or "",
+            "all_day": r["is_all_day"],
+            "importance": r["importance"],
+        } for r in rows]
+
+        return json.dumps({"events": events, "count": len(events), "days_ahead": days_ahead})
+    except Exception as e:
+        log.error("get_calendar error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def save_personal_memory(
+    content: str,
+    memory_type: str = "fact",
+    importance: float = 0.5,
+) -> str:
+    """Save an important fact, decision, or insight to Athena's long-term memory.
+
+    Use this to remember things William tells you, decisions made, preferences learned,
+    or important context that should persist across conversations.
+
+    Args:
+        content: What to remember (e.g. "William prefers declarations over affidavits in state court")
+        memory_type: "fact", "decision", "preference", "event", "insight"
+        importance: 0.0 to 1.0 — how important this is (default 0.5)
+    """
+    try:
+        p = await get_pool()
+        # Embed the memory for semantic retrieval
+        vec = await _embed_query(content)
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+
+        row = await p.fetchrow("""
+            INSERT INTO core.memories
+                (memory_type, content, source, importance, embedding, metadata)
+            VALUES ($1, $2, 'claude-desktop', $3, $4::halfvec, $5::jsonb)
+            RETURNING id
+        """,
+            memory_type, content, importance, vec_str,
+            json.dumps({"saved_at": datetime.now(timezone.utc).isoformat()}),
+        )
+
+        await _log_access("save_personal_memory", content[:80], 1)
+        return json.dumps({
+            "status": "saved", "memory_id": row["id"],
+            "type": memory_type, "importance": importance,
+        })
+    except Exception as e:
+        log.error("save_personal_memory error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def recall_personal_memories(query: str, limit: int = 5) -> str:
+    """Search Athena's long-term memory for relevant facts, decisions, and context.
+
+    Use this at the start of conversations to recall what Athena knows about a topic,
+    or when William asks "do you remember...?" or "what did we decide about...?"
+
+    Args:
+        query: What to search for in memory (natural language)
+        limit: Max memories to return (default 5)
+    """
+    try:
+        p = await get_pool()
+        vec = await _embed_query(query)
+        vec_str = "[" + ",".join(str(v) for v in vec) + "]"
+
+        rows = await p.fetch("""
+            SELECT id, memory_type, content, importance, source, created_at,
+                   (embedding <=> $1::halfvec(1024)) AS distance
+            FROM core.memories
+            WHERE is_active = true
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> $1::halfvec(1024)
+            LIMIT $2
+        """, vec_str, limit)
+
+        memories = [{
+            "memory_id": r["id"],
+            "type": r["memory_type"],
+            "content": r["content"],
+            "importance": float(r["importance"]) if r["importance"] else 0.5,
+            "relevance": round(1 - float(r["distance"]), 4),
+            "source": r["source"],
+            "saved_on": str(r["created_at"].date()),
+        } for r in rows]
+
+        await _log_access("recall_personal_memories", query, len(memories))
+        return json.dumps({"memories": memories, "count": len(memories), "query": query})
+    except Exception as e:
+        log.error("recall_personal_memories error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def get_william_context() -> str:
+    """Get William's profile and Athena's system context.
+
+    Call this at the start of important conversations to load William's
+    profile, accessibility needs, active cases, and current priorities.
+    This helps you provide better, more personalized assistance.
+    """
+    try:
+        p = await get_pool()
+        profile = await p.fetchrow("SELECT * FROM core.user_profile LIMIT 1")
+        identity = await p.fetch("SELECT key, value FROM core.system_identity ORDER BY key")
+
+        # Recent memories (last 10)
+        memories = await p.fetch("""
+            SELECT content, memory_type, importance
+            FROM core.memories
+            WHERE is_active = true
+            ORDER BY importance DESC, created_at DESC
+            LIMIT 10
+        """)
+
+        # Pending tasks
+        tasks = await p.fetch("""
+            SELECT title, due_date, priority, category
+            FROM core.tasks WHERE status = 'pending'
+            ORDER BY COALESCE(due_date, '2099-12-31') LIMIT 5
+        """)
+
+        # Active deadlines
+        today = date.today()
+        deadlines = await p.fetch("""
+            SELECT d.title, d.deadline_date, c.case_number
+            FROM legal.case_deadlines d
+            JOIN legal.cases c ON d.case_id = c.id
+            WHERE d.status = 'pending' AND d.deadline_date >= $1
+            ORDER BY d.deadline_date LIMIT 5
+        """, today)
+
+        result = {
+            "profile": {
+                "name": profile["display_name"] if profile else "William Nelson",
+                "role": profile["role"] if profile else "",
+                "bio": profile["bio"] if profile else "",
+                "preferences": profile["preferences"] if profile else {},
+                "accessibility": profile["accessibility"] if profile else {},
+            },
+            "athena_identity": {r["key"]: r["value"] for r in identity},
+            "recent_memories": [{"content": m["content"], "type": m["memory_type"]} for m in memories],
+            "pending_tasks": [{"title": t["title"], "due": str(t["due_date"]) if t["due_date"] else None, "priority": t["priority"]} for t in tasks],
+            "upcoming_deadlines": [{"title": d["title"], "date": str(d["deadline_date"]), "case": d["case_number"]} for d in deadlines],
+        }
+
+        return json.dumps(result)
+    except Exception as e:
+        log.error("get_william_context error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
 # ══════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════
@@ -3656,6 +6464,8 @@ def main():
     atexit.register(_cleanup_pool)
 
     if args.http:
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
         log.info("Starting Athena MCP Server v2 (Streamable HTTP + OAuth) on %s:%d", args.host, args.port)
         log.info("OAuth issuer: %s", BASE_URL)
         mcp.run(transport="streamable-http")
