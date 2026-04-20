@@ -23,7 +23,7 @@ class SelfHealingAgent(BaseAgent):
     priority = 2
     capabilities = ["auto-repair", "log-rotation", "integration-test", "config-drift"]
 
-    instructions = """You are the Self-Healing Agent for the Athena Cognitive Platform.
+    instructions = """You are the Self-Healing Agent for the Athena Cognitive Engine.
 
 RECOVERY RULES:
 1. Connection recovery: Kill idle-in-transaction connections > 30 min
@@ -242,7 +242,7 @@ SAFETY RULES:
         # Test 4: MCP server health
         try:
             resp = await ctx.http_get("http://127.0.0.1:9200/.well-known/oauth-authorization-server")
-            health_ok = resp.get("issuer") is not None
+            health_ok = resp.json().get("issuer") is not None
             tests.append(("MCP server", health_ok, None if health_ok else "No issuer"))
             metrics["tests_passed" if health_ok else "tests_failed"] += 1
         except Exception as e:
@@ -251,9 +251,24 @@ SAFETY RULES:
 
         # Test 5: Dashboard health
         try:
-            resp_text = await ctx.http_get("http://127.0.0.1:9100/api/health")
-            dash_ok = resp_text is not None
-            tests.append(("Dashboard", dash_ok, None))
+            resp = await ctx.http_get("http://127.0.0.1:9100/api/health")
+            dash_ok = resp.status_code == 200
+            dash_detail = None
+
+            try:
+                dash_payload = resp.json()
+            except Exception:
+                dash_payload = {}
+
+            if not dash_ok:
+                email_sync_check = (dash_payload.get("checks") or {}).get("email_sync_config") or {}
+                dash_detail = (
+                    email_sync_check.get("summary")
+                    or dash_payload.get("detail")
+                    or f"Status {resp.status_code}"
+                )
+
+            tests.append(("Dashboard", dash_ok, dash_detail))
             metrics["tests_passed" if dash_ok else "tests_failed"] += 1
         except Exception as e:
             tests.append(("Dashboard", False, str(e)))

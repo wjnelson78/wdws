@@ -37,10 +37,7 @@ from starlette.responses import JSONResponse, StreamingResponse, Response
 from starlette.routing import Route, Mount
 
 # ── Config ───────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws",
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 BACKEND_URL = os.getenv("IMESSAGE_BACKEND_URL", "http://172.16.88.223:9400")
 AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL", "http://127.0.0.1:9200")
 LISTEN_PORT = int(os.getenv("LISTEN_PORT", "9400"))

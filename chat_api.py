@@ -27,6 +27,30 @@ try:
 except ImportError:
     pass  # dotenv not installed
 
+try:
+    from athena_logging import setup_logging, get_logger
+    setup_logging("chat-api")
+except ImportError:
+    pass
+
+try:
+    from model_router import ModelRouter, get_router, PrivacyLevel
+    _model_router_available = True
+except ImportError:
+    _model_router_available = False
+
+import sys
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import (
+    embed_query as _embed_query_async,
+    embed_query_sync,
+    embed_texts_sync,
+    _vec_literal,
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks, prepend_context
+
 import asyncpg
 import httpx
 from starlette.applications import Starlette
@@ -1790,12 +1814,15 @@ async def create_completion(request: Request) -> JSONResponse:
             max_completion_tokens = data.get("max_completion_tokens", 16384)
             reasoning_effort = data.get("reasoning_effort")
         
-        # Get conversation history
+        # Get conversation history (cap at last 200 messages to prevent OOM)
         messages_rows = await p.fetch(
             """
-            SELECT * FROM chat.messages
-            WHERE conversation_id = $1::uuid
-            ORDER BY ordinal ASC
+            SELECT * FROM (
+                SELECT * FROM chat.messages
+                WHERE conversation_id = $1::uuid
+                ORDER BY ordinal DESC
+                LIMIT 200
+            ) sub ORDER BY ordinal ASC
             """,
             convo_id,
         )
@@ -1998,6 +2025,56 @@ async def create_completion(request: Request) -> JSONResponse:
                     import traceback
                     print(f"[COMPLETION STREAM ERROR] {type(e).__name__}: {e}")
                     traceback.print_exc()
+
+                    # ── Model router fallback (non-streaming) ────────
+                    if _model_router_available:
+                        try:
+                            print(f"[COMPLETION FALLBACK] OpenAI streaming failed, trying model router")
+                            router = await get_router()
+                            fallback_result = await router.route_and_call(
+                                messages=openai_messages,
+                                context={"domain": "general"},
+                                max_tokens=max_completion_tokens,
+                            )
+                            fallback_text = fallback_result.content
+                            print(f"[COMPLETION FALLBACK] Success via {fallback_result.provider}/{fallback_result.model} (fallback_used={fallback_result.fallback_used})")
+
+                            # Emit the full response as a single SSE chunk
+                            yield f"data: {json.dumps({'content': fallback_text})}\n\n"
+
+                            # Store assistant response
+                            await p.execute(
+                                """
+                                INSERT INTO chat.messages
+                                    (conversation_id, role, content_text, created_by, quality_tier)
+                                VALUES ($1::uuid, 'assistant', $2, NULL, $3)
+                                """,
+                                convo_id,
+                                fallback_text,
+                                quality or "auto",
+                            )
+                            # Auto-generate title after first exchange
+                            if convo["title"] in (None, "", "New Conversation", "New chat") and user_message:
+                                title = await _generate_title(user_message, fallback_text)
+                                await p.execute(
+                                    "UPDATE chat.conversations SET title = $2, updated_at = now() WHERE id = $1::uuid",
+                                    convo_id,
+                                    title,
+                                )
+                                yield f"data: {json.dumps({'conversation_title': title})}\n\n"
+
+                            # Mark request as completed
+                            await p.execute(
+                                "UPDATE chat.completion_requests SET status = 'completed', completed_at = now() WHERE id = $1::uuid",
+                                request_id,
+                            )
+                            yield f"data: {json.dumps({'done': True, 'request_id': str(request_id), 'fallback': True, 'fallback_provider': fallback_result.provider, 'fallback_model': fallback_result.model})}\n\n"
+                            return
+                        except Exception as fallback_err:
+                            print(f"[COMPLETION FALLBACK ERROR] {type(fallback_err).__name__}: {fallback_err}")
+                            traceback.print_exc()
+                    # ── End model router fallback ─────────────────────
+
                     if request_id:
                         await p.execute(
                             "UPDATE chat.completion_requests SET status = 'failed', completed_at = now(), error_message = $2 WHERE id = $1::uuid",
@@ -2069,18 +2146,78 @@ async def create_completion(request: Request) -> JSONResponse:
                     "conversation_title": conversation_title,
                     "request_id": str(request_id),
                 })
-            except httpx.HTTPStatusError as e:
+            except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
                 import traceback
+                err_detail = e.response.text if hasattr(e, 'response') else str(e)
                 print(f"[COMPLETION 502] model={model} quality={quality} reasoning_effort={reasoning_effort}")
-                print(f"[COMPLETION 502] OpenAI response: {e.response.text}")
+                print(f"[COMPLETION 502] OpenAI error: {err_detail}")
                 traceback.print_exc()
+
+                # ── Model router fallback (non-streaming) ────────
+                if _model_router_available:
+                    try:
+                        print(f"[COMPLETION FALLBACK] OpenAI non-streaming failed, trying model router")
+                        router = await get_router()
+                        fallback_result = await router.route_and_call(
+                            messages=openai_messages,
+                            context={"domain": "general"},
+                            max_tokens=max_completion_tokens,
+                        )
+                        fallback_text = fallback_result.content
+                        print(f"[COMPLETION FALLBACK] Success via {fallback_result.provider}/{fallback_result.model}")
+
+                        # Store assistant response
+                        row = await p.fetchrow(
+                            """
+                            INSERT INTO chat.messages
+                                (conversation_id, role, content_text, token_count, created_by, quality_tier)
+                            VALUES ($1::uuid, 'assistant', $2, $3, NULL, $4)
+                            RETURNING *
+                            """,
+                            convo_id,
+                            fallback_text,
+                            fallback_result.tokens_in + fallback_result.tokens_out,
+                            quality or "auto",
+                        )
+
+                        # Auto-generate title after first exchange
+                        conversation_title = convo["title"]
+                        if conversation_title in (None, "", "New Conversation", "New chat") and user_message:
+                            conversation_title = await _generate_title(user_message, fallback_text)
+                            await p.execute(
+                                "UPDATE chat.conversations SET title = $2, updated_at = now() WHERE id = $1::uuid",
+                                convo_id,
+                                conversation_title,
+                            )
+
+                        # Mark request as completed
+                        await p.execute(
+                            "UPDATE chat.completion_requests SET status = 'completed', completed_at = now() WHERE id = $1::uuid",
+                            request_id,
+                        )
+
+                        return _json({
+                            "message": _row(row),
+                            "usage": {"total_tokens": fallback_result.tokens_in + fallback_result.tokens_out},
+                            "model": f"{fallback_result.provider}:{fallback_result.model}",
+                            "conversation_title": conversation_title,
+                            "request_id": str(request_id),
+                            "fallback": True,
+                            "fallback_provider": fallback_result.provider,
+                            "fallback_model": fallback_result.model,
+                        })
+                    except Exception as fallback_err:
+                        print(f"[COMPLETION FALLBACK ERROR] {type(fallback_err).__name__}: {fallback_err}")
+                        traceback.print_exc()
+                # ── End model router fallback ─────────────────────
+
                 if request_id:
                     await p.execute(
                         "UPDATE chat.completion_requests SET status = 'failed', completed_at = now(), error_message = $2 WHERE id = $1::uuid",
                         request_id,
-                        e.response.text,
+                        err_detail,
                     )
-                return _json_error(f"OpenAI API error: {e.response.text}", 502)
+                return _json_error(f"OpenAI API error: {err_detail}", 502)
     
     except PermissionError as e:
         return _json_error(str(e), 401)
@@ -2103,25 +2240,8 @@ async def create_completion(request: Request) -> JSONResponse:
 # ══════════════════════════════════════════════════════════════
 
 async def _generate_embedding(text: str) -> list[float]:
-    """Generate embedding for text using OpenAI's text-embedding-3-large."""
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-    
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "text-embedding-3-large",
-                "input": text[:8000],  # Limit to avoid token overflow
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    """Generate embedding using local BGE-M3 model (1024 dimensions)."""
+    return await _embed_query_async(text)
 
 
 def _chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[dict]:
@@ -2242,9 +2362,20 @@ async def add_space_document(request: Request) -> JSONResponse:
                 # Chunk the document
                 chunks = _chunk_text(content_text, chunk_size=1000, overlap=200)
                 print(f"[SPACE KB] Document {doc_id} chunked into {len(chunks)} pieces")
-                
+
+                # Contextual Retrieval — enrich chunks before embedding
+                cr_context = generate_context_sync(
+                    title=title,
+                    domain="space_kb",
+                    document_type=source_type,
+                    content_preview=content_text[:3000],
+                    case_number=None,
+                )
+                chunk_texts_raw = [c["text"] for c in chunks]
+                enriched_texts = enrich_chunks(cr_context, chunk_texts_raw)
+
                 # Store chunks and generate embeddings
-                for chunk_data in chunks:
+                for chunk_data, enriched_text in zip(chunks, enriched_texts):
                     chunk_row = await p.fetchrow(
                         """
                         INSERT INTO chat.space_document_chunks
@@ -2260,9 +2391,9 @@ async def add_space_document(request: Request) -> JSONResponse:
                         chunk_data["end"],
                         len(chunk_data["text"].split()),  # Rough token count
                     )
-                    
-                    # Generate embedding
-                    embedding = await _generate_embedding(chunk_data["text"])
+
+                    # Generate embedding from enriched (contextual) text
+                    embedding = await _generate_embedding(enriched_text)
                     
                     # Store embedding
                     await p.execute(
@@ -2367,7 +2498,7 @@ async def search_space_knowledge(request: Request) -> JSONResponse:
                     d.author_name,
                     d.document_date,
                     d.tags,
-                    1 - (e.embedding <=> $1::halfvec) AS similarity_score
+                    1 - (e.embedding <=> $1::halfvec(1024)) AS similarity_score
                 FROM chat.space_document_embeddings e
                 JOIN chat.space_document_chunks c ON c.id = e.chunk_id
                 JOIN chat.space_documents d ON d.id = c.document_id
@@ -2388,7 +2519,7 @@ async def search_space_knowledge(request: Request) -> JSONResponse:
                 param_idx += 1
             
             semantic_sql += f"""
-                ORDER BY e.embedding <=> $1::halfvec
+                ORDER BY e.embedding <=> $1::halfvec(1024)
                 LIMIT ${param_idx}
             """
             params.append(limit)
@@ -2902,7 +3033,7 @@ async def search_onedrive(request: Request) -> JSONResponse:
                     f.created_by,
                     f.last_modified_by,
                     f.graph_modified_at,
-                    1 - (c.embedding <=> $1::halfvec) AS similarity
+                    1 - (c.embedding <=> $1::halfvec(1024)) AS similarity
                 FROM chat.onedrive_file_chunks c
                 JOIN chat.onedrive_files f ON f.id = c.file_id
                 WHERE f.status = 'indexed'
@@ -2916,7 +3047,7 @@ async def search_onedrive(request: Request) -> JSONResponse:
                 params.append(ext_filter)
                 idx += 1
             
-            sql += f" ORDER BY c.embedding <=> $1::halfvec LIMIT ${idx}"
+            sql += f" ORDER BY c.embedding <=> $1::halfvec(1024) LIMIT ${idx}"
             params.append(limit * 2)  # fetch extra, filter by min_score
             
             rows = await p.fetch(sql, *params)
@@ -3188,12 +3319,12 @@ async def search_space_onedrive(request: Request) -> JSONResponse:
                     f.file_extension,
                     f.last_modified_by,
                     f.graph_modified_at,
-                    1 - (c.embedding <=> $1::halfvec) AS similarity
+                    1 - (c.embedding <=> $1::halfvec(1024)) AS similarity
                 FROM chat.onedrive_file_chunks c
                 JOIN chat.onedrive_files f ON f.id = c.file_id
                 WHERE f.id IN ({linked_file_ids_sql})
                   AND c.embedding IS NOT NULL
-                ORDER BY c.embedding <=> $1::halfvec
+                ORDER BY c.embedding <=> $1::halfvec(1024)
                 LIMIT $2
             """
             rows = await p.fetch(sql, query_embedding, space_id, limit * 2)
@@ -3351,18 +3482,6 @@ async def onedrive_webhooks(request: Request) -> JSONResponse:
 
         if request.method == "POST":
             # Trigger webhook registration via the sync module
-            import subprocess, sys
-            result = subprocess.run(
-                [sys.executable, "-u", "-c",
-                 "import asyncio,sys;sys.path.insert(0,'/opt/wdws');"
-                 "from onedrive_sync import GraphClient,ensure_webhook_subscriptions,CHAT_DATABASE_URL;"
-                 "import asyncpg;"
-                 "asyncio.run((lambda: asyncio.ensure_future("
-                 "  (async_run:=lambda: None)() or asyncio.sleep(0)"
-                 "))())" ],
-                capture_output=True, text=True, timeout=30
-            )
-            # Simpler approach — just invoke ensure_webhook_subscriptions inline
             import importlib
             mod = importlib.import_module("onedrive_sync")
             graph = mod.GraphClient()

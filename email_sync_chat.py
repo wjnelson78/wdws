@@ -61,8 +61,10 @@ if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID]):
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token"
 
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072
+import sys
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
+from contextual_retrieval import generate_context_sync, enrich_chunks
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 EMBEDDING_BATCH_SIZE = 20
@@ -267,27 +269,20 @@ class GraphClient:
 # ══════════════════════════════════════════════════════════════
 
 class EmbeddingClient:
+    """Local BGE-M3 embedding client (replaces OpenAI API calls)."""
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=60.0)
         self.total_tokens = 0
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": EMBEDDING_MODEL, "input": texts, "dimensions": EMBEDDING_DIMENSIONS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
-        return [d["embedding"] for d in data["data"]]
+        from embedding_service import embed_texts_sync
+        return embed_texts_sync(texts)
 
     async def embed_single(self, text: str) -> List[float]:
-        results = await self.embed_batch([text])
-        return results[0]
+        from embedding_service import embed_query_sync
+        return embed_query_sync(text)
 
     async def close(self):
-        await self.client.aclose()
+        pass
 
 
 # ══════════════════════════════════════════════════════════════
@@ -597,9 +592,20 @@ async def sync_account(
                     # Chunk for embedding
                     full_text = f"Subject: {subject}\nFrom: {sender_name} <{sender_addr}>\n\n{body_text}"
                     chunks = chunker.split(full_text[:50000])
-                    for ci, chunk_text in enumerate(chunks):
+
+                    # Contextual Retrieval — enrich chunks before embedding
+                    cr_context = generate_context_sync(
+                        title=subject,
+                        domain="email",
+                        document_type="email",
+                        content_preview=full_text[:3000],
+                        case_number=None,
+                    )
+                    enriched = enrich_chunks(cr_context, chunks)
+
+                    for ci, (chunk_text, enriched_text) in enumerate(zip(chunks, enriched)):
                         pending_chunks.append((msg_uuid, chunk_text, ci, "body", None))
-                        pending_embeddings.append(chunk_text)
+                        pending_embeddings.append(enriched_text)
                         pending_chunk_ids.append((msg_uuid, ci))
                         stats["chunks_created"] += 1
 

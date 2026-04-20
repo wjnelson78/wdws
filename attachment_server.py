@@ -38,7 +38,7 @@ from starlette.middleware.cors import CORSMiddleware
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("attachment-server")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws")
+DATABASE_URL = os.environ["DATABASE_URL"]
 ATTACHMENT_PORT = int(os.getenv("ATTACHMENT_PORT", "9101"))
 ALLOWED_BASE = Path("/opt/wdws/data")  # Security: only serve files under this path
 
@@ -191,7 +191,7 @@ app = Starlette(routes=routes, middleware=middleware)
 
 
 def main():
-    host = os.getenv("ATTACHMENT_HOST", "0.0.0.0")
+    host = os.getenv("ATTACHMENT_HOST", "127.0.0.1")
     print(f"\n{'=' * 50}")
     print(f"  WDWS Attachment Server")
     print(f"  http://{host}:{ATTACHMENT_PORT}/attachments")

@@ -21,6 +21,9 @@ Run:
 """
 
 import os
+import re
+import shutil
+import subprocess
 import sys
 import json
 import asyncio
@@ -33,6 +36,9 @@ import mimetypes
 import secrets
 import time
 import uuid
+import xml.etree.ElementTree as ET
+import zipfile
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta, timezone
 from email import policy
@@ -52,11 +58,14 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 # ── Logging ──────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-log = logging.getLogger("athena-mcp")
+sys.path.insert(0, "/opt/wdws")
+try:
+    from athena_logging import setup_logging, get_logger
+    setup_logging("mcp-server")
+    log = get_logger()
+except ImportError:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    log = logging.getLogger("athena-mcp")
 
 # ── Config ───────────────────────────────────────────────────
 # Load /opt/wdws/.env when present so stdio/http launches have the same credentials.
@@ -68,10 +77,7 @@ if _env_file.exists():
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws",
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -80,8 +86,15 @@ GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMS = 3072
+from embedding_service import embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, _vec_literal
+EMBEDDING_DIMS = EMBEDDING_DIMENSIONS   # 1024 (BGE-M3 local)
+
+# ── Upload / Ingestion Config ───────────────────────────────
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+OCR_DPI = 150
 
 # JWT signing key (generated on first run, persisted in DB)
 JWT_SECRET = os.getenv("JWT_SECRET", "wdws-mcp-jwt-" + secrets.token_hex(16))
@@ -177,18 +190,10 @@ def _row_dict(row, keys=None) -> dict:
     return {k: _ser(v) for k, v in dict(row).items()}
 
 
-# ── Embedding helper ─────────────────────────────────────────
+# ── Embedding helper (local BGE-M3) ──────────────────────────
 async def _embed_query(text: str) -> list[float]:
-    """Get embedding vector for a search query via OpenAI API."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": EMBEDDING_MODEL, "input": text, "dimensions": EMBEDDING_DIMS},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    """Get embedding vector for a search query via local BGE-M3 model."""
+    return embed_query_sync(text)
 
 
 def _guess_mime_type(filename: Optional[str], fallback: str = "application/octet-stream") -> str:
@@ -660,7 +665,7 @@ mcp = FastMCP(
     auth_server_provider=oauth_provider,
     auth=auth_settings,
     lifespan=app_lifespan,
-    host="0.0.0.0",
+    host="127.0.0.1",
     port=9200,
 )
 
@@ -1065,6 +1070,407 @@ async def list_email_attachments(email_document_id: str) -> str:
         return json.dumps({"email_document_id": email_document_id, "attachments": attachments, "count": len(attachments)})
     except Exception as e:
         log.error("list_email_attachments error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║              DOCUMENT UPLOAD & INGESTION HELPERS              ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+def _extract_pdf_text(pdf_path: Path) -> str:
+    """Extract text from PDF using OCR page-by-page."""
+    try:
+        from pdf2image import convert_from_path, pdfinfo_from_path
+        import pytesseract
+
+        try:
+            info = pdfinfo_from_path(str(pdf_path))
+            num_pages = info.get("Pages", 0)
+        except Exception:
+            num_pages = 0
+
+        if num_pages > 0:
+            parts = []
+            for page_num in range(1, num_pages + 1):
+                try:
+                    images = convert_from_path(
+                        str(pdf_path), dpi=OCR_DPI,
+                        first_page=page_num, last_page=page_num,
+                        thread_count=1
+                    )
+                    if images:
+                        page_text = pytesseract.image_to_string(images[0])
+                        if page_text and page_text.strip():
+                            parts.append(f"[Page {page_num}]\n{page_text}")
+                        del images
+                except Exception as e:
+                    log.debug("OCR page %d failed for %s: %s", page_num, pdf_path.name, e)
+            return "\n\n".join(parts)
+        else:
+            images = convert_from_path(str(pdf_path), dpi=OCR_DPI, thread_count=1)
+            parts = []
+            for page_num, img in enumerate(images, 1):
+                page_text = pytesseract.image_to_string(img)
+                if page_text and page_text.strip():
+                    parts.append(f"[Page {page_num}]\n{page_text}")
+            return "\n\n".join(parts)
+    except Exception as e:
+        log.warning("OCR failed for %s: %s, trying pdftotext", pdf_path.name, e)
+        try:
+            result = subprocess.run(
+                ["pdftotext", "-layout", str(pdf_path), "-"],
+                capture_output=True, text=True, timeout=60
+            )
+            return result.stdout
+        except Exception as e2:
+            log.error("All PDF extraction failed for %s: %s", pdf_path.name, e2)
+            return ""
+
+
+def _extract_docx_text(docx_path: Path) -> str:
+    """Extract text from DOCX file."""
+    try:
+        with zipfile.ZipFile(docx_path) as z:
+            with z.open("word/document.xml") as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                paragraphs = root.findall(".//w:p", ns)
+                texts = []
+                for p in paragraphs:
+                    runs = p.findall(".//w:t", ns)
+                    line = "".join(r.text or "" for r in runs)
+                    if line:
+                        texts.append(line)
+                return "\n".join(texts)
+    except Exception as e:
+        log.error("DOCX extraction failed for %s: %s", docx_path.name, e)
+        return ""
+
+
+def _extract_text_for_upload(file_path: Path) -> str:
+    """Route text extraction by file type for uploaded documents."""
+    ext = file_path.suffix.lower()
+    if ext == ".pdf":
+        return _extract_pdf_text(file_path)
+    elif ext in (".docx", ".doc"):
+        return _extract_docx_text(file_path)
+    elif ext in (".md", ".txt", ".csv", ".json"):
+        try:
+            return file_path.read_text(errors="replace")
+        except Exception as e:
+            log.error("Text read failed for %s: %s", file_path.name, e)
+            return ""
+    elif ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif"):
+        try:
+            import pytesseract
+            from PIL import Image
+            img = Image.open(file_path)
+            return pytesseract.image_to_string(img)
+        except Exception as e:
+            log.error("Image OCR failed for %s: %s", file_path.name, e)
+            return ""
+    elif ext in (".xlsx", ".xls"):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+            parts = []
+            for sheet in wb.sheetnames:
+                ws = wb[sheet]
+                parts.append(f"=== Sheet: {sheet} ===")
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    if any(cells):
+                        parts.append("\t".join(cells))
+            wb.close()
+            return "\n".join(parts)
+        except Exception as e:
+            log.error("XLSX extraction failed for %s: %s", file_path.name, e)
+            return ""
+    else:
+        log.warning("Unsupported file type: %s for %s", ext, file_path.name)
+        return ""
+
+
+def _chunk_text(text: str) -> list[str]:
+    """Split text into overlapping chunks for embedding."""
+    if not text:
+        return []
+    separators = ["\n\n", "\n", ". ", " ", ""]
+    return _recursive_split(text, separators)
+
+
+def _recursive_split(text: str, separators: list[str]) -> list[str]:
+    final_chunks: list[str] = []
+    separator = separators[-1]
+    new_separators: list[str] = []
+    for i, sep in enumerate(separators):
+        if sep == "" or sep in text:
+            separator = sep
+            new_separators = separators[i + 1:]
+            break
+    splits = text.split(separator) if separator else list(text)
+    good_splits: list[str] = []
+    for s in splits:
+        if len(s) < CHUNK_SIZE:
+            good_splits.append(s)
+        else:
+            if good_splits:
+                final_chunks.extend(_merge_splits(good_splits, separator))
+                good_splits = []
+            if new_separators:
+                final_chunks.extend(_recursive_split(s, new_separators))
+            else:
+                final_chunks.append(s)
+    if good_splits:
+        final_chunks.extend(_merge_splits(good_splits, separator))
+    return final_chunks
+
+
+def _merge_splits(splits: list[str], separator: str) -> list[str]:
+    docs: list[str] = []
+    current: list[str] = []
+    total = 0
+    for s in splits:
+        s_len = len(s)
+        if total + s_len + (len(separator) if current else 0) > CHUNK_SIZE:
+            if current:
+                docs.append(separator.join(current))
+                while total > CHUNK_OVERLAP and len(current) > 1:
+                    total -= len(current[0]) + len(separator)
+                    current.pop(0)
+            current = [s]
+            total = s_len
+        else:
+            current.append(s)
+            total += s_len + (len(separator) if len(current) > 1 else 0)
+    if current:
+        docs.append(separator.join(current))
+    return docs
+
+
+async def _embed_batch(texts: list[str]) -> list[list[float]]:
+    """Embed a batch of texts via local BGE-M3 model."""
+    return embed_texts_sync(texts)
+
+
+async def _ingest_document_to_db(
+    pool, doc_id: str, domain: str, source_path: str, filename: str,
+    document_type: str, title: str, full_text: str, metadata: dict,
+    chunks: list[str], embeddings: list[list[float]],
+):
+    """Write document + chunks to PostgreSQL."""
+    content_hash = hashlib.sha256(full_text.encode()).hexdigest()[:16]
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("""
+                INSERT INTO core.documents
+                    (id, domain, source_path, filename, document_type, title,
+                     content_hash, total_chunks, full_content, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                ON CONFLICT (id) DO NOTHING
+            """,
+                uuid.UUID(doc_id), domain, source_path,
+                filename, document_type, title,
+                content_hash, len(chunks),
+                full_text[:500000],
+                json.dumps(metadata),
+            )
+
+            for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings)):
+                chunk_id = hashlib.md5(
+                    f"{source_path}:{i}".encode()
+                ).hexdigest()
+                vec_literal = "[" + ",".join(f"{v:.6f}" for v in emb) + "]"
+                await conn.execute("""
+                    INSERT INTO core.document_chunks
+                        (id, document_id, chunk_index, total_chunks,
+                         content, embedding, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                """,
+                    chunk_id, uuid.UUID(doc_id),
+                    i, len(chunks),
+                    chunk_text, vec_literal,
+                    json.dumps({}),
+                )
+
+            # Log the ingestion job
+            await conn.execute("""
+                INSERT INTO ops.ingestion_jobs
+                    (source, domain, status, documents_processed, chunks_processed,
+                     documents_failed, completed_at, metadata)
+                VALUES ($1, $2, 'completed', 1, $3, 0, now(), $4::jsonb)
+            """,
+                "claude-desktop-upload", domain, len(chunks),
+                json.dumps({"filename": filename, "document_id": doc_id}),
+            )
+
+
+@mcp.tool()
+async def upload_document(
+    filename: str,
+    file_data_base64: str,
+    domain: str = "general",
+    title: Optional[str] = None,
+    document_type: Optional[str] = None,
+    description: Optional[str] = None,
+) -> str:
+    """Upload a document to Athena Cognitive Engine for storage and ingestion.
+
+    Use this to save documents created by Claude Desktop (DOCX, PDF, MD, TXT,
+    images, XLSX) into the knowledge base. The original file is preserved on disk
+    and the content is extracted, chunked, embedded, and indexed for search.
+
+    Args:
+        filename: Original filename with extension (e.g. "report.docx", "analysis.pdf")
+        file_data_base64: The file content encoded as base64
+        domain: Classification domain — "general", "legal", or "medical" (default "general")
+        title: Human-readable title (auto-derived from filename if omitted)
+        document_type: Document type — "document", "report", "letter", "memo", "analysis", etc. (auto-detected if omitted)
+        description: Optional description or notes about the document
+    """
+    try:
+        # Decode the file
+        try:
+            file_bytes = base64.b64decode(file_data_base64)
+        except Exception:
+            return json.dumps({"error": "Invalid base64 data"})
+
+        if len(file_bytes) < 10:
+            return json.dumps({"error": "File is too small or empty"})
+
+        if len(file_bytes) > 100 * 1024 * 1024:
+            return json.dumps({"error": "File exceeds 100 MB limit"})
+
+        # Save original to disk
+        ext = Path(filename).suffix.lower()
+        safe_name = re.sub(r'[^\w\-.]', '_', filename)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        domain_dir = UPLOAD_DIR / domain
+        domain_dir.mkdir(parents=True, exist_ok=True)
+        save_path = domain_dir / f"{ts}_{safe_name}"
+
+        # Handle collisions
+        if save_path.exists():
+            save_path = domain_dir / f"{ts}_{uuid.uuid4().hex[:8]}_{safe_name}"
+
+        save_path.write_bytes(file_bytes)
+        log.info("Saved uploaded file: %s (%d bytes)", save_path, len(file_bytes))
+
+        # Extract text (run in thread to avoid blocking async event loop)
+        text = await asyncio.to_thread(_extract_text_for_upload, save_path)
+        if not text or len(text.strip()) < 10:
+            # Still save the original even if text extraction fails
+            doc_id = str(uuid.uuid4())
+            p = await get_pool()
+            meta = {
+                "source": "claude-desktop-upload",
+                "file_type": ext.lstrip("."),
+                "file_size": len(file_bytes),
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "local_attachment_path": str(save_path),
+                "text_extraction": "failed",
+            }
+            if description:
+                meta["description"] = description
+
+            async with p.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO core.documents
+                        (id, domain, source_path, filename, document_type, title,
+                         content_hash, total_chunks, full_content, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, 0, '', $8::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                """,
+                    uuid.UUID(doc_id), domain, str(save_path), filename,
+                    document_type or "document",
+                    title or Path(filename).stem.replace("_", " ").replace("-", " "),
+                    hashlib.sha256(file_bytes).hexdigest()[:16],
+                    json.dumps(meta),
+                )
+
+            return json.dumps({
+                "status": "saved",
+                "document_id": doc_id,
+                "filename": filename,
+                "file_size": len(file_bytes),
+                "saved_to": str(save_path),
+                "ingested": False,
+                "warning": "Text extraction returned no content — original file saved but not searchable",
+            })
+
+        # Chunk the text
+        chunks = _chunk_text(text)
+        if not chunks:
+            chunks = [text[:CHUNK_SIZE]]
+
+        log.info("Uploading %s: %d chars, %d chunks", filename, len(text), len(chunks))
+
+        # Embed in batches of 2000 (OpenAI supports up to 2048)
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(chunks), 2000):
+            batch = chunks[i:i + 2000]
+            try:
+                embs = await _embed_batch(batch)
+                all_embeddings.extend(embs)
+            except Exception as e:
+                log.error("Embedding failed for %s batch %d: %s", filename, i, e)
+                all_embeddings.extend([[0.0] * EMBEDDING_DIMS] * len(batch))
+
+        # Determine document type if not specified
+        if not document_type:
+            if ext == ".pdf":
+                document_type = "document"
+            elif ext in (".docx", ".doc"):
+                document_type = "document"
+            elif ext == ".md":
+                document_type = "document"
+            elif ext in (".xlsx", ".xls", ".csv"):
+                document_type = "spreadsheet"
+            elif ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif"):
+                document_type = "image"
+            else:
+                document_type = "document"
+
+        doc_id = str(uuid.uuid4())
+        doc_title = title or Path(filename).stem.replace("_", " ").replace("-", " ")
+        meta = {
+            "source": "claude-desktop-upload",
+            "file_type": ext.lstrip("."),
+            "file_size": len(file_bytes),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "local_attachment_path": str(save_path),
+        }
+        if description:
+            meta["description"] = description
+
+        p = await get_pool()
+        await _ingest_document_to_db(
+            p, doc_id, domain, str(save_path), filename,
+            document_type, doc_title, text, meta,
+            chunks, all_embeddings,
+        )
+
+        await _log_access("upload_document", filename, 1)
+
+        return json.dumps({
+            "status": "ingested",
+            "document_id": doc_id,
+            "filename": filename,
+            "title": doc_title,
+            "domain": domain,
+            "document_type": document_type,
+            "file_size": len(file_bytes),
+            "saved_to": str(save_path),
+            "text_length": len(text),
+            "chunks_created": len(chunks),
+            "ingested": True,
+            "searchable": True,
+        })
+
+    except Exception as e:
+        log.error("upload_document error: %s", e)
         return json.dumps({"error": str(e)})
 
 
@@ -2441,6 +2847,244 @@ async def medical_summary() -> str:
 Use the search_medical_records tool."""
 
 
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 LEGAL DEADLINE TOOLS                         ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+@mcp.tool()
+async def add_case_deadline(
+    case_number: str,
+    title: str,
+    deadline_date: str,
+    deadline_type: str = "filing",
+    priority: str = "normal",
+    description: str = "",
+) -> str:
+    """Add a deadline for a legal case.
+
+    Args:
+        case_number: Case number (e.g. "24-2-01031-31")
+        title: Short description of the deadline (e.g. "Response to Motion for Summary Judgment")
+        deadline_date: Date in YYYY-MM-DD format
+        deadline_type: Type — "filing", "hearing", "discovery", "response", "trial", "other"
+        priority: Priority — "critical", "high", "normal", "low"
+        description: Optional detailed description
+    """
+    try:
+        from datetime import date as date_type
+        dl_date = date_type.fromisoformat(deadline_date)
+
+        p = await get_pool()
+        case = await p.fetchrow(
+            "SELECT id FROM legal.cases WHERE case_number ILIKE $1 LIMIT 1",
+            f"%{case_number}%",
+        )
+        if not case:
+            return json.dumps({"error": f"Case not found: {case_number}"})
+
+        row = await p.fetchrow("""
+            INSERT INTO legal.case_deadlines
+                (case_id, title, deadline_date, deadline_type, priority, description, reminder_days)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+        """, case["id"], title, dl_date, deadline_type, priority, description, [7, 3, 1])
+
+        await _log_access("add_case_deadline", f"{case_number}: {title}", 1)
+        return json.dumps({
+            "status": "created",
+            "deadline_id": row["id"],
+            "case_number": case_number,
+            "title": title,
+            "deadline_date": deadline_date,
+            "priority": priority,
+        })
+    except Exception as e:
+        log.error("add_case_deadline error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_upcoming_deadlines(days: int = 30, case_number: Optional[str] = None) -> str:
+    """List upcoming legal deadlines across all cases.
+
+    Args:
+        days: Look ahead window in days (default 30)
+        case_number: Optional — filter to a specific case
+    """
+    try:
+        p = await get_pool()
+        cutoff = date.today() + timedelta(days=days)
+
+        if case_number:
+            rows = await p.fetch("""
+                SELECT d.id, d.title, d.deadline_date, d.deadline_type,
+                       d.priority, d.status, d.description,
+                       c.case_number, c.case_title
+                FROM legal.case_deadlines d
+                JOIN legal.cases c ON d.case_id = c.id
+                WHERE d.deadline_date <= $1
+                  AND d.status = 'pending'
+                  AND c.case_number ILIKE $2
+                ORDER BY d.deadline_date
+            """, cutoff, f"%{case_number}%")
+        else:
+            rows = await p.fetch("""
+                SELECT d.id, d.title, d.deadline_date, d.deadline_type,
+                       d.priority, d.status, d.description,
+                       c.case_number, c.case_title
+                FROM legal.case_deadlines d
+                JOIN legal.cases c ON d.case_id = c.id
+                WHERE d.deadline_date <= $1
+                  AND d.status = 'pending'
+                ORDER BY d.deadline_date
+            """, cutoff)
+
+        today = date.today()
+        deadlines = []
+        for r in rows:
+            days_left = (r["deadline_date"] - today).days
+            deadlines.append({
+                "deadline_id": r["id"],
+                "case_number": r["case_number"],
+                "case_name": r["case_name"],
+                "title": r["title"],
+                "deadline_date": str(r["deadline_date"]),
+                "days_remaining": days_left,
+                "deadline_type": r["deadline_type"],
+                "priority": r["priority"],
+                "status": "OVERDUE" if days_left < 0 else r["status"],
+                "description": r["description"] or "",
+            })
+
+        await _log_access("list_upcoming_deadlines", f"{days} days", len(deadlines))
+        return json.dumps({"deadlines": deadlines, "count": len(deadlines), "window_days": days})
+    except Exception as e:
+        log.error("list_upcoming_deadlines error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def complete_deadline(deadline_id: int) -> str:
+    """Mark a legal deadline as completed.
+
+    Args:
+        deadline_id: ID of the deadline to mark complete
+    """
+    try:
+        p = await get_pool()
+        result = await p.execute("""
+            UPDATE legal.case_deadlines
+            SET status = 'completed', completed_at = now(), updated_at = now()
+            WHERE id = $1 AND status = 'pending'
+        """, deadline_id)
+
+        if result == "UPDATE 1":
+            return json.dumps({"status": "completed", "deadline_id": deadline_id})
+        else:
+            return json.dumps({"error": f"Deadline {deadline_id} not found or already completed"})
+    except Exception as e:
+        log.error("complete_deadline error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_legal_templates(category: Optional[str] = None) -> str:
+    """List available legal document templates.
+
+    Args:
+        category: Optional filter — "motion", "letter", "declaration", "discovery", "pleading"
+    """
+    try:
+        p = await get_pool()
+        if category:
+            rows = await p.fetch("""
+                SELECT id, name, category, description, jurisdiction, court_type, variables
+                FROM legal.document_templates
+                WHERE is_active = true AND category = $1
+                ORDER BY name
+            """, category)
+        else:
+            rows = await p.fetch("""
+                SELECT id, name, category, description, jurisdiction, court_type, variables
+                FROM legal.document_templates
+                WHERE is_active = true
+                ORDER BY category, name
+            """)
+
+        templates = [{
+            "id": r["id"],
+            "name": r["name"],
+            "category": r["category"],
+            "description": r["description"],
+            "jurisdiction": r["jurisdiction"],
+            "court_type": r["court_type"],
+            "variables": r["variables"],
+        } for r in rows]
+
+        return json.dumps({"templates": templates, "count": len(templates)})
+    except Exception as e:
+        log.error("list_legal_templates error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def fill_legal_template(template_id: int, variables: str) -> str:
+    """Fill a legal document template with provided variables.
+
+    Args:
+        template_id: ID of the template (from list_legal_templates)
+        variables: JSON string of variable name/value pairs, e.g. '{"court_name":"King County Superior Court","case_number":"24-2-01031-31"}'
+    """
+    try:
+        p = await get_pool()
+        row = await p.fetchrow("""
+            SELECT id, name, template_body, variables as var_defs
+            FROM legal.document_templates
+            WHERE id = $1 AND is_active = true
+        """, template_id)
+
+        if not row:
+            return json.dumps({"error": f"Template {template_id} not found"})
+
+        try:
+            vars_dict = json.loads(variables) if isinstance(variables, str) else variables
+        except json.JSONDecodeError:
+            return json.dumps({"error": "Invalid JSON in variables parameter"})
+
+        body = row["template_body"]
+        var_defs = row["var_defs"] if isinstance(row["var_defs"], list) else json.loads(row["var_defs"] or "[]")
+
+        # Apply defaults
+        for v in var_defs:
+            if v.get("default_value") and v["name"] not in vars_dict:
+                vars_dict[v["name"]] = v["default_value"]
+
+        # Find and fill placeholders
+        import re as re_mod
+        placeholders = set(re_mod.findall(r'\{\{(\w+)\}\}', body))
+        rendered = body
+        filled = {}
+        missing = []
+
+        for ph in placeholders:
+            if ph in vars_dict:
+                rendered = rendered.replace(f"{{{{{ph}}}}}", str(vars_dict[ph]))
+                filled[ph] = str(vars_dict[ph])
+            else:
+                missing.append(ph)
+
+        await _log_access("fill_legal_template", row["name"], 1)
+        return json.dumps({
+            "template_name": row["name"],
+            "rendered_document": rendered,
+            "variables_filled": filled,
+            "variables_missing": missing,
+        })
+    except Exception as e:
+        log.error("fill_legal_template error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
 # ══════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════
@@ -2449,7 +3093,7 @@ def main():
     parser = argparse.ArgumentParser(description="Athena Cognitive Engine MCP Server v2.0")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
-    parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address")
     args = parser.parse_args()
 
     if args.http:

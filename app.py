@@ -29,10 +29,7 @@ from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 
 # ── Config ────────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws",
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 DASHBOARD_USER = os.getenv("DASHBOARD_USER", "admin")
 DASHBOARD_PASS = os.getenv("DASHBOARD_PASS", "nelson2026")
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "9100"))
@@ -916,7 +913,7 @@ app = Starlette(routes=routes, middleware=middleware)
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════
 def main():
-    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
     print(f"\n{'=' * 60}")
     print(f"  Athena Cognitive Platform Dashboard v2.0")
     print(f"  http://{host}:{DASHBOARD_PORT}/dashboard")

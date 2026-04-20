@@ -22,7 +22,7 @@ class SecuritySentinelAgent(BaseAgent):
     priority = 2
     capabilities = ["threat-detection", "access-audit", "pii-scanning", "compliance"]
 
-    instructions = """You are the Security Sentinel Agent for the Athena Cognitive Platform.
+    instructions = """You are the Security Sentinel Agent for the Athena Cognitive Engine.
 
 SECURITY CONTEXT:
 - MCP server exposed at https://klunky.12432.net via Cloudflare Tunnel
@@ -175,17 +175,6 @@ Provide: overall threat level (GREEN/YELLOW/RED), key observations, recommendati
             {"active_clients": metrics.get("active_clients", 0),
              "pii_detections": metrics.get("pii_detections", 0),
              "unknown_clients": metrics.get("unknown_clients", 0)})
-
-        # ── Post to Chat Room ──
-        try:
-            await self.broadcast(
-                f"Security scan: {metrics.get('active_clients', 0)} clients, "
-                f"{metrics.get('pii_detections', 0)} PII hits, "
-                f"{metrics.get('unknown_clients', 0)} unknown | "
-                f"Threat: {metrics.get('security_summary', 'N/A')[:80]}",
-                channel="security", msg_type="status")
-        except Exception as e:
-            self.log.debug(f"Chat post failed: {e}")
 
         # ── Post to Chat Room ──
         try:

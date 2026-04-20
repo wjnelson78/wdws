@@ -50,10 +50,7 @@ import asyncpg
 # Configuration
 # ============================================================
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws"
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")

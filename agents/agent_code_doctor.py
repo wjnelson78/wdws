@@ -42,7 +42,7 @@ class CodeDoctorAgent(BaseAgent):
         "auto-patch", "email-notification", "audit-trail"
     ]
 
-    instructions = """You are Code Doctor (Athena AI), the auto-remediation agent for the Athena Cognitive Platform.
+    instructions = """You are Code Doctor (Athena AI), the auto-remediation agent for the Athena Cognitive Engine.
 
 YOUR MISSION:
 Detect agent failures, diagnose root causes by analyzing tracebacks and database schema,

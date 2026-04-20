@@ -33,8 +33,15 @@ log = logging.getLogger("email_api")
 
 # ── Config (inherited from chat_api env) ──────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMS = 3072
+
+import sys
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import (
+    embed_query as _embed_query_local,
+    _vec_literal,
+    EMBEDDING_DIMENSIONS as EMBEDDING_DIMS,
+    EMBEDDING_MODEL,
+)
 
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
@@ -119,15 +126,8 @@ async def _read_json(request: Request) -> dict:
 
 
 async def _embed_query(text: str) -> list[float]:
-    """Get embedding vector for a search query."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": EMBEDDING_MODEL, "input": text, "dimensions": EMBEDDING_DIMS},
-        )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    """Get embedding vector for a search query using local BGE-M3 model."""
+    return await _embed_query_local(text)
 
 
 async def _get_graph_token() -> str:
@@ -443,7 +443,7 @@ async def semantic_search_emails(request: Request) -> JSONResponse:
 
     try:
         embedding = await _embed_query(query)
-        vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+        vec_literal = _vec_literal(embedding)
 
         # If space_id, only search emails linked to that space
         if space_id:

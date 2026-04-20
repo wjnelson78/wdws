@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+sys.path.insert(0, "/opt/wdws")
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,17 +35,25 @@ import httpx
 import pytesseract
 from PIL import Image
 
+from embedding_service import (
+    embed_texts_sync, embed_query_sync,
+    _vec_literal as _embedding_vec_literal,
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ──────────────────────────────────────────────────────────────────────────────
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws")
+DATABASE_URL = os.environ["DATABASE_URL"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-EMBEDDING_MODEL  = "text-embedding-3-large"
-EMBEDDING_DIMS   = 3072
+# EMBEDDING_MODEL and EMBEDDING_DIMENSIONS imported from embedding_service
+# (BGE-M3 local model, 1024 dimensions)
+EMBEDDING_DIMS   = EMBEDDING_DIMENSIONS
 EMBEDDING_MODEL_ID = 1
-EMBEDDING_BATCH  = 50   # chunks per OpenAI request
+EMBEDDING_BATCH  = 50   # chunks per embed request
 
 SOURCE_ROOT = Path(
     "/opt/wdws/data/dropbox/biia/"
@@ -777,30 +786,22 @@ def chunk_text(text: str, target_chars: int = CHUNK_TARGET_CHARS, overlap: int =
 # ──────────────────────────────────────────────────────────────────────────────
 
 class EmbeddingClient:
+    """Local BGE-M3 embedding client (delegates to embedding_service)."""
+
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=120.0)
         self.total_tokens = 0
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        truncated = [t[:30000] for t in texts]
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"input": truncated, "model": EMBEDDING_MODEL, "dimensions": EMBEDDING_DIMS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
-        return [d["embedding"] for d in data["data"]]
+        return embed_texts_sync(texts)
 
     async def close(self):
-        await self.client.aclose()
+        pass  # No HTTP client to close
 
 
 def vec_literal(embedding: List[float]) -> str:
-    return "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+    return _embedding_vec_literal(embedding)
 
 
 def count_tokens_approx(text: str) -> int:
@@ -874,7 +875,7 @@ async def insert_document(pool: asyncpg.Pool, doc: BiiaDocument) -> str:
     return doc.doc_id
 
 
-async def insert_chunks(pool: asyncpg.Pool, doc_id: str, chunks: List[str], embeddings: List[List[float]]):
+async def insert_chunks(pool: asyncpg.Pool, doc_id: str, chunks: List[str], embeddings: List[List[float]], enriched_texts: Optional[List[str]] = None):
     """Insert all chunks with embeddings."""
     doc_uuid = uuid.UUID(doc_id)
     total = len(chunks)
@@ -883,18 +884,19 @@ async def insert_chunks(pool: asyncpg.Pool, doc_id: str, chunks: List[str], embe
             for idx, (chunk_text, emb) in enumerate(zip(chunks, embeddings)):
                 chunk_id = hashlib.md5(f"{doc_id}:{idx}".encode()).hexdigest()
                 token_count = count_tokens_approx(chunk_text)
+                enriched = enriched_texts[idx] if enriched_texts and idx < len(enriched_texts) else None
                 await conn.execute("""
                     INSERT INTO core.document_chunks
                         (id, document_id, chunk_index, total_chunks,
-                         content, embedding, embedding_model_id, token_count)
+                         content, embedded_content, embedding, embedding_model_id, token_count)
                     VALUES (
-                        $1, $2, $3, $4, $5,
-                        $6::halfvec, $7, $8
+                        $1, $2, $3, $4, $5, $6,
+                        $7::halfvec, $8, $9
                     )
                     ON CONFLICT (id) DO NOTHING
                 """,
                     chunk_id, doc_uuid, idx, total,
-                    chunk_text, vec_literal(emb), EMBEDDING_MODEL_ID, token_count,
+                    chunk_text, enriched, vec_literal(emb), EMBEDDING_MODEL_ID, token_count,
                 )
 
 
@@ -1396,10 +1398,20 @@ async def main(dry_run: bool = False):
                 existing_hashes.add(content_hash)
                 continue
 
-            # Generate embeddings in batches
+            # Contextual Retrieval: generate context and enrich chunks
+            context = generate_context_sync(
+                title=title,
+                domain="legal",
+                document_type=doc_type,
+                content_preview=text[:3000],
+                case_number=None,
+            )
+            enriched_texts = enrich_chunks(context, chunks)
+
+            # Generate embeddings in batches (embed enriched texts)
             all_embeddings = []
-            for batch_start in range(0, len(chunks), EMBEDDING_BATCH):
-                batch = chunks[batch_start:batch_start + EMBEDDING_BATCH]
+            for batch_start in range(0, len(enriched_texts), EMBEDDING_BATCH):
+                batch = enriched_texts[batch_start:batch_start + EMBEDDING_BATCH]
                 try:
                     embs = await embedder.embed(batch)
                     all_embeddings.extend(embs)
@@ -1411,8 +1423,8 @@ async def main(dry_run: bool = False):
             # Insert document
             await insert_document(pool, doc)
 
-            # Insert chunks
-            await insert_chunks(pool, doc_id, chunks, all_embeddings)
+            # Insert chunks (with enriched texts for embedded_content)
+            await insert_chunks(pool, doc_id, chunks, all_embeddings, enriched_texts=enriched_texts)
 
             # Update total_chunks
             await update_total_chunks(pool, doc_id, len(chunks))

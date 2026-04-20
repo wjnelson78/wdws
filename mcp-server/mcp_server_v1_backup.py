@@ -123,7 +123,7 @@ mcp = FastMCP(
         "Searches legal cases, court filings, emails, medical records, "
         "and paperless documents via PostgreSQL + pgvector."
     ),
-    host="0.0.0.0",
+    host="127.0.0.1",
     port=9200,
 )
 
@@ -999,7 +999,7 @@ def main():
     parser = argparse.ArgumentParser(description="WDWS Unified MCP Server")
     parser.add_argument("--http", action="store_true", help="Run as HTTP/SSE server")
     parser.add_argument("--port", type=int, default=9200, help="HTTP port (default 9200)")
-    parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address")
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address")
     args = parser.parse_args()
 
     if args.http:

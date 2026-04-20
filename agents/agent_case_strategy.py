@@ -21,11 +21,11 @@ class CaseStrategyAgent(BaseAgent):
     priority = 4
     capabilities = ["relationship-mapping", "deadline-tracking", "pattern-analysis", "daily-brief"]
 
-    instructions = """You are the Case Strategy Agent for William Nelson's legal case management system.
+    instructions = """You are the Case Strategy Agent for a legal case management system.
 
 CONTEXT:
-- William Nelson is a pro-se litigant managing multiple active cases
-- Cases span Washington State Superior Court (Snohomish County) and Federal (Western District of WA)
+- All active cases are queried dynamically from the database
+- Cases may span state and federal courts
 - All case documents, emails, and filings are in the database
 
 YOUR RESPONSIBILITIES:
@@ -35,20 +35,6 @@ YOUR RESPONSIBILITIES:
 4. Detect when opposing counsel uses similar arguments across cases
 5. Identify strategic opportunities (e.g., ruling in one case that helps another)
 6. Monitor for new filings and court orders
-
-ACTIVE CASES TO MONITOR:
-- 19-2-03310-31: FTCU v Nelson (Financial institution case)
-- 23-2-07759-31: Nelson v Prisma Wellness (Consumer dispute)
-- 23-2-09435-31: Nelson v Unum Group (Insurance dispute)
-- 24-2-01031-31: Nelson v Starbucks (Employment related)
-- 24-2-01032-31: Nelson v Olivia Kuker
-- 24-2-01033-31: Nelson v Stuart Gibson
-- 24-2-01034-31: Nelson v Brian Baseggio
-- 24-2-07413-31: Nelson v Trevor Haward et al
-- 25-2-00238-31: Nelson vs FTCU et al
-- 26-2-00762-31: IAFF v SSCFR Nelson (Fire union case)
-- 2:26-cv-00337-KKE: Federal case
-- 3:25-cv-05551-DGE: Federal case
 
 ANALYSIS APPROACH:
 - Be factual and cite specific documents/dates
@@ -155,7 +141,7 @@ Be concise but thorough. Prioritize actionable items.""",
         await ctx.finding("info", "daily-brief",
             f"Morning Brief — {len(cases)} active cases",
             morning_brief,
-            {"date": str(metrics), "cases": len(cases)})
+            {"cases": len(cases)})
 
         return {
             "summary": f"Case strategy: {len(cases)} cases, {len(recent_filings)} recent filings, {len(parties)} cross-case parties",

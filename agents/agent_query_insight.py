@@ -21,7 +21,7 @@ class QueryInsightAgent(BaseAgent):
     priority = 5
     capabilities = ["usage-analytics", "gap-detection", "tool-suggestions", "search-quality"]
 
-    instructions = """You are the Query Insight Agent for the Athena Cognitive Platform MCP system.
+    instructions = """You are the Query Insight Agent for the Athena Cognitive Engine MCP system.
 
 CONTEXT:
 - 27 MCP tools available via OAuth-secured endpoint

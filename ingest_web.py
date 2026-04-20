@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+sys.path.insert(0, "/opt/wdws")
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -30,20 +31,20 @@ import asyncpg
 import httpx
 from bs4 import BeautifulSoup
 
+from embedding_service import (
+    embed_texts_sync, embed_query_sync, _vec_literal as _embedding_vec_literal,
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks
+
 # ============================================================
 # Configuration
 # ============================================================
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws"
-)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
-
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072
+DATABASE_URL = os.environ["DATABASE_URL"]
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# EMBEDDING_MODEL and EMBEDDING_DIMENSIONS imported from embedding_service
+# (BGE-M3 local model, 1024 dimensions)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
@@ -150,30 +151,21 @@ class TextChunker:
 # ============================================================
 
 class EmbeddingClient:
-    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = EMBEDDING_MODEL):
-        self.api_key = api_key
-        self.model = model
-        self.client = httpx.AsyncClient(timeout=60.0)
+    """Local BGE-M3 embedding client with batching (delegates to embedding_service)."""
+
+    def __init__(self, **kwargs):
         self.total_tokens = 0
         self.total_requests = 0
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        truncated = [t[:30000] for t in texts]
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={"input": truncated, "model": self.model, "dimensions": EMBEDDING_DIMENSIONS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
+        result = embed_texts_sync(texts)
         self.total_requests += 1
-        return [d["embedding"] for d in data["data"]]
+        return result
 
     async def close(self):
-        await self.client.aclose()
+        pass  # No HTTP client to close
 
 
 # ============================================================
@@ -365,7 +357,7 @@ class WebCrawler:
 # ============================================================
 
 def _vec_literal(embedding: List[float]) -> str:
-    return "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+    return _embedding_vec_literal(embedding)
 
 
 async def write_web_document(
@@ -407,16 +399,17 @@ async def write_web_document(
                 chunk_id = hashlib.md5(
                     f"{page.url}:{chunk.chunk_index}".encode()
                 ).hexdigest()
+                enriched = chunk.metadata.pop("_embedded_content", None)
                 await conn.execute("""
                     INSERT INTO core.document_chunks
                         (id, document_id, chunk_index, total_chunks,
-                         content, embedding, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                         content, embedded_content, embedding, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
                     ON CONFLICT (id) DO NOTHING
                 """,
                     chunk_id, doc_id,
                     chunk.chunk_index, chunk.total_chunks,
-                    chunk.content, _vec_literal(emb),
+                    chunk.content, enriched, _vec_literal(emb),
                     json.dumps(chunk.metadata),
                 )
 
@@ -503,8 +496,22 @@ async def ingest_site(pool: asyncpg.Pool, embedder: EmbeddingClient,
                 for i, ct in enumerate(chunk_texts)
             ]
 
-            # Embed
-            embeddings = await embedder.embed_batch(chunk_texts)
+            # Contextual Retrieval: generate context and enrich chunks
+            context = generate_context_sync(
+                title=page.title or page.url_path,
+                domain="web",
+                document_type=page.content_type.split("/")[-1],
+                content_preview=page.text_content[:3000],
+                case_number=None,
+            )
+            enriched_texts = enrich_chunks(context, chunk_texts)
+
+            # Embed enriched texts
+            embeddings = await embedder.embed_batch(enriched_texts)
+
+            # Store enriched text on chunks for DB persistence
+            for chunk, enriched in zip(chunks, enriched_texts):
+                chunk.metadata["_embedded_content"] = enriched
 
             # Write
             await write_web_document(pool, str(site["id"]), page, chunks, embeddings)

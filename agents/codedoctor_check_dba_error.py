@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Check agent_dba actual error from database."""
+import asyncio
+from framework import get_pool
+
+async def check():
+    pool = await get_pool()
+    try:
+        # Check if ops.agent_runs exists and has recent failures
+        try:
+            result = await pool.fetch('''
+                SELECT id, status, error_msg, created_at
+                FROM ops.agent_runs
+                WHERE agent_id = 'dba'
+                ORDER BY created_at DESC
+                LIMIT 3
+            ''')
+            print("RECENT DBA RUNS:")
+            for row in result:
+                print(f"  ID: {row['id']}, Status: {row['status']}")
+                if row['error_msg']:
+                    print(f"    Error: {row['error_msg'][:200]}")
+                print()
+        except Exception as e:
+            print(f"✗ Cannot query ops.agent_runs: {e}")
+
+        # List ops tables
+        tables = await pool.fetch('''
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'ops'
+            ORDER BY table_name
+        ''')
+        print("OPS SCHEMA TABLES:")
+        if tables:
+            for t in tables:
+                print(f"  - {t['table_name']}")
+        else:
+            print("  (none found)")
+
+    finally:
+        await pool.close()
+
+asyncio.run(check())

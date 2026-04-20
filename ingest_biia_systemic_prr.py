@@ -56,8 +56,10 @@ DB_URL = os.getenv(
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMS  = 3072
+import sys
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS as EMBEDDING_DIMS
+from contextual_retrieval import generate_context_sync, enrich_chunks
 EMBEDDING_BATCH = 50
 
 SOURCE_ROOT = Path(
@@ -1051,41 +1053,30 @@ def count_tokens_approx(text: str) -> int:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class EmbeddingClient:
+    """Local BGE-M3 embedding client (replaces OpenAI API calls)."""
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=120.0)
         self.total_tokens = 0
         self.total_requests = 0
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        truncated = [t[:30000] for t in texts]
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"input": truncated, "model": EMBEDDING_MODEL, "dimensions": EMBEDDING_DIMS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
+        from embedding_service import embed_texts_sync
         self.total_requests += 1
-        return [d["embedding"] for d in data["data"]]
+        return embed_texts_sync(texts)
 
     async def embed_batched(self, texts: List[str]) -> List[List[float]]:
         """Embed in batches of EMBEDDING_BATCH."""
-        results = []
-        for i in range(0, len(texts), EMBEDDING_BATCH):
-            batch = texts[i:i + EMBEDDING_BATCH]
-            batch_results = await self.embed(batch)
-            results.extend(batch_results)
-        return results
+        from embedding_service import embed_texts_sync
+        return embed_texts_sync(texts, batch_size=EMBEDDING_BATCH)
 
     async def close(self):
-        await self.client.aclose()
+        pass
 
 
 def vec_literal(embedding: List[float]) -> str:
-    return "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
+    from embedding_service import _vec_literal
+    return _vec_literal(embedding)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1335,6 +1326,7 @@ async def insert_chunks(
     doc_type: str,
     chunk_tuples: List[Tuple[str, int, int]],
     embeddings: List[List[float]],
+    enriched_texts: Optional[List[str]] = None,
 ):
     """Insert all chunks with embeddings. Skips any chunk that fails to embed."""
     doc_uuid = uuid.UUID(doc_id)
@@ -1342,6 +1334,7 @@ async def insert_chunks(
         async with conn.transaction():
             for idx, ((chunk_text_val, start_char, end_char), emb) in enumerate(zip(chunk_tuples, embeddings)):
                 token_count = count_tokens_approx(chunk_text_val)
+                enriched = enriched_texts[idx] if enriched_texts and idx < len(enriched_texts) else None
                 meta = json.dumps({
                     "document_type": doc_type,
                     "investigation_id": investigation_id,
@@ -1349,15 +1342,15 @@ async def insert_chunks(
                 })
                 await conn.execute("""
                     INSERT INTO document_chunks
-                        (document_id, chunk_index, chunk_text, embedding,
+                        (document_id, chunk_index, chunk_text, embedded_content, embedding,
                          token_count, start_char, end_char, metadata)
                     VALUES (
-                        $1, $2, $3, $4::vector,
-                        $5, $6, $7, $8::jsonb
+                        $1, $2, $3, $4, $5::vector,
+                        $6, $7, $8, $9::jsonb
                     )
                     ON CONFLICT (document_id, chunk_index) DO NOTHING
                 """,
-                    doc_uuid, idx, chunk_text_val, vec_literal(emb),
+                    doc_uuid, idx, chunk_text_val, enriched, vec_literal(emb),
                     token_count, start_char, end_char, meta,
                 )
 
@@ -2054,10 +2047,20 @@ async def main():
                         chunk_tuples = chunk_text(content_text)
                         if chunk_tuples:
                             chunk_texts_only = [ct for ct, _, _ in chunk_tuples]
-                            embeddings = await embedder.embed_batched(chunk_texts_only)
+                            # Contextual Retrieval: generate context and enrich chunks
+                            context = generate_context_sync(
+                                title=title,
+                                domain="legal",
+                                document_type=doc_type,
+                                content_preview=content_text[:3000],
+                                case_number=None,
+                            )
+                            enriched_texts = enrich_chunks(context, chunk_texts_only)
+                            embeddings = await embedder.embed_batched(enriched_texts)
                             await insert_chunks(
                                 pool, doc_id, investigation_id, doc_type,
-                                chunk_tuples, embeddings
+                                chunk_tuples, embeddings,
+                                enriched_texts=enriched_texts,
                             )
                             stats["total_chunks"] += len(chunk_tuples)
                             stats["total_embeddings"] += len(embeddings)

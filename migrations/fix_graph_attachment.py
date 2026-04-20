@@ -25,7 +25,7 @@ import asyncpg
 import httpx
 
 # ── Config ──
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws")
+DATABASE_URL = os.environ["DATABASE_URL"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET")

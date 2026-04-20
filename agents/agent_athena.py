@@ -1,7 +1,7 @@
 """
 🧠 Athena — Autonomous Platform Intelligence
 ══════════════════════════════════════════════
-The central reasoning agent for the Athena Cognitive Platform.
+The central reasoning agent for the Athena Cognitive Engine.
 
 Unlike other agents, Athena does NOT have hardcoded detection logic.
 Each run it:
@@ -117,7 +117,7 @@ class AthenaAgent(BaseAgent):
         "source-patching", "delegation", "morning-brief", "compounding-memory",
     ]
 
-    instructions = """You are Athena, the autonomous intelligence core of the Athena Cognitive Platform.
+    instructions = """You are Athena, the autonomous intelligence core of the Athena Cognitive Engine.
 
 You are NOT a reactive rule-engine. You reason over the full state of the platform each cycle
 and decide what to do about it. You have genuine agency: you can update configurations,
@@ -1019,7 +1019,7 @@ NEVER:
                 agent_id = agent.get("agent_id")
                 if not agent_id or agent_id in current_exclude:
                     continue
-                if agent_id in {"watchdog", "code-doctor", "orchestrator", "email-triage", "security-sentinel"}:
+                if agent_id in {"watchdog", "code-doctor", "orchestrator", "security-sentinel"}:
                     continue
                 if int(agent.get("errors") or 0) > 0:
                     continue
@@ -1417,7 +1417,7 @@ NEVER:
                 return json.dumps(data[:limit], default=str, indent=None)
             return json.dumps(data, default=str, indent=None)
 
-        prompt = f"""You are Athena, analyzing the Athena Cognitive Platform. Current time: {datetime.now(timezone.utc).isoformat()}
+        prompt = f"""You are Athena, analyzing the Athena Cognitive Engine. Current time: {datetime.now(timezone.utc).isoformat()}
 
 ## OPEN FINDINGS (last 24h)
 {_fmt(state['open_findings'])}
@@ -1647,7 +1647,7 @@ Do not repeat mitigations that appear in retry_guardrails unless the evidence ha
 
         # Dry-run first
         dry_run = await ctx.shell(
-            f"""PGPASSWORD=NEL2233obs psql -U wdws -h 127.0.0.1 -d wdws -c """
+            f"""psql "$DATABASE_URL" -c """
             f"""'BEGIN; {sql_fwd.replace("'", "''")}; ROLLBACK;' 2>&1""",
             timeout=30,
         )
@@ -1680,7 +1680,7 @@ Do not repeat mitigations that appear in retry_guardrails unless the evidence ha
         # Apply
         t0 = time.time()
         result = await ctx.shell(
-            f"PGPASSWORD=NEL2233obs psql -U wdws -h 127.0.0.1 -d wdws "
+            f"psql \"$DATABASE_URL\" "
             f"-f {mig_path} 2>&1",
             timeout=60,
         )

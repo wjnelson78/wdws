@@ -95,6 +95,12 @@ COLUMN_ALIASES: dict[str, dict[str, str]] = {
         "detail":      "detail",
         "details":     "detail",
     },
+    "ops.agent_runs": {
+        # created_at is canonical
+        "created_at":  "created_at",
+        "started_at":  "created_at",
+        "begun_at":    "created_at",
+    },
     "medical.record_metadata": {
         "date_of_service": "date_of_service",
         "service_date":    "date_of_service",

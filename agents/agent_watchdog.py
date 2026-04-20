@@ -90,9 +90,9 @@ LATENCY_REGRESSION_AGENT_EXCLUDE = {
     # Heavy reasoning / infrequent agents
     "athena", "daily-digest",
     # Hourly / weekly / on-demand agents
-    "db-tuner", "self-healing", "dba", "software-engineer",
-    "case-strategy", "retention", "timeline", "quality-eval",
-    "scorecard", "query-insight", "data-quality",
+    "self-healing", "dba",
+    "case-strategy", "retention", "quality-eval",
+    "query-insight", "data-quality",
 }
 
 # ── Services to monitor ─────────────────────────────────────
@@ -107,14 +107,13 @@ MONITORED_TIMERS = [
 
 # ── Agent routing: issue type → which agent should handle it ─
 ISSUE_ROUTING = {
-    "database":    "db-tuner",
+    "database":    "dba",
     "security":    "security",
     "data":        "data-quality",
-    "email":       "email-triage",
     "code":        "code-doctor",
     "recovery":    "self-healing",
     "legal":       "case-strategy",
-    "performance": "db-tuner",
+    "performance": "dba",
 }
 
 
@@ -136,7 +135,7 @@ class WatchdogAgent(BaseAgent):
         "email-escalation", "system-optimization",
     ]
 
-    instructions = """You are the Watchdog Agent v3 for the Athena Cognitive Platform.
+    instructions = """You are the Watchdog Agent v3 for the Athena Cognitive Engine.
 You are the eyes and ears of the entire platform. You monitor everything.
 
 SYSTEM ARCHITECTURE:
@@ -169,7 +168,7 @@ WHEN TO ESCALATE TO HUMAN:
 - Security breach detected (unauthorized access patterns)
 - Database corruption signs
 - Any issue that persists across 3+ consecutive watchdog runs
-- OpenAI API key is broken/expired"""
+- All LLM providers are unavailable (OpenAI + Anthropic + Claude CLI + Ollama)"""
 
     # ═══════════════════════════════════════════════════════════
     # Main run
@@ -268,15 +267,15 @@ WHEN TO ESCALATE TO HUMAN:
         if db_metrics.get("db_conn_percent", 0) > THRESHOLDS["db_conn_percent"]["warning"]:
             issues.append({"severity": "warning", "category": "database",
                            "title": f"DB connections at {db_metrics['db_conn_percent']}%",
-                           "route_to": "db-tuner"})
+                           "route_to": "dba"})
         if db_metrics.get("long_running_queries", 0) > 0:
             issues.append({"severity": "warning", "category": "database",
                            "title": f"{db_metrics['long_running_queries']} long-running queries (>60s)",
-                           "route_to": "db-tuner"})
+                           "route_to": "dba"})
         if db_metrics.get("deadlocks", 0) > 0:
             issues.append({"severity": "critical", "category": "database",
                            "title": f"{db_metrics['deadlocks']} deadlocks detected",
-                           "route_to": "db-tuner"})
+                           "route_to": "dba"})
 
         # ── 5b. Latency Regression Detection ────────────────
         latency_issues, latency_metrics = await self._detect_latency_regressions(ctx, metrics)
@@ -659,7 +658,7 @@ WHEN TO ESCALATE TO HUMAN:
 
                             severity = "critical" if label in ("oom", "segfault") else "warning"
                             route = ("self-healing" if label in ("service_fail", "disk_error")
-                                     else "db-tuner" if label == "postgres_err"
+                                     else "dba" if label == "postgres_err"
                                      else "security")
                             issues.append({
                                 "severity": severity,
@@ -773,7 +772,7 @@ WHEN TO ESCALATE TO HUMAN:
                         "severity": severity,
                         "category": "performance",
                         "title": title,
-                        "route_to": "db-tuner",
+                        "route_to": "dba",
                         "escalate_human": severity == "critical",
                         "detail": f"Window: last {window}m vs prior {window}m; calls {curr_cnt} vs {prev_cnt}",
                     })
@@ -1115,21 +1114,11 @@ WHEN TO ESCALATE TO HUMAN:
                 "checked_at": datetime.now(timezone.utc).isoformat()})
 
             if not working:
-                await ctx.finding("critical", "openai",
-                    "OpenAI API key is not working",
-                    f"Status {resp.status_code}. Key may be expired.")
-                # This is critical enough to email
-                await self._escalate_to_human(
-                    ctx,
-                    title="OpenAI API Key Failure",
-                    severity="critical",
-                    sections=[{
-                        "heading": "API Key Issue",
-                        "content": f"The OpenAI API key returned HTTP {resp.status_code}.\n"
-                                   "The agent system relies on this key for all AI operations.\n"
-                                   "Check: https://platform.openai.com/api-keys",
-                        "type": "error",
-                    }])
+                # OpenAI is optional — platform uses multi-provider fallback
+                # (Anthropic API → Claude Code CLI → Ollama)
+                await ctx.finding("info", "openai",
+                    "OpenAI API key is not working (non-critical — fallback providers active)",
+                    f"Status {resp.status_code}. LLM calls route through Claude Code CLI and Anthropic API.")
                 return False
             return True
         except Exception as e:

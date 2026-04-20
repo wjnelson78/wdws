@@ -33,7 +33,8 @@ DATABASE_URL = _require("DATABASE_URL")
 # ── OpenAI ───────────────────────────────────────────────────
 OPENAI_API_KEY = _require("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("AGENT_LLM_MODEL", "gpt-5.4")
-OPENAI_EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
+OPENAI_EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "1024"))
 AGENT_LLM_MODEL_HIGH = os.getenv("AGENT_LLM_MODEL_HIGH", OPENAI_MODEL)
 AGENT_LLM_MODEL_LOW = os.getenv("AGENT_LLM_MODEL_LOW", OPENAI_MODEL)
 AGENT_LLM_ROUTING_ENABLED = os.getenv("AGENT_LLM_ROUTING_ENABLED", "true").lower() in (

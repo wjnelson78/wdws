@@ -28,7 +28,22 @@ class OrchestratorAgent(BaseAgent):
         "escalation", "fleet-report", "agent-dispatch", "challenge-review"
     ]
 
-    instructions = """You are the Orchestrator — the Manager of all agents in the Athena Cognitive Platform.
+    # Agents intentionally decommissioned — suppress spurious 'disabled' findings
+    DECOMMISSIONED_AGENTS = frozenset({
+        "software-engineer",
+        "email-triage",
+        "scorecard",
+        "db-tuner",
+        "timeline",
+    })
+
+    # Agents excluded from fleet-health error-rate findings.
+    # Use for low-frequency agents whose run count is too small for a stable
+    # ratio (e.g. quality-eval runs infrequently, so 2 early errors permanently
+    # peg the rate above the threshold until enough successful runs accumulate).
+    FLEET_HEALTH_EXCLUDE_LIST: frozenset = frozenset({"quality-eval"})
+
+    instructions = """You are the Orchestrator — the Manager of all agents in the Athena Cognitive Engine.
 
 YOUR ROLE:
 You oversee a fleet of specialized agents. You do NOT perform their work directly.
@@ -40,11 +55,8 @@ FLEET (by priority):
   P2: Security Sentinel — threat detection, anomaly alerts
   P2: Self-Healing — auto-recovery, integration tests
   P3: Data Quality — embedding/chunk/doc integrity
-  P3: Email Triage — email classification and urgency
-  P4: Database Tuner — query optimization, vacuum
   P4: Case Strategy — legal morning brief
   P4: Retention & Redaction — data governance, PII
-  P5: Timeline — case chronology
   P5: Query Insight — usage analytics
 
 GOVERNANCE RULES:
@@ -106,13 +118,27 @@ NEVER:
         """)
         metrics["agents_reviewed"] = len(agents)
 
+        # Fetch per-agent error counts for the past 2 hours (matches health-display window).
+        # Using cumulative registry counters produced false positives for low-frequency
+        # agents (e.g. quality-eval: 2 all-time errors / 6 all-time runs = 33% forever).
+        recent_run_stats = await ctx.query("""
+            SELECT agent_id,
+                   COUNT(*) FILTER (WHERE status = 'error') AS errors,
+                   COUNT(*) AS total
+            FROM ops.agent_runs
+            WHERE started_at > now() - interval '2 hours'
+            GROUP BY agent_id
+        """)
+        recent_stats_by_agent = {r["agent_id"]: r for r in recent_run_stats}
+
         stale_agents = []
         unhealthy_agents = []
         disabled_agents = []
 
         for agent in agents:
             if not agent["is_active"]:
-                disabled_agents.append(agent["name"])
+                if agent["id"] not in self.DECOMMISSIONED_AGENTS:
+                    disabled_agents.append(agent["name"])
                 continue
 
             # Check staleness (hasn't run in 2x expected interval)
@@ -151,12 +177,15 @@ NEVER:
                 if since_last > expected_interval * 2:
                     stale_agents.append(agent["name"])
 
-            # Check error rate
-            if agent["run_count"] and agent["run_count"] > 5:
-                error_rate = (agent["error_count"] or 0) / agent["run_count"]
-                if error_rate > 0.3:
-                    unhealthy_agents.append(
-                        f"{agent['name']} ({agent['error_count']}/{agent['run_count']} errors)")
+            # Check error rate using 2-hour window (matches health-display window).
+            # Agents with no runs in the window are simply skipped — no false positives.
+            if agent["id"] not in self.FLEET_HEALTH_EXCLUDE_LIST:
+                recent = recent_stats_by_agent.get(agent["id"])
+                if recent and recent["total"] >= 15:
+                    error_rate = recent["errors"] / recent["total"]
+                    if error_rate > 0.4:
+                        unhealthy_agents.append(
+                            f"{agent['name']} ({recent['errors']}/{recent['total']} errors in 2h)")
 
         if stale_agents:
             await ctx.finding("warning", "fleet-health",
@@ -165,7 +194,7 @@ NEVER:
 
         if unhealthy_agents:
             await ctx.finding("warning", "fleet-health",
-                f"Unhealthy agents (>30% error rate): {', '.join(unhealthy_agents)}",
+                f"Unhealthy agents (>40% error rate, ≥15 runs in 2h): {', '.join(unhealthy_agents)}",
                 "High error rate may indicate misconfiguration or external failures")
 
         if disabled_agents:
@@ -397,8 +426,8 @@ Return JSON:
 
             # 8b. Notify team about stale/down agents
             if stale_agents:
-                stale_names = ", ".join(f"@{a['id']}" for a in stale_agents[:5])
-                stale_mentions = [a["id"] for a in stale_agents[:5]]
+                stale_names = ", ".join(f"@{name}" for name in stale_agents[:5])
+                stale_mentions = list(stale_agents[:5])
                 await self.chat(
                     f"Team awareness: {stale_names} — you appear stale (no run in 15+ min). "
                     f"Please check in. @self-healing — can you verify these agents are healthy?",
@@ -423,7 +452,7 @@ Return JSON:
 
             # 8d. If unhealthy agents found, direct self-healing
             if unhealthy_agents:
-                names = ", ".join(f"@{a['id']}" for a in unhealthy_agents[:5])
+                names = ", ".join(f"@{a}" for a in unhealthy_agents[:5])
                 await self.ask_agent(
                     "self-healing",
                     f"Unhealthy agents detected: {names}. "

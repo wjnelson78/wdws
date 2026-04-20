@@ -28,6 +28,7 @@ Usage:
 """
 import os
 import sys
+sys.path.insert(0, "/opt/wdws")
 import json
 import re
 import uuid
@@ -47,6 +48,13 @@ from typing import List, Dict, Optional, Set, Tuple, Any
 import httpx
 import asyncpg
 
+from embedding_service import (
+    embed_texts_sync, embed_query_sync,
+    _vec_literal as _embedding_vec_literal,
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks
+
 # ============================================================
 # Configuration
 # ============================================================
@@ -64,8 +72,7 @@ if not CHAT_DATABASE_URL:
     raise RuntimeError("Missing CHAT_DATABASE_URL — check /opt/wdws/.env")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-if not OPENAI_API_KEY:
-    raise RuntimeError("Missing OPENAI_API_KEY — check /opt/wdws/.env")
+# OpenAI API key no longer required — embeddings use local BGE-M3 model
 
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
@@ -77,8 +84,8 @@ if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID]):
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token"
 
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072
+# EMBEDDING_MODEL and EMBEDDING_DIMENSIONS imported from embedding_service
+# (BGE-M3 local model, 1024 dimensions)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 EMBEDDING_BATCH_SIZE = 20          # chunks per OpenAI API call
@@ -377,30 +384,21 @@ def extract_text(content: bytes, extension: str, filename: str) -> Tuple[str, st
 # ============================================================
 
 class EmbeddingClient:
-    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = EMBEDDING_MODEL):
-        self.api_key = api_key
-        self.model = model
-        self.client = httpx.AsyncClient(timeout=60.0)
+    """Local BGE-M3 embedding client with batching (delegates to embedding_service)."""
+
+    def __init__(self, **kwargs):
         self.total_tokens = 0
         self.total_requests = 0
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        truncated = [t[:30000] for t in texts]
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={"input": truncated, "model": self.model, "dimensions": EMBEDDING_DIMENSIONS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
+        result = embed_texts_sync(texts)
         self.total_requests += 1
-        return [d["embedding"] for d in data["data"]]
+        return result
 
     async def close(self):
-        await self.client.aclose()
+        pass  # No HTTP client to close
 
 
 # ============================================================
@@ -441,52 +439,56 @@ class GraphClient:
             await self.authenticate()
 
     async def _get(self, url: str, params: dict = None) -> Optional[dict]:
-        await self._ensure_token()
-        try:
-            resp = await self.client.get(
-                url,
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                params=params,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                retry_after = int(e.response.headers.get("Retry-After", "10"))
-                log.warning(f"  Rate limited, waiting {retry_after}s...")
-                await asyncio.sleep(retry_after)
-                return await self._get(url, params)
-            if e.response.status_code == 404:
-                log.warning(f"  Not found: {url}")
+        for attempt in range(5):
+            await self._ensure_token()
+            try:
+                resp = await self.client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                    params=params,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < 4:
+                    retry_after = int(e.response.headers.get("Retry-After", "10"))
+                    log.warning(f"  Rate limited (attempt {attempt+1}/5), waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if e.response.status_code == 404:
+                    log.warning(f"  Not found: {url}")
+                    return None
+                log.error(f"  Graph API error {e.response.status_code}: {e.response.text[:200]}")
                 return None
-            log.error(f"  Graph API error {e.response.status_code}: {e.response.text[:200]}")
-            return None
-        except Exception as e:
-            log.error(f"  Graph API request failed: {e}")
-            return None
+            except Exception as e:
+                log.error(f"  Graph API request failed: {e}")
+                return None
+        return None
 
     async def _get_bytes(self, url: str) -> Optional[bytes]:
         """Download file content as bytes."""
-        await self._ensure_token()
-        try:
-            resp = await self.client.get(
-                url,
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-            return resp.content
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                retry_after = int(e.response.headers.get("Retry-After", "10"))
-                log.warning(f"  Rate limited on download, waiting {retry_after}s...")
-                await asyncio.sleep(retry_after)
-                return await self._get_bytes(url)
-            log.error(f"  Download error {e.response.status_code}")
-            return None
-        except Exception as e:
-            log.error(f"  Download failed: {e}")
-            return None
+        for attempt in range(5):
+            await self._ensure_token()
+            try:
+                resp = await self.client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                    follow_redirects=True,
+                )
+                resp.raise_for_status()
+                return resp.content
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < 4:
+                    retry_after = int(e.response.headers.get("Retry-After", "10"))
+                    log.warning(f"  Rate limited on download (attempt {attempt+1}/5), waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                log.error(f"  Download error {e.response.status_code}")
+                return None
+            except Exception as e:
+                log.error(f"  Download failed: {e}")
+                return None
+        return None
 
     # ── Drive resolution ──
 
@@ -717,7 +719,7 @@ def _parse_graph_date(date_str: Optional[str]) -> Optional[datetime]:
 
 def _vec_literal(embedding: List[float]) -> str:
     """Convert embedding list to PostgreSQL halfvec literal."""
-    return "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+    return _embedding_vec_literal(embedding)
 
 
 # ============================================================
@@ -1119,18 +1121,29 @@ async def sync_target(pool: asyncpg.Pool, graph: GraphClient,
                     stats.files_skipped += 1
                     continue
                 
-                # Embed in batches
+                # Contextual Retrieval — enrich chunks before embedding
+                ext = item.extension or ""
+                cr_context = generate_context_sync(
+                    title=item.name,
+                    domain="onedrive",
+                    document_type=ext.lstrip(".") or "file",
+                    content_preview=text[:3000],
+                    case_number=None,
+                )
+                enriched_texts = enrich_chunks(cr_context, chunk_texts)
+
+                # Embed in batches (using enriched texts)
                 await pool.execute(
                     "UPDATE chat.onedrive_files SET status = 'embedding' WHERE id = $1",
                     file_id
                 )
                 all_embeddings = []
-                for batch_start in range(0, len(chunk_texts), EMBEDDING_BATCH_SIZE):
-                    batch = chunk_texts[batch_start:batch_start + EMBEDDING_BATCH_SIZE]
+                for batch_start in range(0, len(enriched_texts), EMBEDDING_BATCH_SIZE):
+                    batch = enriched_texts[batch_start:batch_start + EMBEDDING_BATCH_SIZE]
                     batch_embeds = await embedder.embed_batch(batch)
                     all_embeddings.extend(batch_embeds)
                     # Brief throttle between batches
-                    if batch_start + EMBEDDING_BATCH_SIZE < len(chunk_texts):
+                    if batch_start + EMBEDDING_BATCH_SIZE < len(enriched_texts):
                         await asyncio.sleep(0.5)
                 
                 # Write to DB

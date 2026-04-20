@@ -552,10 +552,10 @@ INSERT INTO chat.email_accounts (email_address, display_name, label, sync_folder
 VALUES 
     ('william@seattleseahawks.me', 'William Nelson', 'William O365',
      ARRAY['inbox', 'sentitems'],
-     ARRAY['snoco.org', 'co.snohomish.wa.us']),
+    ARRAY['snoco.org', 'co.snohomish.wa.us', 'co.chelan.wa.us']),
     ('athena@seattleseahawks.me', 'Athena AI', 'Athena O365',
      ARRAY['inbox', 'sentitems'],
-     ARRAY['snoco.org', 'co.snohomish.wa.us'])
+    ARRAY['snoco.org', 'co.snohomish.wa.us', 'co.chelan.wa.us'])
 ON CONFLICT (email_address) DO NOTHING;
 
 -- ============================================================

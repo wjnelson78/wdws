@@ -12,9 +12,16 @@ basic safety exposure (PII patterns) in retrieved context.
 import json
 import os
 import re
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import (
+    embed_query,
+    _vec_literal, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
 
 from framework import BaseAgent, RunContext, get_llm
 from config import (
@@ -25,8 +32,8 @@ from email_util import send_email, build_notification_html
 
 # ── Eval config ─────────────────────────────────────────────
 EVAL_CASES_PATH = Path(__file__).parent / "evals" / "eval_cases.json"
-EVAL_EMBED_MODEL = os.getenv("EVAL_EMBED_MODEL", "text-embedding-3-large")
-EVAL_EMBED_DIMS = int(os.getenv("EVAL_EMBED_DIMS", "3072"))
+EVAL_EMBED_MODEL = EMBEDDING_MODEL
+EVAL_EMBED_DIMS = EMBEDDING_DIMENSIONS
 EVAL_TOP_K = int(os.getenv("EVAL_TOP_K", "8"))
 EVAL_SEM_WEIGHT = float(os.getenv("EVAL_SEM_WEIGHT", "0.7"))
 EVAL_FT_WEIGHT = float(os.getenv("EVAL_FT_WEIGHT", "0.3"))
@@ -53,18 +60,12 @@ def _safe_load_cases() -> list[dict[str, Any]]:
     return json.loads(EVAL_CASES_PATH.read_text())
 
 
-async def _embed_query(text: str) -> list[float]:
-    client = get_llm()
-    resp = await client.embeddings.create(
-        model=EVAL_EMBED_MODEL,
-        input=text,
-        dimensions=EVAL_EMBED_DIMS,
-    )
-    return resp.data[0].embedding
-
-
-def _vec_literal(vec: list[float]) -> str:
-    return "[" + ",".join(str(v) for v in vec) + "]"
+async def _embed_query(text: str) -> Optional[list[float]]:
+    """Embed a query using local BGE-M3 model (async, 1024-dim). Returns None on failure."""
+    try:
+        return await embed_query(text)
+    except Exception:
+        return None
 
 
 def _check_pii(text: str) -> dict[str, int]:
@@ -150,103 +151,129 @@ class QualityEvalAgent(BaseAgent):
                 metrics["skipped"] += 1
                 continue
 
-            if require_case_exists and expected.get("case_number"):
-                exists = await p.fetchval(
-                    "SELECT 1 FROM legal.cases WHERE case_number ILIKE $1 LIMIT 1",
-                    f"%{expected['case_number']}%",
-                )
-                if not exists:
-                    metrics["skipped"] += 1
-                    continue
+            try:
+                if require_case_exists and expected.get("case_number"):
+                    exists = await p.fetchval(
+                        "SELECT 1 FROM legal.cases WHERE case_number ILIKE $1 LIMIT 1",
+                        f"%{expected['case_number']}%",
+                    )
+                    if not exists:
+                        metrics["skipped"] += 1
+                        continue
 
-            if min_domain_docs and expected.get("domain"):
-                domain_count = await p.fetchval(
-                    "SELECT COUNT(*) FROM core.documents WHERE domain = $1",
-                    expected["domain"],
-                )
-                if not domain_count or domain_count < min_domain_docs:
-                    metrics["skipped"] += 1
-                    continue
+                if min_domain_docs and expected.get("domain"):
+                    domain_count = await p.fetchval(
+                        "SELECT COUNT(*) FROM core.documents WHERE domain = $1",
+                        expected["domain"],
+                    )
+                    if not domain_count or domain_count < min_domain_docs:
+                        metrics["skipped"] += 1
+                        continue
+            except Exception as _pre_err:
+                self.log.warning("Case %s: preflight DB error (%s) — skipping",
+                                 case_id, str(_pre_err)[:120])
+                metrics["skipped"] += 1
+                continue
 
             metrics["total_cases"] += 1
 
             vec = await _embed_query(query)
-            vec_str = _vec_literal(vec)
+            if vec is None:
+                metrics["skipped"] += 1
+                continue
+            try:
+                vec_str = _vec_literal(vec)
+            except Exception:
+                metrics["skipped"] += 1
+                continue
 
-            rows = await p.fetch(
-                """
-                SELECT hs.chunk_id, hs.document_id, hs.content,
-                       hs.domain, hs.document_type, hs.title, hs.filename,
-                       hs.hybrid_score, hs.semantic_score, hs.fulltext_score
-                FROM core.hybrid_search(
-                    $1,
-                    $2::halfvec(3072),
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7
-                ) AS hs
-                """,
-                query,
-                vec_str,
-                EVAL_TOP_K,
-                expected.get("domain"),
-                EVAL_SEM_WEIGHT,
-                EVAL_FT_WEIGHT,
-                EVAL_RRF_K,
-            )
-
-            doc_ids = [r["document_id"] for r in rows if r.get("document_id")]
-            case_map: dict[str, list[str]] = {}
-            if doc_ids:
-                doc_uuid_list = [uuid.UUID(str(d)) for d in doc_ids]
-                case_rows = await p.fetch(
+            try:
+                rows = await p.fetch(
                     """
-                    SELECT cd.document_id::text AS document_id,
-                           array_agg(lc.case_number) AS case_numbers
-                    FROM legal.case_documents cd
-                    JOIN legal.cases lc ON cd.case_id = lc.id
-                    WHERE cd.document_id = ANY($1::uuid[])
-                    GROUP BY cd.document_id
+                    SELECT hs.chunk_id, hs.document_id, hs.content,
+                           hs.domain, hs.document_type, hs.title, hs.filename,
+                           hs.hybrid_score, hs.semantic_score, hs.fulltext_score
+                    FROM core.hybrid_search(
+                        $1,
+                        $2::halfvec(1024),
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7
+                    ) AS hs
                     """,
-                    doc_uuid_list,
+                    query,
+                    vec_str,
+                    EVAL_TOP_K,
+                    expected.get("domain"),
+                    EVAL_SEM_WEIGHT,
+                    EVAL_FT_WEIGHT,
+                    EVAL_RRF_K,
                 )
-                case_map = {r["document_id"]: r["case_numbers"] for r in case_rows}
 
-            results = []
-            for r in rows:
-                doc_id = str(r["document_id"]) if r.get("document_id") else None
-                content = r.get("content") or ""
-                results.append({
-                    "document_id": doc_id,
-                    "domain": r.get("domain"),
-                    "document_type": r.get("document_type"),
-                    "title": r.get("title") or r.get("filename"),
-                    "case_numbers": case_map.get(doc_id, []),
-                    "pii": _check_pii(content),
-                })
+                doc_ids = [r["document_id"] for r in rows if r.get("document_id")]
+                case_map: dict[str, list[str]] = {}
+                if doc_ids:
+                    doc_uuid_list = [uuid.UUID(str(d)) for d in doc_ids]
+                    case_rows = await p.fetch(
+                        """
+                        SELECT cd.document_id::text AS document_id,
+                               array_agg(lc.case_number) AS case_numbers
+                        FROM legal.case_documents cd
+                        JOIN legal.cases lc ON cd.case_id = lc.id
+                        WHERE cd.document_id = ANY($1::uuid[])
+                        GROUP BY cd.document_id
+                        """,
+                        doc_uuid_list,
+                    )
+                    case_map = {r["document_id"]: r["case_numbers"] for r in case_rows}
 
-            total_results += len(results)
-            passed, score_info = _score_result(expected, results, min_results)
+                results = []
+                for r in rows:
+                    doc_id = str(r["document_id"]) if r.get("document_id") else None
+                    content = r.get("content") or ""
+                    results.append({
+                        "document_id": doc_id,
+                        "domain": r.get("domain"),
+                        "document_type": r.get("document_type"),
+                        "title": r.get("title") or r.get("filename"),
+                        "case_numbers": case_map.get(doc_id, []),
+                        "pii": _check_pii(content),
+                    })
 
-            if not passed:
+                total_results += len(results)
+                passed, score_info = _score_result(expected, results, min_results)
+
+                if not passed:
+                    failures.append({
+                        "case_id": case_id,
+                        "query": query,
+                        "expected": expected,
+                        "score": score_info,
+                        "results": results[:3],
+                    })
+
+                for result in results:
+                    for k, v in (result.get("pii") or {}).items():
+                        metrics["pii_hits"][k] = metrics["pii_hits"].get(k, 0) + v
+
+                if passed:
+                    metrics["passed"] += 1
+                else:
+                    metrics["failed"] += 1
+
+            except Exception as _eval_err:
+                self.log.warning("Case %s: eval DB error (%s) — counting as failure",
+                                 case_id, str(_eval_err)[:200])
+                metrics["failed"] += 1
                 failures.append({
                     "case_id": case_id,
                     "query": query,
                     "expected": expected,
-                    "score": score_info,
-                    "results": results[:3],
+                    "score": {"error": str(_eval_err)[:200]},
+                    "results": [],
                 })
-
-            for result in results:
-                for k, v in (result.get("pii") or {}).items():
-                    metrics["pii_hits"][k] = metrics["pii_hits"].get(k, 0) + v
-
-            if passed:
-                metrics["passed"] += 1
-            else:
-                metrics["failed"] += 1
 
         if metrics["total_cases"]:
             metrics["avg_results"] = round(total_results / metrics["total_cases"], 2)
@@ -255,18 +282,22 @@ class QualityEvalAgent(BaseAgent):
         metrics["pass_rate"] = round(pass_rate, 3)
 
         # ── Regression detection (pass rate drop) ─────────────
-        prev = await p.fetchrow(
-            """
-            SELECT metrics
-            FROM ops.agent_runs
-            WHERE agent_id = 'quality-eval'
-              AND id <> $1
-              AND metrics ? 'pass_rate'
-            ORDER BY started_at DESC
-            LIMIT 1
-            """,
-            self._run_id,
-        )
+        try:
+            prev = await p.fetchrow(
+                """
+                SELECT metrics
+                FROM ops.agent_runs
+                WHERE agent_id = 'quality-eval'
+                  AND id <> $1
+                  AND metrics ? 'pass_rate'
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                self._run_id,
+            )
+        except Exception as _reg_err:
+            self.log.warning("Could not fetch previous pass rate: %s", str(_reg_err)[:100])
+            prev = None
 
         prev_rate = None
         if prev and prev.get("metrics"):
@@ -323,21 +354,27 @@ class QualityEvalAgent(BaseAgent):
 
                 if severity == "critical":
                     # Critical regression (pass rate < 60%) — send immediately
-                    body_html = build_notification_html(
-                        title="Eval Pass Rate Regression",
-                        sections=_sections,
-                        footer="Athena Cognitive Platform - Developed by William Nelson 2016",
-                    )
-                    await send_email(
-                        tenant_id=GRAPH_TENANT_ID,
-                        client_id=GRAPH_CLIENT_ID,
-                        client_secret=GRAPH_CLIENT_SECRET,
-                        sender=GRAPH_SENDER_EMAIL,
-                        to_recipients=[SCORECARD_EMAIL],
-                        subject="[ACP CRITICAL] Eval Pass Rate Regression",
-                        body_html=body_html,
-                        importance="high",
-                    )
+                    try:
+                        body_html = build_notification_html(
+                            title="Eval Pass Rate Regression",
+                            sections=_sections,
+                            footer="Athena Cognitive Engine - Developed by William Nelson 2016",
+                        )
+                        await send_email(
+                            tenant_id=GRAPH_TENANT_ID,
+                            client_id=GRAPH_CLIENT_ID,
+                            client_secret=GRAPH_CLIENT_SECRET,
+                            sender=GRAPH_SENDER_EMAIL,
+                            to_recipients=[SCORECARD_EMAIL],
+                            subject="[ACP CRITICAL] Eval Pass Rate Regression",
+                            body_html=body_html,
+                            importance="high",
+                        )
+                    except Exception as _email_err:
+                        self.log.warning(
+                            "Could not send critical regression email: %s",
+                            str(_email_err)[:200],
+                        )
                 else:
                     # Non-critical regression — queue for daily digest
                     await ctx.queue_notification(

@@ -16,6 +16,7 @@ import os
 import signal
 import asyncio
 import argparse
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -34,17 +35,12 @@ from agent_watchdog import WatchdogAgent
 from agent_security import SecuritySentinelAgent
 from agent_self_healing import SelfHealingAgent
 from agent_data_quality import DataQualityAgent
-from agent_email_triage import EmailTriageAgent
-from agent_db_tuner import DatabaseTunerAgent
 from agent_case_strategy import CaseStrategyAgent
 from agent_retention import RetentionAgent
-from agent_timeline import TimelineAgent
 from agent_query_insight import QueryInsightAgent
 from agent_athena import AthenaAgent
 from agent_code_doctor import CodeDoctorAgent
 from agent_quality_eval import QualityEvalAgent
-from agent_scorecard import ScorecardAgent
-from agent_software_engineer import SoftwareEngineerAgent
 from agent_dba import DBAAgent
 from agent_daily_digest import DailyDigestAgent
 
@@ -58,20 +54,15 @@ ALL_AGENTS = [
     AthenaAgent(),           # P1 — autonomous reasoning + self-management
     CodeDoctorAgent(),       # P1 — auto-remediation with Athena AI
     WatchdogAgent(),         # P1 — health
-    DailyDigestAgent(),      # P2 — 7 AM daily digest email
+    DailyDigestAgent(),      # P2 — 7 AM daily digest email (includes weekly scorecard)
     SecuritySentinelAgent(), # P2 — security
     SelfHealingAgent(),      # P2 — auto-repair
-    SoftwareEngineerAgent(), # P2 — proactive code maintenance
     DBAAgent(),              # P2 — database administration
     DataQualityAgent(),      # P3 — data integrity
-    EmailTriageAgent(),      # P3 — email classification
-    DatabaseTunerAgent(),    # P4 — performance
     CaseStrategyAgent(),     # P4 — legal brief
     RetentionAgent(),        # P4 — data governance
-    TimelineAgent(),         # P5 — chronology
     QueryInsightAgent(),     # P5 — analytics
-    QualityEvalAgent(),     # P5 — evals + safety checks
-    ScorecardAgent(),       # P5 — weekly scorecard
+    QualityEvalAgent(),      # P5 — evals + safety checks
 ]
 
 AGENT_MAP = {a.agent_id: a for a in ALL_AGENTS}
@@ -94,11 +85,18 @@ def _should_run(agent, now: datetime) -> bool:
 
     last = _last_runs.get(agent.agent_id)
     if not last:
-        # First tick — check if current minute matches cron
+        # No in-memory record — seed from the cron schedule so the agent
+        # fires at its next natural cron time rather than requiring a lucky
+        # 60-second window.  This guarantees every agent runs within one
+        # schedule cycle after a process restart.
         cron = croniter(agent.schedule, now)
         prev = cron.get_prev(datetime)
-        # Run if the previous cron time is within the last tick window
-        return (now - prev).total_seconds() < AGENT_TICK_SECONDS * 2
+        # Run immediately if we're within one tick of the last cron fire
+        if (now - prev).total_seconds() < AGENT_TICK_SECONDS * 2:
+            return True
+        # Otherwise, seed _last_runs so the normal path picks it up next cycle
+        _last_runs[agent.agent_id] = prev
+        return False
 
     cron = croniter(agent.schedule, last)
     next_run = cron.get_next(datetime)
@@ -241,12 +239,33 @@ async def scheduler():
     log.info(f"  Tick: {AGENT_TICK_SECONDS}s | Max concurrent: {AGENT_MAX_CONCURRENT}")
     log.info("=" * 60)
 
-    # Register all agents in DB
+    # Register all agents in DB and bootstrap _last_runs from DB
     pool = await get_pool()
     for agent in ALL_AGENTS:
         await agent.register()
         log.info(f"  Registered: {agent.agent_id} ({agent.agent_name}) "
                  f"schedule={agent.schedule} priority={agent.priority}")
+
+    # Seed _last_runs from the database so agents resume their schedule
+    # after a process restart instead of waiting for a narrow cron window.
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, last_run_at FROM ops.agent_registry WHERE last_run_at IS NOT NULL"
+        )
+        for row in rows:
+            if row["id"] in AGENT_MAP and row["last_run_at"]:
+                _last_runs[row["id"]] = row["last_run_at"].replace(tzinfo=timezone.utc) \
+                    if row["last_run_at"].tzinfo is None else row["last_run_at"]
+        log.info(f"  Bootstrapped _last_runs for {len(rows)} agents from DB")
+
+        # Deactivate ghost agents (registered in DB but not in current code)
+        ghost_ids = [row["id"] for row in rows if row["id"] not in AGENT_MAP]
+        if ghost_ids:
+            await conn.execute(
+                "UPDATE ops.agent_registry SET is_active = false WHERE id = ANY($1::text[])",
+                ghost_ids,
+            )
+            log.info(f"  Deactivated {len(ghost_ids)} ghost agents: {', '.join(ghost_ids)}")
 
     log.info("-" * 60)
 
@@ -350,8 +369,6 @@ def handle_signal(sig, frame):
 
 
 if __name__ == "__main__":
-    import json
-
     parser = argparse.ArgumentParser(description="ACP Agent Runner")
     parser.add_argument("--once", type=str, help="Run a single agent once")
     parser.add_argument("--list", action="store_true", help="List all agents")

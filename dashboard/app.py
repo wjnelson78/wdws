@@ -40,10 +40,7 @@ sys.path.insert(0, '/opt/wdws/dashboard')
 from osint_api import get_osint_routes, get_osint_pool
 
 # ── Config ────────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws",
-)
+DATABASE_URL = os.environ["DATABASE_URL"]
 DASHBOARD_USERS = {
     "admin":   "2$NEL2233obs",
     "wnelson": "NEL2233obs",
@@ -56,11 +53,17 @@ DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "9100"))
 INGEST_LOG     = os.getenv("INGEST_LOG", "/opt/wdws/ingest_full.log")
 SYNC_LOG       = os.getenv("SYNC_LOG", "/opt/wdws/email_sync.log")
 AGENT_LOG      = os.getenv("AGENT_LOG", "/opt/wdws/email_agent.log")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5.4")
-EMBEDDING_MODEL = "text-embedding-3-large"
+sys.path.insert(0, "/opt/wdws")
+from embedding_service import (
+    embed_query as _embed_query_local,
+    _vec_literal,
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+)
+from email_sync_config import audit_sync_configuration_health
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
@@ -79,11 +82,13 @@ SUPPORTED_MEDICAL_IMPORT_EXTENSIONS = {
   ".xml", ".csv", ".rtf", ".xlsx", ".xls",
 }
 AVAILABLE_MODELS = [
-  {"id": "auto",       "model": "gpt-5.4",      "label": "⚡ Auto",       "reasoning_effort": None,      "max_tool_rounds": 12, "description": "Automatically decides when to think deeper"},
-  {"id": "think-low",  "model": "gpt-5.4",      "label": "💭 Think Low",  "reasoning_effort": "low",     "max_tool_rounds": 8,  "description": "Light reasoning — faster responses"},
-  {"id": "think-med",  "model": "gpt-5.4",      "label": "💭 Think Med",  "reasoning_effort": "medium",  "max_tool_rounds": 10, "description": "Balanced reasoning and speed"},
-  {"id": "think-high", "model": "gpt-5.4",      "label": "🧠 Think High", "reasoning_effort": "high",    "max_tool_rounds": 14, "description": "Deep reasoning — most thorough"},
-  {"id": "think-xhigh","model": "gpt-5.4",      "label": "🧠 Think XHigh","reasoning_effort": "xhigh",   "max_tool_rounds": 18, "description": "Extreme reasoning — longest thinking time"},
+  {"id": "auto",            "model": "gpt-5.4",                     "provider": "openai",    "label": "⚡ Auto (GPT-5.4)",       "reasoning_effort": None,      "max_tool_rounds": 12, "description": "GPT-5.4 — automatically decides when to think deeper"},
+  {"id": "claude-sonnet",   "model": "claude-sonnet-4-6",           "provider": "anthropic", "label": "🟣 Claude Sonnet 4.6",    "reasoning_effort": None,      "max_tool_rounds": 14, "description": "Claude Sonnet — fast, capable, great for most tasks"},
+  {"id": "claude-opus",     "model": "claude-opus-4-6",             "provider": "anthropic", "label": "🔮 Claude Opus 4.6",      "reasoning_effort": None,      "max_tool_rounds": 18, "description": "Claude Opus — most capable, deep legal reasoning"},
+  {"id": "claude-haiku",    "model": "claude-haiku-4-5-20251001",   "provider": "anthropic", "label": "⚡ Claude Haiku 4.5",     "reasoning_effort": None,      "max_tool_rounds": 10, "description": "Claude Haiku — fastest, great for simple questions"},
+  {"id": "think-low",       "model": "gpt-5.4",                     "provider": "openai",    "label": "💭 GPT Think Low",        "reasoning_effort": "low",     "max_tool_rounds": 8,  "description": "GPT-5.4 light reasoning — faster responses"},
+  {"id": "think-med",       "model": "gpt-5.4",                     "provider": "openai",    "label": "💭 GPT Think Med",        "reasoning_effort": "medium",  "max_tool_rounds": 10, "description": "GPT-5.4 balanced reasoning and speed"},
+  {"id": "think-high",      "model": "gpt-5.4",                     "provider": "openai",    "label": "🧠 GPT Think High",       "reasoning_effort": "high",    "max_tool_rounds": 14, "description": "GPT-5.4 deep reasoning — most thorough"},
 ]
 
 pool: Optional[asyncpg.Pool] = None
@@ -397,6 +402,10 @@ def _content_disposition_value(filename: str, disposition: str = "attachment") -
     return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{quote(safe_name)}"
 
 
+def _health_status_code(status: str) -> int:
+  return 200 if status == "healthy" else (207 if status == "degraded" else 503)
+
+
 async def _resolve_original_document_download(document_id: str) -> Dict[str, Any]:
     p = await get_pool()
     doc = await p.fetchrow("""
@@ -597,6 +606,7 @@ async def api_documents(request: Request):
     domain = params.get("domain")
     doc_type = params.get("type")
     case_number = params.get("case_number")
+    tag_slug = params.get("tag")  # filter by tag slug (includes descendants)
     limit = min(int(params.get("limit", "50")), 200)
     offset = int(params.get("offset", "0"))
 
@@ -607,6 +617,9 @@ async def api_documents(request: Request):
         where.append(f"d.document_type = ${idx}"); args.append(doc_type); idx += 1
     if case_number:
         where.append(f"lc.case_number = ${idx}"); args.append(case_number); idx += 1
+    if tag_slug:
+        where.append(f"EXISTS (SELECT 1 FROM core.document_tags dt_f WHERE dt_f.document_id = d.id AND dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx})))")
+        args.append(tag_slug); idx += 1
     wc = " AND ".join(where) if where else "TRUE"
 
     total = await p.fetchval(f"""
@@ -1369,6 +1382,7 @@ async def api_search(request: Request):
     data = await request.json()
     query = data.get("query", "").strip()
     domain = data.get("domain")
+    tag_slug = data.get("tag")  # filter by tag slug (includes descendants)
     limit = min(int(data.get("limit", 20)), 100)
     if not query:
         return JSONResponse({"error": "query required"}, status_code=400)
@@ -1376,8 +1390,26 @@ async def api_search(request: Request):
     p = await get_pool()
     t0 = time.monotonic()
 
-    if domain:
-        rows = await p.fetch("""
+    tag_filter = ""
+    extra_args = []
+    if tag_slug:
+        tag_filter = " AND d.id IN (SELECT dt_f.document_id FROM core.document_tags dt_f WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants($%d)))"
+
+    if domain or tag_slug:
+        where_parts = ["c.content_tsv @@ websearch_to_tsquery('english', $1)"]
+        args = [query]
+        idx = 2
+        if domain:
+            where_parts.append(f"d.domain = ${idx}")
+            args.append(domain)
+            idx += 1
+        if tag_slug:
+            where_parts.append(f"d.id IN (SELECT dt_f.document_id FROM core.document_tags dt_f WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx})))")
+            args.append(tag_slug)
+            idx += 1
+        where_clause = " AND ".join(where_parts)
+        args.append(limit)
+        rows = await p.fetch(f"""
             SELECT c.id AS chunk_id, c.document_id, c.content,
                    ts_rank_cd(c.content_tsv,
                        websearch_to_tsquery('english', $1))::FLOAT AS rank,
@@ -1388,10 +1420,9 @@ async def api_search(request: Request):
                    ) AS headline
             FROM core.document_chunks c
             JOIN core.documents d ON c.document_id = d.id
-            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
-              AND d.domain = $2
-            ORDER BY rank DESC LIMIT $3
-        """, query, domain, limit)
+            WHERE {where_clause}
+            ORDER BY rank DESC LIMIT ${idx}
+        """, *args)
     else:
         rows = await p.fetch("""
             SELECT c.id AS chunk_id, c.document_id, c.content,
@@ -1435,6 +1466,294 @@ async def api_search(request: Request):
             "rank": round(r["rank"], 4),
             "headline": r["headline"],
         } for r in rows],
+    })
+
+
+# ── ADA Tagging System ───────────────────────────────────────
+
+async def api_ada_tags(request: Request):
+    """List all ADA tags with hierarchy and document counts."""
+    err = await _check_auth(request)
+    if err:
+        return err
+    p = await get_pool()
+    rows = await p.fetch("""
+        WITH RECURSIVE tag_tree AS (
+            SELECT id, name, slug, category, description, parent_id, 0 AS depth
+            FROM core.tags WHERE slug = 'ada'
+            UNION ALL
+            SELECT t.id, t.name, t.slug, t.category, t.description, t.parent_id, tt.depth + 1
+            FROM core.tags t JOIN tag_tree tt ON t.parent_id = tt.id
+        )
+        SELECT tt.id, tt.name, tt.slug, tt.category, tt.description,
+               tt.parent_id, tt.depth,
+               COUNT(DISTINCT dt.document_id) AS document_count
+        FROM tag_tree tt
+        LEFT JOIN core.document_tags dt ON tt.id = dt.tag_id
+        GROUP BY tt.id, tt.name, tt.slug, tt.category, tt.description,
+                 tt.parent_id, tt.depth
+        ORDER BY tt.depth, tt.name
+    """)
+    return JSONResponse([{
+        "id": r["id"], "name": r["name"], "slug": r["slug"],
+        "category": r["category"], "description": r["description"],
+        "parent_id": r["parent_id"], "depth": r["depth"],
+        "document_count": r["document_count"],
+    } for r in rows])
+
+
+async def api_ada_agency_summary(request: Request):
+    """Per-agency ADA document summary for systemic analysis."""
+    err = await _check_auth(request)
+    if err:
+        return err
+    p = await get_pool()
+    rows = await p.fetch("""
+        SELECT * FROM core.v_ada_agency_summary
+    """)
+    return JSONResponse([{
+        "agency": r["agency"], "slug": r["slug"],
+        "description": r["description"],
+        "document_count": r["document_count"],
+        "earliest_document": _ser(r["earliest_document"]),
+        "latest_document": _ser(r["latest_document"]),
+    } for r in rows])
+
+
+async def api_ada_search(request: Request):
+    """Search documents by ADA tag slug. Includes all child tags.
+
+    Query params:
+      tag — tag slug (e.g. wa:ada, wa:ada:dshs, ada:type:request)
+      limit — max results (default 50, max 200)
+      offset — pagination offset
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    tag_slug = request.query_params.get("tag", "wa:ada")
+    limit = min(int(request.query_params.get("limit", "50")), 200)
+    offset = int(request.query_params.get("offset", "0"))
+    p = await get_pool()
+    rows = await p.fetch("""
+        SELECT * FROM core.search_by_tag($1, $2, $3)
+    """, tag_slug, limit, offset)
+
+    total = await p.fetchval("""
+        SELECT COUNT(DISTINCT dt.document_id)
+        FROM core.document_tags dt
+        WHERE dt.tag_id IN (SELECT tag_id FROM core.get_tag_descendants($1))
+    """, tag_slug)
+
+    return JSONResponse({
+        "tag": tag_slug,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "documents": [{
+            "document_id": str(r["document_id"]),
+            "title": r["title"],
+            "domain": r["domain"],
+            "document_type": r["document_type"],
+            "filename": r["filename"],
+            "created_at": _ser(r["created_at"]),
+            "tag_names": r["tag_names"],
+            "case_number": r["case_number"],
+            "sender": r["sender"],
+            "direction": r["direction"],
+            "date_sent": _ser(r["date_sent"]),
+        } for r in rows],
+    })
+
+
+async def api_ada_tag_document(request: Request):
+    """Tag a document with one or more ADA tags.
+
+    POST body: { "document_id": "uuid", "tags": ["wa:ada:dshs", "ada:type:request"] }
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    data = await request.json()
+    doc_id = data.get("document_id")
+    tags = data.get("tags", [])
+    if not doc_id or not tags:
+        return JSONResponse({"error": "document_id and tags required"}, status_code=400)
+    p = await get_pool()
+    count = await p.fetchval("""
+        SELECT core.tag_document_multi($1::uuid, $2::text[])
+    """, doc_id, tags)
+    return JSONResponse({"document_id": doc_id, "tags_applied": count})
+
+
+async def api_ada_auto_tag(request: Request):
+    """Run auto-tagging on untagged documents.
+
+    POST body: { "limit": 1000 } (optional)
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    data = await request.json()
+    limit = min(int(data.get("limit", 1000)), 5000)
+    p = await get_pool()
+    rows = await p.fetch("""
+        SELECT * FROM core.auto_tag_all_untagged($1)
+    """, limit)
+    results = [{"document_id": str(r["document_id"]), "tags_applied": r["tags_applied"]}
+               for r in rows if r["tags_applied"]]
+    return JSONResponse({
+        "documents_scanned": len(rows),
+        "documents_tagged": len(results),
+        "results": results,
+    })
+
+
+async def api_ada_auto_tag_single(request: Request):
+    """Run auto-tagging on a single document.
+
+    POST body: { "document_id": "uuid" }
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    data = await request.json()
+    doc_id = data.get("document_id")
+    if not doc_id:
+        return JSONResponse({"error": "document_id required"}, status_code=400)
+    p = await get_pool()
+    tags = await p.fetchval("""
+        SELECT core.auto_tag_document($1::uuid)
+    """, doc_id)
+    return JSONResponse({"document_id": doc_id, "tags_applied": tags or []})
+
+
+async def api_ada_document_tags(request: Request):
+    """Get all tags for a specific document."""
+    err = await _check_auth(request)
+    if err:
+        return err
+    doc_id = request.path_params["doc_id"]
+    p = await get_pool()
+    rows = await p.fetch("""
+        SELECT t.id, t.name, t.slug, t.category, t.description,
+               p.name AS parent_name, p.slug AS parent_slug
+        FROM core.document_tags dt
+        JOIN core.tags t ON dt.tag_id = t.id
+        LEFT JOIN core.tags p ON t.parent_id = p.id
+        WHERE dt.document_id = $1::uuid
+        ORDER BY t.category, t.name
+    """, doc_id)
+    return JSONResponse([{
+        "id": r["id"], "name": r["name"], "slug": r["slug"],
+        "category": r["category"], "description": r["description"],
+        "parent_name": r["parent_name"], "parent_slug": r["parent_slug"],
+    } for r in rows])
+
+
+async def api_ada_remove_tag(request: Request):
+    """Remove a tag from a document.
+
+    DELETE /api/ada/documents/{doc_id}/tags/{tag_slug}
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    doc_id = request.path_params["doc_id"]
+    tag_slug = request.path_params["tag_slug"]
+    p = await get_pool()
+    await p.execute("""
+        DELETE FROM core.document_tags
+        WHERE document_id = $1::uuid
+          AND tag_id = (SELECT id FROM core.tags WHERE slug = $2)
+    """, doc_id, tag_slug)
+    return JSONResponse({"ok": True})
+
+
+async def api_ada_tag_rules(request: Request):
+    """List all auto-tagging rules."""
+    err = await _check_auth(request)
+    if err:
+        return err
+    p = await get_pool()
+    rows = await p.fetch("""
+        SELECT tr.id, tr.rule_type, tr.pattern, tr.priority,
+               tr.is_active, tr.description, tr.created_at,
+               t.name AS tag_name, t.slug AS tag_slug
+        FROM core.tag_rules tr
+        JOIN core.tags t ON tr.tag_id = t.id
+        ORDER BY t.slug, tr.priority
+    """)
+    return JSONResponse([{
+        "id": r["id"], "rule_type": r["rule_type"], "pattern": r["pattern"],
+        "priority": r["priority"], "is_active": r["is_active"],
+        "description": r["description"], "created_at": _ser(r["created_at"]),
+        "tag_name": r["tag_name"], "tag_slug": r["tag_slug"],
+    } for r in rows])
+
+
+async def api_ada_systemic_report(request: Request):
+    """Generate a systemic ADA violation report across all WA agencies.
+
+    Returns per-agency breakdown with document counts, date ranges,
+    and document type distribution for building a pattern-and-practice case.
+    """
+    err = await _check_auth(request)
+    if err:
+        return err
+    p = await get_pool()
+
+    # Per-agency stats
+    agencies = await p.fetch("""SELECT * FROM core.v_ada_agency_summary""")
+
+    # Doc-type distribution per agency
+    type_dist = await p.fetch("""
+        SELECT
+            agency_t.name AS agency,
+            agency_t.slug AS agency_slug,
+            dtype.name AS doc_type,
+            dtype.slug AS doc_type_slug,
+            COUNT(DISTINCT dt.document_id) AS count
+        FROM core.document_tags dt
+        JOIN core.tags agency_t ON dt.tag_id = agency_t.id
+        JOIN core.document_tags dt2 ON dt.document_id = dt2.document_id
+        JOIN core.tags dtype ON dt2.tag_id = dtype.id AND dtype.category = 'ada-doc-type'
+        WHERE agency_t.category IN ('wa-agency', 'wa-employer', 'wa-healthcare')
+        GROUP BY agency_t.name, agency_t.slug, dtype.name, dtype.slug
+        ORDER BY agency_t.name, count DESC
+    """)
+
+    # Total unique documents in WA ADA umbrella
+    total_docs = await p.fetchval("""
+        SELECT COUNT(DISTINCT dt.document_id)
+        FROM core.document_tags dt
+        WHERE dt.tag_id IN (SELECT tag_id FROM core.get_tag_descendants('wa:ada'))
+    """)
+
+    # Build type distribution by agency
+    dist_by_agency = {}
+    for r in type_dist:
+        slug = r["agency_slug"]
+        if slug not in dist_by_agency:
+            dist_by_agency[slug] = []
+        dist_by_agency[slug].append({
+            "doc_type": r["doc_type"],
+            "doc_type_slug": r["doc_type_slug"],
+            "count": r["count"],
+        })
+
+    return JSONResponse({
+        "title": "WA State ADA Systemic Violation Report",
+        "total_documents": total_docs,
+        "agencies": [{
+            "agency": r["agency"],
+            "slug": r["slug"],
+            "description": r["description"],
+            "document_count": r["document_count"],
+            "earliest_document": _ser(r["earliest_document"]),
+            "latest_document": _ser(r["latest_document"]),
+            "document_types": dist_by_agency.get(r["slug"], []),
+        } for r in agencies],
     })
 
 
@@ -2001,6 +2320,7 @@ CHAT_TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Natural language search query"},
                     "domain": {"type": "string", "enum": ["legal", "medical", "paperless"], "description": "Optional domain filter"},
+                    "tag": {"type": "string", "description": "Optional tag slug to restrict search to tagged documents (e.g. 'wa:ada', 'wa:ada:dshs', 'wa:ada:snoco-court')"},
                     "limit": {"type": "integer", "default": 8, "description": "Number of results (1-20)"}
                 },
                 "required": ["query"]
@@ -2017,6 +2337,7 @@ CHAT_TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Search keywords or phrases"},
                     "domain": {"type": "string", "enum": ["legal", "medical", "paperless"], "description": "Optional domain filter"},
+                    "tag": {"type": "string", "description": "Optional tag slug to restrict search to tagged documents (e.g. 'wa:ada', 'wa:ada:dshs', 'wa:ada:snoco-court')"},
                     "limit": {"type": "integer", "default": 10}
                 },
                 "required": ["query"]
@@ -2231,49 +2552,49 @@ You specialize in:
 
 
 async def _embed_query(text: str) -> List[float]:
-    """Get embedding vector for a search query."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": EMBEDDING_MODEL, "input": text, "dimensions": 3072},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    """Get embedding vector for a search query using local BGE-M3 model."""
+    return await _embed_query_local(text)
 
 
 async def _tool_semantic_search(args: dict) -> str:
     """Semantic vector search against document chunks."""
     query = args["query"]
     domain = args.get("domain")
+    tag_slug = args.get("tag")
     limit = min(args.get("limit", 8), 20)
     try:
         embedding = await _embed_query(query)
-        vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+        vec_literal = _vec_literal(embedding)
         p = await get_pool()
+        # Build WHERE clause dynamically based on filters
+        where_parts = ["c.embedding IS NOT NULL"]
+        q_args = [vec_literal]
+        idx = 2
         if domain:
-            rows = await p.fetch(f"""
-                SELECT c.id, c.content, c.chunk_index,
-                       d.id AS doc_id, d.title, d.filename, d.domain, d.document_type,
-                       c.embedding <=> $1::halfvec(3072) AS distance
-                FROM core.document_chunks c
-                JOIN core.documents d ON c.document_id = d.id
-                WHERE c.embedding IS NOT NULL AND d.domain = $2
-                ORDER BY c.embedding <=> $1::halfvec(3072)
-                LIMIT $3
-            """, vec_literal, domain, limit)
-        else:
-            rows = await p.fetch(f"""
-                SELECT c.id, c.content, c.chunk_index,
-                       d.id AS doc_id, d.title, d.filename, d.domain, d.document_type,
-                       c.embedding <=> $1::halfvec(3072) AS distance
-                FROM core.document_chunks c
-                JOIN core.documents d ON c.document_id = d.id
-                WHERE c.embedding IS NOT NULL
-                ORDER BY c.embedding <=> $1::halfvec(3072)
-                LIMIT $2
-            """, vec_literal, limit)
+            where_parts.append(f"d.domain = ${idx}")
+            q_args.append(domain)
+            idx += 1
+        if tag_slug:
+            where_parts.append(
+                f"c.document_id IN ("
+                f"SELECT dt_f.document_id FROM core.document_tags dt_f "
+                f"WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx}))"
+                f")"
+            )
+            q_args.append(tag_slug)
+            idx += 1
+        q_args.append(limit)
+        where_clause = " AND ".join(where_parts)
+        rows = await p.fetch(f"""
+            SELECT c.id, c.content, c.chunk_index,
+                   d.id AS doc_id, d.title, d.filename, d.domain, d.document_type,
+                   c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS}) AS distance
+            FROM core.document_chunks c
+            JOIN core.documents d ON c.document_id = d.id
+            WHERE {where_clause}
+            ORDER BY c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS})
+            LIMIT ${idx}
+        """, *q_args)
         results = []
         for r in rows:
             sim = round(1 - float(r["distance"]), 4)
@@ -2295,29 +2616,37 @@ async def _tool_fulltext_search(args: dict) -> str:
     """PostgreSQL full-text search."""
     query = args["query"]
     domain = args.get("domain")
+    tag_slug = args.get("tag")
     limit = min(args.get("limit", 10), 30)
     p = await get_pool()
     try:
+        where_parts = ["c.content_tsv @@ websearch_to_tsquery('english', $1)"]
+        q_args = [query]
+        idx = 2
         if domain:
-            rows = await p.fetch("""
-                SELECT c.id, c.content, d.id AS doc_id, d.title, d.filename,
-                       d.domain, d.document_type,
-                       ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::FLOAT AS rank
-                FROM core.document_chunks c
-                JOIN core.documents d ON c.document_id = d.id
-                WHERE c.content_tsv @@ websearch_to_tsquery('english', $1) AND d.domain = $2
-                ORDER BY rank DESC LIMIT $3
-            """, query, domain, limit)
-        else:
-            rows = await p.fetch("""
-                SELECT c.id, c.content, d.id AS doc_id, d.title, d.filename,
-                       d.domain, d.document_type,
-                       ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::FLOAT AS rank
-                FROM core.document_chunks c
-                JOIN core.documents d ON c.document_id = d.id
-                WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
-                ORDER BY rank DESC LIMIT $2
-            """, query, limit)
+            where_parts.append(f"d.domain = ${idx}")
+            q_args.append(domain)
+            idx += 1
+        if tag_slug:
+            where_parts.append(
+                f"c.document_id IN ("
+                f"SELECT dt_f.document_id FROM core.document_tags dt_f "
+                f"WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx}))"
+                f")"
+            )
+            q_args.append(tag_slug)
+            idx += 1
+        q_args.append(limit)
+        where_clause = " AND ".join(where_parts)
+        rows = await p.fetch(f"""
+            SELECT c.id, c.content, d.id AS doc_id, d.title, d.filename,
+                   d.domain, d.document_type,
+                   ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::FLOAT AS rank
+            FROM core.document_chunks c
+            JOIN core.documents d ON c.document_id = d.id
+            WHERE {where_clause}
+            ORDER BY rank DESC LIMIT ${idx}
+        """, *q_args)
         results = [{"document_id": str(r["doc_id"]), "title": r["title"] or r["filename"],
                     "filename": r["filename"], "domain": r["domain"], "type": r["document_type"],
                     "rank": round(r["rank"], 4), "excerpt": r["content"][:600]}
@@ -2684,8 +3013,9 @@ async def _tool_consult_agents(args: dict) -> str:
         # Poll for agent responses — agents wake within 5s, respond within 10-30s
         all_agent_ids = {
             'orchestrator', 'watchdog', 'code-doctor', 'security-sentinel',
-            'self-healing', 'data-quality', 'email-triage', 'db-tuner',
-            'case-strategy', 'retention', 'timeline', 'query-insight'
+            'self-healing', 'data-quality', 'dba', 'athena',
+            'case-strategy', 'retention', 'query-insight', 'quality-eval',
+            'daily-digest',
         }
         max_wait = 90  # seconds
         poll_interval = 5
@@ -2743,10 +3073,190 @@ TOOL_DISPATCH = {
 }
 
 
+async def _call_openai(client, messages, api_model, reasoning_effort, tools=None):
+    """Make an OpenAI API call and return normalized response."""
+    payload = {"model": api_model, "messages": messages, "max_completion_tokens": 16384}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
+    resp = await client.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        json=payload, timeout=120,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    choice = data["choices"][0]
+    msg = choice["message"]
+    usage = data.get("usage", {})
+    return {
+        "content": msg.get("content", ""),
+        "tool_calls": msg.get("tool_calls"),
+        "usage": usage,
+        "tokens_total": usage.get("total_tokens", 0),
+    }
+
+async def _call_anthropic(client, messages, api_model, tools=None):
+    """Make an Anthropic API call and return normalized response (same shape as OpenAI)."""
+    # Separate system prompt from messages
+    system_text = ""
+    anthropic_messages = []
+    for m in messages:
+        if m.get("role") == "system":
+            system_text += m.get("content", "") + "\n"
+        elif m.get("role") == "tool":
+            anthropic_messages.append({
+                "role": "user",
+                "content": [{"type": "tool_result",
+                             "tool_use_id": m.get("tool_call_id", ""),
+                             "content": m.get("content", "")}],
+            })
+        elif m.get("role") == "assistant" and m.get("tool_calls"):
+            # Convert OpenAI tool_calls format to Anthropic tool_use blocks
+            content_blocks = []
+            if m.get("content"):
+                content_blocks.append({"type": "text", "text": m["content"]})
+            for tc in m["tool_calls"]:
+                fn = tc.get("function", {})
+                args = fn.get("arguments", "{}")
+                content_blocks.append({
+                    "type": "tool_use",
+                    "id": tc.get("id", ""),
+                    "name": fn.get("name", ""),
+                    "input": json.loads(args) if isinstance(args, str) else args,
+                })
+            anthropic_messages.append({"role": "assistant", "content": content_blocks})
+        else:
+            anthropic_messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+
+    body = {
+        "model": api_model,
+        "max_tokens": 16384,
+        "messages": anthropic_messages,
+    }
+    if system_text.strip():
+        body["system"] = system_text.strip()
+    if tools:
+        # Convert OpenAI tool format to Anthropic
+        body["tools"] = [
+            {"name": t["function"]["name"],
+             "description": t["function"].get("description", ""),
+             "input_schema": t["function"].get("parameters", {"type": "object", "properties": {}})}
+            for t in tools
+        ]
+
+    import asyncio as _aio
+    data = None
+    for _attempt in range(4):
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json=body, timeout=120,
+        )
+        if resp.status_code == 429 and _attempt < 3:
+            wait = int(resp.headers.get("retry-after", str(5 * (_attempt + 1))))
+            print(f"[ANTHROPIC] Rate limited, waiting {wait}s (attempt {_attempt+1}/4)")
+            await _aio.sleep(wait)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        break
+    if data is None:
+        raise RuntimeError("Anthropic API rate limited after 4 attempts")
+
+    usage = data.get("usage", {})
+    content_blocks = data.get("content", [])
+
+    # Extract text and tool_use blocks
+    text_parts = []
+    tool_calls = []
+    for block in content_blocks:
+        if block.get("type") == "text":
+            text_parts.append(block.get("text", ""))
+        elif block.get("type") == "tool_use":
+            tool_calls.append({
+                "id": block["id"],
+                "type": "function",
+                "function": {
+                    "name": block["name"],
+                    "arguments": json.dumps(block.get("input", {})),
+                },
+            })
+
+    return {
+        "content": " ".join(text_parts),
+        "tool_calls": tool_calls if tool_calls else None,
+        "usage": usage,
+        "tokens_total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+    }
+
+def _claude_cli_env():
+    """Clean env for Claude CLI — remove API keys so it uses its own OAuth auth."""
+    import os as _os
+    env = _os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    env.pop("OPENAI_API_KEY", None)
+    env.setdefault("HOME", "/root")
+    return env
+
+async def _call_claude_code(messages, api_model, tools=None):
+    """Call Claude via Claude Code CLI (uses Max subscription auth)."""
+    import asyncio as _aio
+
+    # Convert model name to CLI alias
+    model_map = {"claude-haiku-4-5-20251001": "haiku", "claude-sonnet-4-6": "sonnet", "claude-opus-4-6": "opus"}
+    model_alias = model_map.get(api_model, api_model)
+
+    # Build prompt from messages
+    parts = []
+    for m in messages:
+        if m.get("role") == "user":
+            parts.append(m["content"])
+        elif m.get("role") == "assistant":
+            parts.append(f"[Previous response: {m['content'][:200]}...]")
+    prompt = "\n\n".join(parts) if parts else "Hello"
+
+    # Get system prompt
+    system_text = "\n".join(m["content"] for m in messages if m.get("role") == "system")
+
+    cmd = ["/usr/local/bin/claude", "-p", "--model", model_alias, "--output-format", "text"]
+    if system_text:
+        cmd.extend(["--append-system-prompt", system_text])
+
+    proc = await _aio.create_subprocess_exec(
+        *cmd,
+        stdin=_aio.subprocess.PIPE,
+        stdout=_aio.subprocess.PIPE,
+        stderr=_aio.subprocess.PIPE,
+        env=_claude_cli_env(),
+    )
+    stdout, stderr = await _aio.wait_for(
+        proc.communicate(input=prompt.encode("utf-8")),
+        timeout=120,
+    )
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"Claude Code CLI error: {stderr.decode()[:300]}")
+
+    content = stdout.decode("utf-8", errors="replace").strip()
+
+    return {
+        "content": content,
+        "tool_calls": None,
+        "usage": {},
+        "tokens_total": 0,
+    }
+
 async def _run_chat_turn(
     messages: List[Dict], conversation_id: str, model_id: str = "auto"
 ) -> Dict[str, Any]:
-    """Run one full chat turn with tool calling loop."""
+    """Run one full chat turn with tool calling loop. Supports OpenAI and Anthropic."""
     p = await get_pool()
     all_tool_results = []
     tool_cache: dict[str, str] = {}
@@ -2754,6 +3264,7 @@ async def _run_chat_turn(
     # Resolve model configuration
     model_cfg = next((m for m in AVAILABLE_MODELS if m["id"] == model_id), AVAILABLE_MODELS[0])
     api_model = model_cfg["model"]
+    provider = model_cfg.get("provider", "openai")
     reasoning_effort = model_cfg["reasoning_effort"]
 
     max_tool_rounds = int(model_cfg.get("max_tool_rounds", 8))
@@ -2761,37 +3272,24 @@ async def _run_chat_turn(
 
     async with httpx.AsyncClient() as client:
         for _iteration in range(max_tool_rounds):
-          payload = {
-            "model": api_model,
-            "messages": messages,
-            "tools": CHAT_TOOLS,
-            "tool_choice": "auto",
-          }
-          if reasoning_effort:
-            payload["reasoning_effort"] = reasoning_effort
-          payload["max_completion_tokens"] = 16384
-          resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json=payload,
-            timeout=120,
-          )
-          resp.raise_for_status()
-          data = resp.json()
-          choice = data["choices"][0]
-          msg = choice["message"]
-          usage = data.get("usage", {})
+          if provider == "anthropic":
+              try:
+                  result = await _call_claude_code(messages, api_model)
+              except Exception as e:
+                  print(f"[CHAT] Claude Code CLI failed: {e}, falling back to API")
+                  result = await _call_anthropic(client, messages, api_model, tools=CHAT_TOOLS)
+          else:
+              result = await _call_openai(client, messages, api_model, reasoning_effort, tools=CHAT_TOOLS)
 
           # If no tool calls, we're done
-          if not msg.get("tool_calls"):
-            assistant_content = msg.get("content", "")
-            # Save assistant message
+          if not result["tool_calls"]:
+            assistant_content = result["content"]
             await p.execute("""
               INSERT INTO ops.chat_messages
                 (conversation_id, role, content, tokens_used, model)
               VALUES ($1, 'assistant', $2, $3, $4)
             """, conversation_id, assistant_content,
-              usage.get("total_tokens"), api_model)
+              result["tokens_total"], api_model)
             await p.execute("""
               UPDATE ops.chat_conversations SET updated_at = now(),
               title = CASE WHEN title = 'New Conversation'
@@ -2801,14 +3299,15 @@ async def _run_chat_turn(
             return {
               "content": assistant_content,
               "tool_calls_made": all_tool_results,
-              "tokens": usage,
+              "tokens": result["usage"],
               "model": api_model,
               "model_label": model_cfg["label"],
             }
 
           # Process tool calls
-          messages.append(msg)  # Add the assistant message with tool_calls
-          for tc in msg["tool_calls"]:
+          msg_with_tools = {"role": "assistant", "content": result["content"], "tool_calls": result["tool_calls"]}
+          messages.append(msg_with_tools)
+          for tc in result["tool_calls"]:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
             handler = TOOL_DISPATCH.get(fn_name)
@@ -2825,7 +3324,6 @@ async def _run_chat_turn(
               "tool": fn_name, "args": fn_args,
               "result_preview": result_str[:200]
             })
-            # Save tool message to DB
             await p.execute("""
               INSERT INTO ops.chat_messages
                 (conversation_id, role, content, tool_name)
@@ -2837,7 +3335,7 @@ async def _run_chat_turn(
               "content": result_str,
             })
 
-        # Tool budget exhausted — return the best possible response without further tool calls.
+        # Tool budget exhausted
         finalize_messages = messages + [{
           "role": "system",
           "content": (
@@ -2846,32 +3344,37 @@ async def _run_chat_turn(
             "targeted next steps to continue if needed."
           )
         }]
-        payload = {
-          "model": api_model,
-          "messages": finalize_messages,
-          "tool_choice": "none",
-          "max_completion_tokens": 8192,
-        }
-        if reasoning_effort:
-          payload["reasoning_effort"] = reasoning_effort
-        resp = await client.post(
-          "https://api.openai.com/v1/chat/completions",
-          headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-          json=payload,
-          timeout=120,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        choice = data["choices"][0]
-        msg = choice["message"]
-        usage = data.get("usage", {})
-        assistant_content = msg.get("content", "") or ""
+        if provider == "anthropic":
+            try:
+                result = await _call_claude_code(finalize_messages, api_model)
+            except Exception as e:
+                print(f"[CHAT] Claude Code CLI failed (finalize): {e}, falling back to API")
+                result = await _call_anthropic(client, finalize_messages, api_model)
+        else:
+            payload = {"model": api_model, "messages": finalize_messages,
+                       "tool_choice": "none", "max_completion_tokens": 8192}
+            if reasoning_effort:
+                payload["reasoning_effort"] = reasoning_effort
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                json=payload, timeout=120,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            result = {
+                "content": data["choices"][0]["message"].get("content", ""),
+                "usage": data.get("usage", {}),
+                "tokens_total": data.get("usage", {}).get("total_tokens", 0),
+            }
+
+        assistant_content = result["content"] or ""
         await p.execute("""
           INSERT INTO ops.chat_messages
             (conversation_id, role, content, tokens_used, model)
           VALUES ($1, 'assistant', $2, $3, $4)
         """, conversation_id, assistant_content,
-          usage.get("total_tokens"), api_model)
+          result["tokens_total"], api_model)
         await p.execute("""
           UPDATE ops.chat_conversations SET updated_at = now(),
           title = CASE WHEN title = 'New Conversation'
@@ -2881,7 +3384,7 @@ async def _run_chat_turn(
         return {
           "content": assistant_content,
           "tool_calls_made": all_tool_results,
-          "tokens": usage,
+          "tokens": result["usage"],
           "model": api_model,
           "model_label": model_cfg["label"],
         }
@@ -3527,6 +4030,9 @@ async def api_chat_send(request: Request):
             "model_label": result.get("model_label", ""),
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[CHAT SEND ERROR] model_id={model_id}, error={type(e).__name__}: {e}", flush=True)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -3588,12 +4094,243 @@ async def api_chat_models(request: Request):
     """GET: list available chat models."""
     err = await _check_auth(request)
     if err: return err
-    return JSONResponse({"models": AVAILABLE_MODELS, "default": "auto"})
+    return JSONResponse({"models": AVAILABLE_MODELS, "default": "claude-haiku"})
+
+
+async def api_chat_stream(request: Request):
+    """POST: send a message and stream the response via SSE."""
+    err = await _check_auth(request)
+    if err: return err
+    data = await request.json()
+    cid = data.get("conversation_id")
+    user_msg = data.get("message", "").strip()
+    model_id = data.get("model", "claude-haiku")
+    attachment_ids = data.get("attachment_ids", [])
+
+    if not user_msg and not attachment_ids:
+        return JSONResponse({"error": "message required"}, status_code=400)
+
+    p = await get_pool()
+
+    # Auto-create conversation
+    if not cid:
+        row = await p.fetchrow("INSERT INTO ops.chat_conversations DEFAULT VALUES RETURNING id")
+        cid = str(row["id"])
+
+    # Save user message
+    await p.execute("""
+        INSERT INTO ops.chat_messages (conversation_id, role, content)
+        VALUES ($1::uuid, 'user', $2)
+    """, cid, user_msg)
+
+    # Auto-title
+    count = await p.fetchval(
+        "SELECT COUNT(*) FROM ops.chat_messages WHERE conversation_id=$1::uuid AND role='user'", cid)
+    if count <= 1:
+        await p.execute(
+            "UPDATE ops.chat_conversations SET title=$2 WHERE id=$1::uuid",
+            cid, (user_msg or "Chat")[:80])
+
+    # Build messages from history
+    history = await p.fetch("""
+        SELECT role, content FROM ops.chat_messages
+        WHERE conversation_id = $1::uuid AND role IN ('user','assistant')
+        ORDER BY created_at
+    """, cid)
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"] or ""})
+
+    model_cfg = next((m for m in AVAILABLE_MODELS if m["id"] == model_id), AVAILABLE_MODELS[0])
+    api_model = model_cfg["model"]
+    provider = model_cfg.get("provider", "openai")
+
+    async def generate():
+        full_content = []
+        try:
+            yield f"data: {json.dumps({'conversation_id': cid, 'model': api_model, 'model_label': model_cfg['label']})}\n\n"
+
+            if provider == "anthropic":
+                # Try Claude Code CLI first for streaming
+                import asyncio as _aio
+                _cli_ok = False
+                try:
+                    model_map = {"claude-haiku-4-5-20251001": "haiku", "claude-sonnet-4-6": "sonnet", "claude-opus-4-6": "opus"}
+                    model_alias = model_map.get(api_model, api_model)
+
+                    # Build prompt from messages
+                    _parts = []
+                    _sys_text = ""
+                    for m in messages:
+                        if m.get("role") == "system":
+                            _sys_text += m["content"] + "\n"
+                        elif m.get("role") == "user":
+                            _parts.append(m["content"])
+                        elif m.get("role") == "assistant":
+                            _parts.append(f"[Previous response: {m['content'][:200]}...]")
+                    _prompt = "\n\n".join(_parts) if _parts else "Hello"
+
+                    cmd = ["/usr/local/bin/claude", "-p", "--model", model_alias, "--output-format", "text"]
+                    if _sys_text.strip():
+                        cmd.extend(["--append-system-prompt", _sys_text.strip()])
+
+                    proc = await _aio.create_subprocess_exec(
+                        *cmd,
+                        stdin=_aio.subprocess.PIPE,
+                        stdout=_aio.subprocess.PIPE,
+                        stderr=_aio.subprocess.PIPE,
+                        env=_claude_cli_env(),
+                    )
+                    proc.stdin.write(_prompt.encode("utf-8"))
+                    await proc.stdin.drain()
+                    proc.stdin.close()
+
+                    while True:
+                        chunk = await _aio.wait_for(proc.stdout.read(100), timeout=120)
+                        if not chunk:
+                            break
+                        text = chunk.decode("utf-8", errors="replace")
+                        full_content.append(text)
+                        yield f"data: {json.dumps({'content': text})}\n\n"
+
+                    await proc.wait()
+                    if proc.returncode != 0:
+                        _stderr = (await proc.stderr.read()).decode()[:300]
+                        raise RuntimeError(f"Claude Code CLI error: {_stderr}")
+                    _cli_ok = True
+                except Exception as _cli_err:
+                    print(f"[STREAM] Claude Code CLI failed: {_cli_err}, falling back to API")
+                    full_content.clear()
+
+                if not _cli_ok:
+                    # Anthropic API streaming fallback
+                    system_text = ""
+                    api_messages = []
+                    for m in messages:
+                        if m["role"] == "system":
+                            system_text += m["content"] + "\n"
+                        else:
+                            api_messages.append({"role": m["role"], "content": m["content"]})
+
+                    body = {"model": api_model, "max_tokens": 8192, "messages": api_messages, "stream": True}
+                    if system_text.strip():
+                        body["system"] = system_text.strip()
+
+                    for _attempt in range(3):
+                        async with httpx.AsyncClient() as client:
+                            async with client.stream("POST", "https://api.anthropic.com/v1/messages",
+                                headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                                json=body, timeout=120) as resp:
+
+                                if resp.status_code == 429 and _attempt < 2:
+                                    wait = int(resp.headers.get("retry-after", str(5 * (_attempt+1))))
+                                    yield f"data: {json.dumps({'status': f'Rate limited, retrying in {wait}s...'})}\n\n"
+                                    await _aio.sleep(wait)
+                                    continue
+
+                                resp.raise_for_status()
+                                async for line in resp.aiter_lines():
+                                    if not line.startswith("data: "):
+                                        continue
+                                    chunk_str = line[6:]
+                                    if chunk_str.strip() == "[DONE]":
+                                        break
+                                    try:
+                                        chunk = json.loads(chunk_str)
+                                        if chunk.get("type") == "content_block_delta":
+                                            delta = chunk.get("delta", {})
+                                            text = delta.get("text", "")
+                                            if text:
+                                                full_content.append(text)
+                                                yield f"data: {json.dumps({'content': text})}\n\n"
+                                    except json.JSONDecodeError:
+                                        pass
+                                break  # Success, exit retry loop
+
+            else:
+                # OpenAI streaming
+                reasoning_effort = model_cfg.get("reasoning_effort")
+                payload = {"model": api_model, "messages": messages, "stream": True, "max_completion_tokens": 8192}
+                if reasoning_effort:
+                    payload["reasoning_effort"] = reasoning_effort
+
+                async with httpx.AsyncClient() as client:
+                    async with client.stream("POST", "https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                        json=payload, timeout=120) as resp:
+
+                        resp.raise_for_status()
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            chunk_str = line[6:]
+                            if chunk_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(chunk_str)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                text = delta.get("content", "")
+                                if text:
+                                    full_content.append(text)
+                                    yield f"data: {json.dumps({'content': text})}\n\n"
+                            except json.JSONDecodeError:
+                                pass
+
+            # Save assistant response
+            assistant_text = "".join(full_content)
+            if assistant_text:
+                await p.execute("""
+                    INSERT INTO ops.chat_messages (conversation_id, role, content, model)
+                    VALUES ($1::uuid, 'assistant', $2, $3)
+                """, cid, assistant_text, api_model)
+
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ── Health Probe ──────────────────────────────────────────────
 async def health(request: Request):
-    return JSONResponse({"status": "healthy", "service": "athena-dashboard-v2"})
+  start = time.time()
+  timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+  try:
+    p = await get_pool()
+    async with p.acquire() as conn:
+      email_sync_check = await audit_sync_configuration_health(conn)
+
+    overall = str(email_sync_check.get("status", "healthy"))
+    payload = {
+      "status": overall,
+      "service": "athena-dashboard-v2",
+      "timestamp": timestamp,
+      "check_latency_ms": int((time.time() - start) * 1000),
+      "checks": {
+        "email_sync_config": email_sync_check,
+      },
+    }
+    return JSONResponse(payload, status_code=_health_status_code(overall))
+  except Exception as e:
+    payload = {
+      "status": "unhealthy",
+      "service": "athena-dashboard-v2",
+      "timestamp": timestamp,
+      "check_latency_ms": int((time.time() - start) * 1000),
+      "checks": {
+        "email_sync_config": {
+          "status": "unhealthy",
+          "summary": "Email sync config health check failed.",
+          "error": str(e),
+        },
+      },
+    }
+    return JSONResponse(payload, status_code=503)
 
 
 # ── Serve SPA ─────────────────────────────────────────────────
@@ -3987,6 +4724,7 @@ def _osint_auth_wrap(endpoint):
 
 routes = [
     Route("/health", health),
+  Route("/api/health", health),
     Route("/", page_dashboard),
     Route("/dashboard", page_dashboard),
     Route("/dashboard/login", api_login, methods=["POST"]),
@@ -4035,6 +4773,17 @@ routes = [
 
     # Search
     Route("/api/search", api_search, methods=["POST"]),
+    # ADA Tagging System
+    Route("/api/ada/tags", api_ada_tags),
+    Route("/api/ada/agencies", api_ada_agency_summary),
+    Route("/api/ada/search", api_ada_search),
+    Route("/api/ada/tag", api_ada_tag_document, methods=["POST"]),
+    Route("/api/ada/auto-tag", api_ada_auto_tag, methods=["POST"]),
+    Route("/api/ada/auto-tag/single", api_ada_auto_tag_single, methods=["POST"]),
+    Route("/api/ada/documents/{doc_id}/tags", api_ada_document_tags),
+    Route("/api/ada/documents/{doc_id}/tags/{tag_slug}", api_ada_remove_tag, methods=["DELETE"]),
+    Route("/api/ada/rules", api_ada_tag_rules),
+    Route("/api/ada/report", api_ada_systemic_report),
     # Email Sync Management
     Route("/api/email/mailboxes", api_email_mailboxes, methods=["GET", "POST"]),
     Route("/api/email/mailboxes/{id:int}", api_email_mailbox_action, methods=["PUT", "DELETE"]),
@@ -4077,6 +4826,7 @@ routes = [
     Route("/api/chat/conversations", api_chat_conversations, methods=["GET", "POST"]),
     Route("/api/chat/conversations/{cid}", api_chat_conversation_detail, methods=["GET", "PUT", "DELETE"]),
     Route("/api/chat/send", api_chat_send, methods=["POST"]),
+    Route("/api/chat/stream", api_chat_stream, methods=["POST"]),
     Route("/api/chat/upload", api_chat_upload, methods=["POST"]),
     Route("/api/chat/attachments/{aid}", api_chat_attachment_download, methods=["GET"]),
     Route("/api/chat/retry", api_chat_retry, methods=["POST"]),
@@ -4158,6 +4908,7 @@ nav button.active{color:var(--cyan);border-bottom-color:var(--cyan)}
 .nav-dropdown-item:hover{background:rgba(59,130,246,.08);color:var(--cyan)}
 .nav-dropdown-item.active{background:rgba(59,130,246,.12);color:var(--cyan);font-weight:600}
 main{flex:1;padding:24px;max-width:1500px;margin:0 auto;width:100%}
+main:has(#tab-chat:not(.hidden)){padding:0;max-width:none}
 
 /* OSINT Investigation Module */
 .osint-inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
@@ -4650,10 +5401,14 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 <!-- ═══ CHAT TAB ═══ -->
 <section id="tab-chat" class="hidden">
 <style>
-#tab-chat{display:flex;gap:0;height:calc(100vh - 160px);padding:0!important;margin:-24px;margin-top:0}
+main:has(#tab-chat:not(.hidden)){padding:0;max-width:none}
+#tab-chat{display:flex;height:calc(100vh - 110px);padding:0!important;margin:0;width:100%;position:relative}
 .chat-sidebar{width:260px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.chat-sidebar-hdr{padding:16px 16px 8px;display:flex;gap:8px;align-items:center}
-.chat-sidebar-hdr .new-chat-btn{flex:1;background:none;border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:22px;font-size:.85rem;font-weight:500;transition:all .2s;display:flex;align-items:center;gap:6px;justify-content:center}
+.chat-sidebar-hdr{padding:16px 16px 8px;display:flex;flex-direction:column;gap:8px}
+.chat-sidebar-search{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:.82rem;outline:none;transition:border-color .2s}
+.chat-sidebar-search:focus{border-color:var(--accent)}
+.chat-sidebar-search::placeholder{color:var(--muted)}
+.chat-sidebar-hdr .new-chat-btn{width:100%;background:none;border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:22px;font-size:.85rem;font-weight:500;transition:all .2s;display:flex;align-items:center;gap:6px;justify-content:center;cursor:pointer}
 .chat-sidebar-hdr .new-chat-btn:hover{border-color:var(--accent);color:var(--cyan);background:rgba(59,130,246,.06)}
 .chat-sidebar-label{padding:14px 16px 6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;justify-content:space-between}
 .chat-sidebar-label .toggle-archived{font-size:.7rem;font-weight:500;text-transform:none;letter-spacing:normal;color:var(--accent);cursor:pointer;padding:2px 8px;border-radius:10px;border:1px solid transparent;transition:all .2s}
@@ -4672,32 +5427,43 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 .chat-conv-item .conv-action.delete{color:var(--red)}
 .chat-conv-item .conv-action.archive{color:var(--yellow)}
 .chat-conv-item .conv-action.rename{color:var(--cyan)}
-.chat-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
-.chat-messages{flex:1;overflow-y:auto;padding:20px 40px;display:flex;flex-direction:column;gap:16px}
-.chat-msg{max-width:82%;padding:14px 18px;border-radius:16px;font-size:.9rem;line-height:1.65;word-wrap:break-word;white-space:pre-wrap}
-.chat-msg-wrap{display:flex;flex-direction:column;max-width:82%}
-.chat-msg-wrap.user{align-self:flex-end;align-items:flex-end}
-.chat-msg-wrap.assistant{align-self:flex-start;align-items:flex-start}
-.chat-msg-name{font-size:.72rem;font-weight:600;margin-bottom:4px;padding:0 6px;letter-spacing:.02em}
+.chat-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);position:relative}
+.chat-messages{flex:1;overflow-y:auto;padding:24px 0;display:flex;flex-direction:column;gap:4px;scroll-behavior:smooth}
+.chat-msg-wrap{display:flex;flex-direction:column;width:100%;max-width:820px;margin:0 auto;padding:0 24px;position:relative}
+.chat-msg-wrap.user{align-items:flex-end}
+.chat-msg-wrap.assistant{align-items:flex-start}
+.chat-msg-meta{display:flex;align-items:center;gap:8px;margin-bottom:4px;padding:0 4px}
+.chat-msg-name{font-size:.72rem;font-weight:600;letter-spacing:.02em}
+.chat-msg-time{font-size:.65rem;color:var(--muted);font-weight:400}
 .chat-msg-wrap.user .chat-msg-name{color:var(--accent)}
 .chat-msg-wrap.assistant .chat-msg-name{color:var(--purple)}
-.chat-msg.user{display:block;padding:14px 18px;border-radius:16px 16px 4px 16px;background:var(--accent);color:#fff}
-.chat-msg.assistant{display:block;padding:14px 18px;border-radius:16px 16px 16px 4px;background:var(--surface2);border:1px solid var(--border)}
+.model-badge{font-size:.62rem;color:var(--muted);font-weight:500;background:var(--surface);border:1px solid var(--border);padding:1px 8px;border-radius:10px;margin-left:4px}
+.chat-msg{font-size:.92rem;line-height:1.7;word-wrap:break-word;position:relative}
+.chat-msg.user{display:inline-block;max-width:75%;padding:12px 18px;border-radius:20px 20px 4px 20px;background:var(--accent);color:#fff;white-space:pre-wrap}
+.chat-msg.assistant{display:block;width:100%;padding:16px 20px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);white-space:pre-wrap}
+.chat-msg .msg-hover-actions{position:absolute;top:8px;right:8px;display:none;gap:4px;align-items:center}
+.chat-msg-wrap:hover .msg-hover-actions{display:flex}
+.chat-msg .msg-hover-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.78rem;transition:all .15s}
+.chat-msg .msg-hover-btn:hover{color:var(--text);border-color:var(--accent);background:var(--surface2)}
 .chat-msg.assistant .tool-badge{display:inline-block;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.2);border-radius:14px;padding:2px 10px;font-size:.72rem;color:var(--cyan);margin:4px 4px 4px 0}
 .chat-msg.assistant code{background:var(--surface);padding:1px 5px;border-radius:3px;font-size:.85em}
-.chat-msg.assistant pre{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;overflow-x:auto;margin:8px 0;font-size:.82rem}
+.chat-msg.assistant pre{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;overflow-x:auto;margin:8px 0;font-size:.82rem;position:relative}
 .chat-msg.assistant pre code{background:none;padding:0}
+.chat-msg.assistant pre .code-copy-btn{position:absolute;top:6px;right:6px;background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:.68rem;cursor:pointer;opacity:0;transition:opacity .2s}
+.chat-msg.assistant pre:hover .code-copy-btn{opacity:1}
+.chat-msg.assistant pre .code-copy-btn:hover{color:var(--text);border-color:var(--accent)}
 .chat-msg.assistant strong{color:var(--cyan)}
 .chat-msg.assistant a{color:var(--cyan)}
 .chat-msg.assistant ul,.chat-msg.assistant ol{margin:8px 0;padding-left:20px}
 .chat-msg.assistant li{margin:4px 0}
 .chat-msg.assistant blockquote{border-left:3px solid var(--border);padding-left:12px;color:var(--muted);margin:8px 0}
 .chat-msg.assistant h1,.chat-msg.assistant h2,.chat-msg.assistant h3{margin:12px 0 8px;color:var(--text)}
-.chat-msg.assistant table{border-collapse:collapse;margin:8px 0;font-size:.82rem}
-.chat-msg.assistant th,.chat-msg.assistant td{border:1px solid var(--border);padding:4px 8px}
-.chat-msg.assistant th{background:var(--surface);color:var(--cyan)}
+.chat-msg.assistant table{border-collapse:collapse;margin:8px 0;font-size:.82rem;width:100%;overflow-x:auto;display:block}
+.chat-msg.assistant th,.chat-msg.assistant td{border:1px solid var(--border);padding:6px 10px;text-align:left}
+.chat-msg.assistant th{background:var(--surface);color:var(--cyan);font-weight:600}
+.chat-msg.assistant tr:hover td{background:rgba(59,130,246,.03)}
 
-.chat-msg-wrap.assistant .retry-bar{display:none;align-items:center;gap:6px;margin-top:6px;padding:2px 0}
+.chat-msg-wrap.assistant .retry-bar{display:none;align-items:center;gap:6px;margin-top:8px;padding:2px 4px}
 .chat-msg-wrap.assistant:last-of-type .retry-bar,.chat-msg-wrap.assistant:hover .retry-bar{display:flex}
 .retry-bar .retry-btn{background:none;border:1px solid var(--border);color:var(--muted);font-size:.72rem;padding:4px 12px;border-radius:14px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}
 .retry-bar .retry-btn:hover{border-color:var(--accent);color:var(--cyan);background:rgba(59,130,246,.06)}
@@ -4706,32 +5472,41 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 .retry-bar .retry-model:hover,.retry-bar .retry-model:focus{border-color:var(--accent);color:var(--text)}
 .retry-bar .retry-model option{background:var(--surface);color:var(--text)}
 
-/* Welcome screen - Copilot style */
+/* Welcome screen */
 .chat-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:40px 20px;text-align:center}
 .chat-welcome-greeting{font-size:2rem;font-weight:300;color:var(--text);margin-bottom:40px;line-height:1.3}
-.chat-welcome-greeting span{background:linear-gradient(135deg,var(--accent),var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:500}
+.chat-welcome-greeting span{background:linear-gradient(135deg,var(--accent),var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:500}
 .chat-welcome .suggestions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:640px}
-.chat-welcome .suggestions button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:24px;font-size:.85rem;transition:all .2s;white-space:nowrap}
+.chat-welcome .suggestions button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:24px;font-size:.85rem;transition:all .2s;white-space:nowrap;cursor:pointer}
 .chat-welcome .suggestions button:hover{border-color:var(--accent);color:var(--cyan);background:rgba(59,130,246,.06);transform:translateY(-1px)}
 
-/* Input area - Copilot style */
-.chat-input-area{padding:16px 40px 24px;background:var(--bg)}
-.chat-input-wrap{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:26px;display:flex;align-items:flex-end;padding:4px 4px 4px 20px;transition:border-color .2s,box-shadow .2s}
+/* Scroll-to-bottom */
+.chat-scroll-btn{position:absolute;bottom:140px;left:50%;transform:translateX(-50%);width:36px;height:36px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-size:1rem;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:10;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.chat-scroll-btn:hover{color:var(--text);border-color:var(--accent);background:var(--surface2)}
+.chat-scroll-btn.visible{display:flex}
+
+/* Stop generation */
+.chat-stop-btn{display:none;background:var(--red,#ef4444);color:#fff;border:none;padding:6px 18px;border-radius:20px;font-size:.82rem;font-weight:500;cursor:pointer;transition:all .2s;align-items:center;gap:6px;margin:0 auto 8px}
+.chat-stop-btn.visible{display:flex}
+.chat-stop-btn:hover{filter:brightness(1.1);transform:scale(1.02)}
+
+/* Input area */
+.chat-input-area{padding:8px 24px 24px;background:var(--bg);position:relative}
+.chat-input-wrap{max-width:820px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:26px;display:flex;align-items:flex-end;padding:4px 4px 4px 20px;transition:border-color .2s,box-shadow .2s}
 .chat-input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
-.chat-input-wrap textarea{flex:1;resize:none;min-height:40px;max-height:140px;border:none;background:transparent;color:var(--text);font-size:.9rem;line-height:1.5;padding:8px 0;outline:none}
+.chat-input-wrap textarea{flex:1;resize:none;min-height:40px;max-height:140px;border:none;background:transparent;color:var(--text);font-size:.9rem;line-height:1.5;padding:8px 0;outline:none;font-family:inherit}
 .chat-input-wrap textarea::placeholder{color:var(--muted)}
-.chat-input-wrap button{width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;margin-bottom:2px}
-.chat-input-wrap button:hover{background:#2563eb;transform:scale(1.05)}
+.chat-input-wrap button#chat-send-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;margin-bottom:2px;cursor:pointer}
+.chat-input-wrap button#chat-send-btn:hover{background:#2563eb;transform:scale(1.05)}
+.chat-input-wrap button#chat-send-btn:disabled{background:transparent;color:var(--muted);cursor:not-allowed;transform:none}
 .chat-input-wrap select{appearance:none;-webkit-appearance:none;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:.73rem;padding:5px 24px 5px 8px;border-radius:14px;cursor:pointer;margin:0 6px 4px 0;outline:none;flex-shrink:0;transition:all .2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
 .chat-input-wrap select:hover,.chat-input-wrap select:focus{border-color:var(--accent);color:var(--text)}
 .chat-input-wrap select option{background:var(--surface);color:var(--text)}
-.model-badge{font-size:.65rem;color:var(--muted);font-weight:400;margin-left:6px;opacity:.7}
-.chat-input-wrap button:disabled{background:transparent;color:var(--muted);cursor:not-allowed;transform:none}
 /* Attachment button */
 .chat-attach-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--muted);font-size:1.2rem;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0;margin-bottom:2px}
 .chat-attach-btn:hover{color:var(--accent);background:rgba(59,130,246,.08)}
 /* Preview strip */
-.chat-preview-strip{display:flex;gap:8px;padding:0 0 8px 0;overflow-x:auto;max-width:720px;margin:0 auto}
+.chat-preview-strip{display:flex;gap:8px;padding:0 0 8px 0;overflow-x:auto;max-width:820px;margin:0 auto}
 .chat-preview-strip:empty{display:none}
 .chat-preview-item{position:relative;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 28px 6px 8px;font-size:.78rem;color:var(--text);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .chat-preview-item img{width:36px;height:36px;object-fit:cover;border-radius:6px}
@@ -4749,15 +5524,27 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
 .chat-attach-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .chat-attach-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(59,130,246,.08);border:1px solid var(--border);border-radius:8px;font-size:.75rem;color:var(--accent);text-decoration:none;cursor:pointer;transition:all .2s}
 .chat-attach-chip:hover{background:rgba(59,130,246,.15);border-color:var(--accent)}
-.chat-thinking{align-self:flex-start;color:var(--muted);font-size:.85rem;display:flex;align-items:center;gap:8px;padding:8px 16px}
+.chat-thinking{align-self:center;width:100%;max-width:820px;color:var(--muted);font-size:.85rem;display:flex;align-items:center;gap:8px;padding:8px 24px}
 .chat-thinking .dots span{animation:dotPulse 1.4s infinite;animation-fill-mode:both;display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin:0 2px}
 .chat-thinking .dots span:nth-child(2){animation-delay:.2s}
 .chat-thinking .dots span:nth-child(3){animation-delay:.4s}
 @keyframes dotPulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+/* Edit mode */
+.chat-edit-area{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:12px;padding:10px;font-size:.9rem;color:var(--text);resize:none;outline:none;font-family:inherit;min-height:60px;max-height:200px}
+.chat-edit-actions{display:flex;gap:6px;margin-top:6px;justify-content:flex-end}
+.chat-edit-actions button{padding:5px 14px;border-radius:14px;font-size:.78rem;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.chat-edit-actions button.save{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chat-edit-actions button:hover{filter:brightness(1.1)}
+/* Error message with retry */
+.chat-error-wrap{display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(239,68,68,.06);border:1px solid var(--red,#ef4444);border-radius:10px;margin:4px 0}
+.chat-error-wrap .error-text{flex:1;color:var(--red,#ef4444);font-size:.85rem}
+.chat-error-wrap .error-retry-btn{background:none;border:1px solid var(--red,#ef4444);color:var(--red,#ef4444);padding:4px 14px;border-radius:14px;font-size:.78rem;cursor:pointer;transition:all .2s;white-space:nowrap}
+.chat-error-wrap .error-retry-btn:hover{background:rgba(239,68,68,.1)}
 </style>
 <div class="chat-sidebar">
   <div class="chat-sidebar-hdr">
-    <button class="new-chat-btn" onclick="newConversation()">✦ New Chat</button>
+    <input type="text" class="chat-sidebar-search" id="chat-search" placeholder="Search conversations..." oninput="filterConversations(this.value)">
+    <button class="new-chat-btn" onclick="newConversation()">+ New Chat</button>
   </div>
   <div class="chat-sidebar-label">
     <span id="chat-view-label">Conversations</span>
@@ -4770,31 +5557,35 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
     <div class="chat-welcome">
       <div class="chat-welcome-greeting">Hey <span id="chat-greeting-name">there</span>, how can I help?</div>
       <div class="suggestions">
-        <button onclick="chatSuggestion('What cases are currently active?')">📋 Active cases</button>
-        <button onclick="chatSuggestion('Search for documents mentioning Starbucks')">🔍 Search documents</button>
-        <button onclick="chatSuggestion('Show me recent emails about court filings')">📧 Recent emails</button>
-        <button onclick="chatSuggestion('What are the database statistics?')">📊 Database stats</button>
-        <button onclick="chatSuggestion('Search the web for Washington state RCW 4.92')">🌐 Web search</button>
-        <button onclick="chatSuggestion('Summarize case 24-2-01031-31')">⚖️ Summarize a case</button>
+        <button onclick="chatSuggestion('What cases are currently active?')">Active cases</button>
+        <button onclick="chatSuggestion('Search for documents mentioning Starbucks')">Search documents</button>
+        <button onclick="chatSuggestion('Show me recent emails about court filings')">Recent emails</button>
+        <button onclick="chatSuggestion('What are the database statistics?')">Database stats</button>
+        <button onclick="chatSuggestion('Search the web for Washington state RCW 4.92')">Web search</button>
+        <button onclick="chatSuggestion('Summarize case 24-2-01031-31')">Summarize a case</button>
       </div>
     </div>
   </div>
+  <div class="chat-scroll-btn" id="chat-scroll-btn" onclick="scrollChatToBottom()">&#8595;</div>
+  <button class="chat-stop-btn" id="chat-stop-btn" onclick="stopChatGeneration()">Stop generating</button>
   <div class="chat-input-area" id="chat-input-area">
     <div class="chat-preview-strip" id="chat-preview-strip"></div>
     <div class="chat-input-wrap">
       <input type="file" id="chat-file-input" multiple accept="image/*,.pdf,.doc,.docx,.txt,.csv,.md,.json,.py,.js,.sql,.log,.xml,.html,.htm,.xlsx,.xls" style="display:none" onchange="handleFileSelect(event)">
-      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach files" type="button">📎</button>
+      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach files" type="button">&#128206;</button>
       <textarea id="chat-input" placeholder="Message Athena AI..." rows="1" onkeydown="chatKeyDown(event)" oninput="autoGrow(this)"></textarea>
       <select id="chat-model-select" title="Select model">
-        <option value="auto">⚡ Auto</option>
-        <option value="think-low">💭 Low</option>
-        <option value="think-med">💭 Med</option>
-        <option value="think-high">🧠 High</option>
-        <option value="think-xhigh">🧠 XHigh</option>
+        <option value="claude-haiku">Haiku 4.5</option>
+        <option value="claude-sonnet">Sonnet 4.6</option>
+        <option value="claude-opus">Opus 4.6</option>
+        <option value="auto">GPT Auto</option>
+        <option value="think-low">GPT Think Low</option>
+        <option value="think-med">GPT Think Med</option>
+        <option value="think-high">GPT Think High</option>
       </select>
-      <button id="chat-send-btn" onclick="sendChat()" title="Send">➤</button>
+      <button id="chat-send-btn" onclick="sendChat()" title="Send">&#10148;</button>
     </div>
-    <div class="chat-drop-overlay">📎 Drop files here to attach</div>
+    <div class="chat-drop-overlay">Drop files here to attach</div>
   </div>
 </div>
 </section>
@@ -4987,12 +5778,13 @@ tr.qd-row:hover{background:rgba(56,189,248,.08)!important}
   .agent-security-sentinel { background:linear-gradient(135deg,#ef4444,#f87171); color:#fff; }
   .agent-self-healing { background:linear-gradient(135deg,#8b5cf6,#a78bfa); color:#fff; }
   .agent-data-quality { background:linear-gradient(135deg,#06b6d4,#22d3ee); color:#fff; }
-  .agent-email-triage { background:linear-gradient(135deg,#ec4899,#f472b6); color:#fff; }
-  .agent-db-tuner { background:linear-gradient(135deg,#f97316,#fb923c); color:#fff; }
   .agent-case-strategy { background:linear-gradient(135deg,#6366f1,#818cf8); color:#fff; }
   .agent-retention { background:linear-gradient(135deg,#14b8a6,#2dd4bf); color:#fff; }
-  .agent-timeline { background:linear-gradient(135deg,#0ea5e9,#38bdf8); color:#fff; }
   .agent-query-insight { background:linear-gradient(135deg,#a855f7,#c084fc); color:#fff; }
+  .agent-dba { background:linear-gradient(135deg,#f97316,#fb923c); color:#fff; }
+  .agent-athena { background:linear-gradient(135deg,#0ea5e9,#38bdf8); color:#fff; }
+  .agent-quality-eval { background:linear-gradient(135deg,#10b981,#34d399); color:#fff; }
+  .agent-daily-digest { background:linear-gradient(135deg,#ec4899,#f472b6); color:#fff; }
   .agent-human { background:linear-gradient(135deg,#3b82f6,#60a5fa); color:#fff; }
   .agent-system { background:linear-gradient(135deg,#64748b,#94a3b8); color:#fff; }
   .type-alert { background:#fecaca; color:#991b1b; }
@@ -6683,6 +7475,22 @@ async function odSearch(){
 // ═══════════════════════════════════════════════════════════
 let chatConvId=null, chatSending=false, chatConversations=[], chatShowArchived=false, chatModelOptions=null;
 let chatPendingFiles=[];
+let chatAbortController=null;
+let chatSearchFilter='';
+
+// ── Relative time helper ──
+function chatRelTime(dateStr){
+  if(!dateStr) return '';
+  const now=Date.now(), then=new Date(dateStr).getTime();
+  const diff=Math.max(0,now-then);
+  const sec=Math.floor(diff/1000), min=Math.floor(sec/60), hr=Math.floor(min/60), day=Math.floor(hr/24);
+  if(sec<30) return 'just now';
+  if(min<1) return sec+'s ago';
+  if(min<60) return min+'m ago';
+  if(hr<24) return hr+'h ago';
+  if(day===1) return 'yesterday';
+  return day+'d ago';
+}
 
 // ── File attachment helpers ──
 function handleFileSelect(event){
@@ -6707,7 +7515,7 @@ function renderPreviewStrip(){
   el.innerHTML=chatPendingFiles.map((f,i)=>{
     const isImg=f.type.startsWith('image/');
     const thumb=isImg?URL.createObjectURL(f):'';
-    const icon=isImg?'':(f.name.match(/\\.pdf$/i)?'📄':f.name.match(/\\.docx?$/i)?'📝':'📎');
+    const icon=isImg?'':(f.name.match(/\\.pdf$/i)?'&#128196;':f.name.match(/\\.docx?$/i)?'&#128221;':'&#128206;');
     const size=f.size<1024?(f.size+' B'):f.size<1048576?((f.size/1024).toFixed(1)+' KB'):((f.size/1048576).toFixed(1)+' MB');
     return `<div class="chat-preview-item">
       ${isImg?'<img src="'+thumb+'" alt=""/>':'<span class="file-icon">'+icon+'</span>'}
@@ -6735,9 +7543,9 @@ function renderAttachmentChips(attachments){
   return '<div class="chat-attach-chips">'+attachments.map(a=>{
     const isImg=(a.asset_type||a.content_type||'').startsWith('image');
     if(isImg){
-      return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">🖼️ '+esc(a.file_name)+'</a>';
+      return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">&#128248; '+esc(a.file_name)+'</a>';
     }
-    return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">📄 '+esc(a.file_name)+'</a>';
+    return '<a class="chat-attach-chip" href="/api/chat/attachments/'+a.id+'" target="_blank">&#128196; '+esc(a.file_name)+'</a>';
   }).join('')+'</div>';
 }
 
@@ -6770,7 +7578,122 @@ document.addEventListener('DOMContentLoaded',()=>{
     }
     renderPreviewStrip();
   });
+  // Scroll-to-bottom watcher
+  const msgsEl=$('chat-messages');
+  if(msgsEl){
+    msgsEl.addEventListener('scroll',()=>{
+      const btn=$('chat-scroll-btn');
+      if(!btn) return;
+      const atBottom=msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<120;
+      btn.classList.toggle('visible',!atBottom);
+    });
+  }
 });
+
+function scrollChatToBottom(){
+  const el=$('chat-messages');
+  if(el) el.scrollTop=el.scrollHeight;
+}
+
+// ── Conversation search ──
+function filterConversations(query){
+  chatSearchFilter=(query||'').toLowerCase().trim();
+  renderConvList();
+}
+
+// ── Copy helpers ──
+function copyMsgText(btn){
+  const wrap=btn.closest('.chat-msg');
+  if(!wrap) return;
+  const text=wrap.innerText||wrap.textContent||'';
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig=btn.innerHTML;
+    btn.innerHTML='&#10003;';
+    setTimeout(()=>{btn.innerHTML=orig;},1200);
+  });
+}
+
+function copyCodeBlock(btn){
+  const pre=btn.closest('pre');
+  if(!pre) return;
+  const code=pre.querySelector('code');
+  const text=code?code.textContent:pre.textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='Copied!';
+    setTimeout(()=>{btn.textContent=orig;},1200);
+  });
+}
+
+// ── Edit user message ──
+function editUserMsg(btn){
+  const wrap=btn.closest('.chat-msg-wrap.user');
+  if(!wrap) return;
+  const msgDiv=wrap.querySelector('.chat-msg.user');
+  if(!msgDiv) return;
+  const rawText=msgDiv.getAttribute('data-raw')||msgDiv.innerText||'';
+  msgDiv.style.display='none';
+  const editArea=document.createElement('textarea');
+  editArea.className='chat-edit-area';
+  editArea.value=rawText;
+  const actions=document.createElement('div');
+  actions.className='chat-edit-actions';
+  actions.innerHTML='<button onclick="cancelEditMsg(this)">Cancel</button><button class="save" onclick="submitEditMsg(this)">Save & Resend</button>';
+  wrap.appendChild(editArea);
+  wrap.appendChild(actions);
+  editArea.focus();
+  editArea.style.height=Math.min(editArea.scrollHeight,200)+'px';
+  editArea.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){e.preventDefault();cancelEditMsg(actions.querySelector('button'));}
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitEditMsg(actions.querySelector('.save'));}
+  });
+}
+
+function cancelEditMsg(btn){
+  const wrap=btn.closest('.chat-msg-wrap.user');
+  if(!wrap) return;
+  wrap.querySelector('.chat-edit-area')?.remove();
+  wrap.querySelector('.chat-edit-actions')?.remove();
+  const msgDiv=wrap.querySelector('.chat-msg.user');
+  if(msgDiv) msgDiv.style.display='';
+}
+
+async function submitEditMsg(btn){
+  const wrap=btn.closest('.chat-msg-wrap.user');
+  if(!wrap) return;
+  const editArea=wrap.querySelector('.chat-edit-area');
+  if(!editArea) return;
+  const newText=editArea.value.trim();
+  if(!newText){cancelEditMsg(btn);return;}
+  // Remove all messages after this one
+  const msgsEl=$('chat-messages');
+  let sibling=wrap.nextElementSibling;
+  while(sibling){
+    const next=sibling.nextElementSibling;
+    sibling.remove();
+    sibling=next;
+  }
+  // Update the message display
+  wrap.querySelector('.chat-edit-area')?.remove();
+  wrap.querySelector('.chat-edit-actions')?.remove();
+  const msgDiv=wrap.querySelector('.chat-msg.user');
+  if(msgDiv){
+    msgDiv.style.display='';
+    msgDiv.innerHTML=esc(newText);
+    msgDiv.setAttribute('data-raw',newText);
+  }
+  // Resend
+  $('chat-input').value=newText;
+  await sendChat();
+}
+
+// ── Stop generation ──
+function stopChatGeneration(){
+  if(chatAbortController){
+    chatAbortController.abort();
+    chatAbortController=null;
+  }
+}
 
 async function loadChat(){
   try {
@@ -6779,7 +7702,6 @@ async function loadChat(){
     renderConvList();
     $('chat-view-label').textContent=chatShowArchived?'Archived':'Conversations';
     $('toggle-archived').textContent=chatShowArchived?'Active':'Archived';
-    // Set personalized greeting
     const gn=$('chat-greeting-name');
     if(gn) gn.textContent=currentUser||'there';
   } catch(e){ console.error('loadChat',e); }
@@ -6787,17 +7709,21 @@ async function loadChat(){
 
 function renderConvList(){
   const el=$('chat-conv-list');
-  if(!chatConversations.length){
-    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:.82rem">${chatShowArchived?'No archived conversations':'No conversations yet'}</div>`;
+  let filtered=chatConversations;
+  if(chatSearchFilter){
+    filtered=chatConversations.filter(c=>(c.title||'').toLowerCase().includes(chatSearchFilter));
+  }
+  if(!filtered.length){
+    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:.82rem">${chatSearchFilter?'No matches':chatShowArchived?'No archived conversations':'No conversations yet'}</div>`;
     return;
   }
-  el.innerHTML=chatConversations.map(c=>`
+  el.innerHTML=filtered.map(c=>`
     <div class="chat-conv-item${c.id===chatConvId?' active':''}${c.archived?' archived':''}" onclick="openConversation('${c.id}')" data-id="${c.id}">
       <span class="conv-title" title="${esc(c.title)}">${esc(c.title)}</span>
       <div class="conv-actions">
-        <button class="conv-action rename" onclick="event.stopPropagation();renameConversation('${c.id}')" title="Rename">✏️</button>
-        <button class="conv-action archive" onclick="event.stopPropagation();${c.archived?'unarchive':'archive'}Conversation('${c.id}')" title="${c.archived?'Unarchive':'Archive'}">${c.archived?'📤':'📥'}</button>
-        <button class="conv-action delete" onclick="event.stopPropagation();deleteConversation('${c.id}')" title="Delete">🗑️</button>
+        <button class="conv-action rename" onclick="event.stopPropagation();renameConversation('${c.id}')" title="Rename">&#9998;</button>
+        <button class="conv-action archive" onclick="event.stopPropagation();${c.archived?'unarchive':'archive'}Conversation('${c.id}')" title="${c.archived?'Unarchive':'Archive'}">${c.archived?'&#128228;':'&#128229;'}</button>
+        <button class="conv-action delete" onclick="event.stopPropagation();deleteConversation('${c.id}')" title="Delete">&#128465;</button>
       </div>
     </div>
   `).join('');
@@ -6807,22 +7733,41 @@ async function newConversation(){
   chatConvId=null;
   $('chat-messages').innerHTML=`
     <div class="chat-welcome">
-      <div style="display:flex;align-items:center;gap:24px;margin-bottom:32px">
-        <img src="/static/athena-portrait.jpg" alt="Athena AI" style="height:96px;width:96px;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,0.2);object-fit:cover"/>
-        <div class="chat-welcome-greeting" style="margin:0">⚖️ Athena AI at your service, <span id="chat-greeting-name">${currentUser||'Counselor'}</span>. What shall we investigate?</div>
-      </div>
+      <div class="chat-welcome-greeting">Hey <span id="chat-greeting-name">${currentUser||'there'}</span>, how can I help?</div>
       <div class="suggestions">
-        <button onclick="chatSuggestion('What cases are currently active?')">📋 Active cases</button>
-        <button onclick="chatSuggestion('Search for documents mentioning Starbucks')">🔍 Search documents</button>
-        <button onclick="chatSuggestion('Show me recent emails about court filings')">📧 Recent emails</button>
-        <button onclick="chatSuggestion('What are the database statistics?')">📊 Database stats</button>
-        <button onclick="chatSuggestion('Search the web for Washington state RCW 4.92')">🌐 Web search</button>
-        <button onclick="chatSuggestion('Summarize case 24-2-01031-31')">⚖️ Summarize a case</button>
+        <button onclick="chatSuggestion('What cases are currently active?')">Active cases</button>
+        <button onclick="chatSuggestion('Search for documents mentioning Starbucks')">Search documents</button>
+        <button onclick="chatSuggestion('Show me recent emails about court filings')">Recent emails</button>
+        <button onclick="chatSuggestion('What are the database statistics?')">Database stats</button>
+        <button onclick="chatSuggestion('Search the web for Washington state RCW 4.92')">Web search</button>
+        <button onclick="chatSuggestion('Summarize case 24-2-01031-31')">Summarize a case</button>
       </div>
     </div>`;
   renderConvList();
   $('chat-input').value='';
   $('chat-input').focus();
+}
+
+function buildMsgHTML(role, content, opts={}){
+  const ts=opts.timestamp?chatRelTime(opts.timestamp):'';
+  const modelBadge=opts.modelLabel&&role==='assistant'?`<span class="model-badge">${esc(opts.modelLabel)}</span>`:'';
+  const nameLabel=role==='assistant'?'Athena AI':esc(currentUser||'You');
+  const avatar=role==='assistant'?'<img src="/static/athena-portrait.jpg" style="width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;object-fit:cover"/>':'';
+  const attachHtml=opts.attachments?(renderAttachmentImages(opts.attachments)+renderAttachmentChips(opts.attachments)):'';
+  const contentHtml=role==='assistant'?renderMarkdown(content):esc(content);
+  const copyBtn=`<button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button>`;
+  const editBtn=role==='user'?`<button class="msg-hover-btn" onclick="editUserMsg(this)" title="Edit">&#9998;</button>`:'';
+
+  return `<div class="chat-msg-wrap ${role}">
+    <div class="chat-msg-meta">
+      ${avatar}<span class="chat-msg-name">${nameLabel}</span>${modelBadge}
+      ${ts?'<span class="chat-msg-time">'+ts+'</span>':''}
+    </div>
+    <div class="chat-msg ${role}" ${role==='user'?'data-raw="'+esc(content).replace(/"/g,'&quot;')+'"':''}>${contentHtml}${attachHtml}
+      <div class="msg-hover-actions">${editBtn}${copyBtn}</div>
+    </div>
+    ${opts.showRetry?retryBarHTML():''}
+  </div>`;
 }
 
 async function openConversation(id){
@@ -6839,16 +7784,12 @@ async function openConversation(id){
     }
     el.innerHTML=msgs.map((m,i,arr)=>{
       const isLastAssistant=m.role==='assistant'&&!arr.slice(i+1).some(x=>x.role==='assistant');
-      const avatar = m.role==='assistant' 
-        ? '<img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>'
-        : '';
-      const attachHtml=(m.attachments&&m.attachments.length)?(renderAttachmentImages(m.attachments)+renderAttachmentChips(m.attachments)):'';
-      const contentHtml=m.role==='assistant'?renderMarkdown(m.content):esc(m.content);
-      return `<div class="chat-msg-wrap ${m.role}">
-        <div class="chat-msg-name">${avatar}${m.role==='assistant'?'Athena AI':currentUser}</div>
-        <div class="chat-msg ${m.role}">${contentHtml}${attachHtml}</div>
-        ${isLastAssistant?retryBarHTML():''}
-      </div>`;
+      return buildMsgHTML(m.role, m.content, {
+        timestamp:m.created_at||m.timestamp,
+        modelLabel:m.model_label||m.model||'',
+        attachments:m.attachments,
+        showRetry:isLastAssistant
+      });
     }).join('');
     el.scrollTop=el.scrollHeight;
   } catch(e){ console.error(e); }
@@ -6930,6 +7871,13 @@ function chatKeyDown(e){
     e.preventDefault();
     sendChat();
   }
+  if(e.key==='Escape'){
+    const editArea=document.querySelector('.chat-edit-area');
+    if(editArea){
+      const cancelBtn=editArea.parentElement.querySelector('.chat-edit-actions button');
+      if(cancelBtn) cancelEditMsg(cancelBtn);
+    }
+  }
 }
 
 function autoGrow(el){
@@ -6951,41 +7899,41 @@ async function sendChat(){
   input.value='';
   input.style.height='auto';
 
-  // Capture pending file info for UI before upload clears them
   const pendingFileInfo=chatPendingFiles.map(f=>({
     name:f.name, type:f.type, size:f.size,
     thumbUrl:f.type.startsWith('image/')?URL.createObjectURL(f):null
   }));
 
   const msgsEl=$('chat-messages');
-  // Remove welcome if present
   const welcome=msgsEl.querySelector('.chat-welcome');
   if(welcome) welcome.remove();
 
-  // Add user message (with file previews if any)
+  // Add user message
   const userWrap=document.createElement('div');
   userWrap.className='chat-msg-wrap user';
-  userWrap.innerHTML=`<div class="chat-msg-name">${esc(currentUser)}</div>`;
+  const userTs=new Date().toISOString();
+  userWrap.innerHTML=`<div class="chat-msg-meta"><span class="chat-msg-name">${esc(currentUser||'You')}</span><span class="chat-msg-time">${chatRelTime(userTs)}</span></div>`;
   const userDiv=document.createElement('div');
   userDiv.className='chat-msg user';
+  userDiv.setAttribute('data-raw',msg);
   let userHtml=msg?esc(msg):'';
   if(pendingFileInfo.length){
     userHtml+='<div class="chat-attach-chips">';
     for(const pf of pendingFileInfo){
-      const icon=pf.type.startsWith('image/')?'🖼️':pf.name.match(/\\.pdf$/i)?'📄':'📎';
+      const icon=pf.type.startsWith('image/')?'&#128248;':pf.name.match(/\\.pdf$/i)?'&#128196;':'&#128206;';
       userHtml+=`<span class="chat-attach-chip">${icon} ${esc(pf.name)}</span>`;
     }
     userHtml+='</div>';
-    // Show image thumbnails
     for(const pf of pendingFileInfo){
       if(pf.thumbUrl) userHtml+=`<img class="chat-inline-img" src="${pf.thumbUrl}" alt="${esc(pf.name)}" />`;
     }
   }
+  userHtml+='<div class="msg-hover-actions"><button class="msg-hover-btn" onclick="editUserMsg(this)" title="Edit">&#9998;</button><button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button></div>';
   userDiv.innerHTML=userHtml;
   userWrap.appendChild(userDiv);
   msgsEl.appendChild(userWrap);
 
-  // Add thinking indicator (model-aware)
+  // Add thinking indicator
   const thinkDiv=document.createElement('div');
   thinkDiv.className='chat-thinking';
   const thinkLabel=hasFiles?'Uploading & processing...':modelId.startsWith('think')?'Reasoning deeply...':'Searching & thinking...';
@@ -6993,58 +7941,107 @@ async function sendChat(){
   msgsEl.appendChild(thinkDiv);
   msgsEl.scrollTop=msgsEl.scrollHeight;
 
+  // Show stop button
+  const stopBtn=$('chat-stop-btn');
+  if(stopBtn) stopBtn.classList.add('visible');
+
   try {
-    // Upload files first if any — need conversation ID
+    // Upload files first if any
     let attachmentIds=[];
     if(hasFiles){
-      // If no conversation yet, create one via upload (backend auto-creates)
       const uploadResult=await uploadPendingFiles(chatConvId||'');
       attachmentIds=uploadResult.attachmentIds;
-      // If upload created a new conversation, use its ID
       if(!chatConvId && uploadResult.conversationId){
         chatConvId=uploadResult.conversationId;
       }
-      // Update thinking label after upload
       thinkDiv.innerHTML='<div class="dots"><span></span><span></span><span></span></div> '+(modelId.startsWith('think')?'Reasoning deeply...':'Searching & thinking...');
     }
 
-    const resp=await api('/api/chat/send',{
+    // Stream via SSE
+    chatAbortController=new AbortController();
+    const fetchResp=await fetch('/api/chat/stream',{
       method:'POST',
-      body:JSON.stringify({conversation_id:chatConvId,message:msg,model:modelId,attachment_ids:attachmentIds})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({conversation_id:chatConvId,message:msg,model:modelId,attachment_ids:attachmentIds}),
+      credentials:'same-origin',
+      signal:chatAbortController.signal
     });
+
+    if(!fetchResp.ok){
+      const errData=await fetchResp.json().catch(()=>({}));
+      throw new Error(errData.error||'Request failed ('+fetchResp.status+')');
+    }
 
     // Remove thinking
     thinkDiv.remove();
 
+    // Prepare assistant message container for streaming
+    const aWrap=document.createElement('div');
+    aWrap.className='chat-msg-wrap assistant';
+    const aTs=new Date().toISOString();
+    aWrap.innerHTML=`<div class="chat-msg-meta"><img src="/static/athena-portrait.jpg" style="width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;object-fit:cover"/><span class="chat-msg-name">Athena AI</span><span class="model-badge">${esc(modelLabel)}</span><span class="chat-msg-time">${chatRelTime(aTs)}</span></div>`;
+    const aDiv=document.createElement('div');
+    aDiv.className='chat-msg assistant';
+    aDiv.innerHTML='<span class="streaming-cursor" style="display:inline-block;width:2px;height:1em;background:var(--cyan);animation:dotPulse 1s infinite"></span>';
+    aWrap.appendChild(aDiv);
+    msgsEl.appendChild(aWrap);
+    msgsEl.scrollTop=msgsEl.scrollHeight;
+
+    // Read SSE stream
+    let fullText='';
+    let toolCalls=[];
+    let respConvId=null;
+    let respModelLabel=null;
+    const reader=fetchResp.body.getReader();
+    const decoder=new TextDecoder();
+    let buffer='';
+
+    while(true){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buffer+=decoder.decode(value,{stream:true});
+      const lines=buffer.split('\n');
+      buffer=lines.pop()||'';
+      for(const line of lines){
+        if(!line.startsWith('data: ')) continue;
+        const jsonStr=line.slice(6).trim();
+        if(!jsonStr) continue;
+        try {
+          const evt=JSON.parse(jsonStr);
+          if(evt.content){
+            fullText+=evt.content;
+            aDiv.innerHTML=renderMarkdown(fullText)+'<div class="msg-hover-actions"><button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button></div>';
+            msgsEl.scrollTop=msgsEl.scrollHeight;
+          }
+          if(evt.tool_calls) toolCalls=evt.tool_calls;
+          if(evt.conversation_id) respConvId=evt.conversation_id;
+          if(evt.model_label) respModelLabel=evt.model_label;
+          if(evt.done){
+            // Final render
+            let toolHtml='';
+            if(toolCalls.length){
+              toolHtml=toolCalls.map(t=>`<span class="tool-badge">&#128295; ${esc(t.tool||t.name||'tool')}</span>`).join('')+'<br>';
+            }
+            aDiv.innerHTML=toolHtml+renderMarkdown(fullText||'(no response)')+'<div class="msg-hover-actions"><button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button></div>';
+            if(respModelLabel){
+              const badge=aWrap.querySelector('.model-badge');
+              if(badge) badge.textContent=respModelLabel;
+            }
+          }
+        } catch(pe){ /* skip unparseable */ }
+      }
+    }
+
+    // Finalize: add retry bar
+    aWrap.appendChild(makeRetryBar());
+
     // Set conversation ID if new
-    if(!chatConvId && resp.conversation_id){
-      chatConvId=resp.conversation_id;
-      // Reload sidebar
+    if(!chatConvId && respConvId){
+      chatConvId=respConvId;
       const url=chatShowArchived?'/api/chat/conversations?limit=50&archived=true':'/api/chat/conversations?limit=50';
       chatConversations = await api(url);
       renderConvList();
     }
-
-    // Show tool badges if any
-    let toolHtml='';
-    if(resp.tool_calls&&resp.tool_calls.length){
-      toolHtml=resp.tool_calls.map(t=>
-        `<span class="tool-badge">\ud83d\udd27 ${t.tool}</span>`
-      ).join('')+'<br>';
-    }
-
-    // Add assistant message
-    const rLabel=resp.model_label||modelLabel;
-    const aWrap=document.createElement('div');
-    aWrap.className='chat-msg-wrap assistant';
-    aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
-    const aDiv=document.createElement('div');
-    aDiv.className='chat-msg assistant';
-    aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
-    aWrap.appendChild(aDiv);
-    aWrap.appendChild(makeRetryBar());
-    msgsEl.appendChild(aWrap);
-    msgsEl.scrollTop=msgsEl.scrollHeight;
 
     // Update sidebar title
     const existing=chatConversations.find(c=>c.id===chatConvId);
@@ -7052,34 +8049,56 @@ async function sendChat(){
       existing.title=(msg||'File upload').substring(0,80);
       renderConvList();
     }
+
+    msgsEl.scrollTop=msgsEl.scrollHeight;
   } catch(e){
     thinkDiv.remove();
-    const errWrap=document.createElement('div');
-    errWrap.className='chat-msg-wrap assistant';
-    errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI</div>`;
-    const errDiv=document.createElement('div');
-    errDiv.className='chat-msg assistant';
-    errDiv.style.borderColor='var(--red)';
-    errDiv.textContent='Error: '+e.message;
-    errWrap.appendChild(errDiv);
-    msgsEl.appendChild(errWrap);
+    if(e.name==='AbortError'){
+      // User stopped generation - just clean up
+      const lastAssist=msgsEl.querySelector('.chat-msg-wrap.assistant:last-of-type .chat-msg.assistant');
+      if(lastAssist){
+        const cursor=lastAssist.querySelector('.streaming-cursor');
+        if(cursor) cursor.remove();
+        lastAssist.innerHTML+=' <em style="color:var(--muted)">[stopped]</em>';
+      }
+      const lastWrap=msgsEl.querySelector('.chat-msg-wrap.assistant:last-of-type');
+      if(lastWrap&&!lastWrap.querySelector('.retry-bar')) lastWrap.appendChild(makeRetryBar());
+    } else {
+      // Show error with retry button
+      const errWrap=document.createElement('div');
+      errWrap.className='chat-msg-wrap assistant';
+      errWrap.innerHTML=`<div class="chat-msg-meta"><img src="/static/athena-portrait.jpg" style="width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;object-fit:cover"/><span class="chat-msg-name">Athena AI</span></div>`;
+      const errDiv=document.createElement('div');
+      errDiv.className='chat-error-wrap';
+      errDiv.innerHTML=`<span class="error-text">Error: ${esc(e.message)}</span><button class="error-retry-btn" onclick="retrySendChat(this,'${esc(msg).replace(/'/g,"\\\\'")}')">Retry</button>`;
+      errWrap.appendChild(errDiv);
+      msgsEl.appendChild(errWrap);
+    }
   } finally {
     chatSending=false;
+    chatAbortController=null;
     $('chat-send-btn').disabled=false;
+    const stopBtn2=$('chat-stop-btn');
+    if(stopBtn2) stopBtn2.classList.remove('visible');
     input.focus();
   }
 }
 
+function retrySendChat(btn,msg){
+  const wrap=btn.closest('.chat-msg-wrap');
+  if(wrap) wrap.remove();
+  $('chat-input').value=msg;
+  sendChat();
+}
 
 function retryBarHTML(){
   const opts=chatModelOptions||[
-    {id:'auto',label:'⚡ Auto'},{id:'think-low',label:'💭 Low'},
-    {id:'think-med',label:'💭 Med'},{id:'think-high',label:'🧠 High'},
-    {id:'think-xhigh',label:'🧠 XHigh'}
+    {id:'auto',label:'Auto'},{id:'think-low',label:'Think Low'},
+    {id:'think-med',label:'Think Med'},{id:'think-high',label:'Think High'}
   ];
   const curModel=$('chat-model-select')?$('chat-model-select').value:'auto';
   return `<div class="retry-bar">
-    <button class="retry-btn" onclick="retryChat(this)" title="Regenerate with selected model">🔄 Retry</button>
+    <button class="retry-btn" onclick="retryChat(this)" title="Regenerate with selected model">&#8634; Retry</button>
     <select class="retry-model" title="Pick model for retry">${opts.map(o=>`<option value="${o.id}"${o.id===curModel?' selected':''}>${o.label}</option>`).join('')}</select>
   </div>`;
 }
@@ -7099,14 +8118,14 @@ async function retryChat(btnEl){
 
   chatSending=true;
   btnEl.disabled=true;
-  btnEl.textContent='⏳ Retrying...';
+  btnEl.textContent='Retrying...';
 
   const msgsEl=$('chat-messages');
+  const stopBtn=$('chat-stop-btn');
+  if(stopBtn) stopBtn.classList.add('visible');
 
-  // Remove the last assistant message wrapper (which contains this retry bar)
   const lastAssistant=bar.closest('.chat-msg-wrap.assistant');
   if(lastAssistant){
-    // Add thinking indicator in its place
     const thinkDiv=document.createElement('div');
     thinkDiv.className='chat-thinking';
     const thinkLabel=modelId.startsWith('think')?'Re-reasoning deeply...':'Re-searching & thinking...';
@@ -7114,57 +8133,108 @@ async function retryChat(btnEl){
     lastAssistant.replaceWith(thinkDiv);
 
     try {
-      const resp=await api('/api/chat/retry',{
+      chatAbortController=new AbortController();
+      const fetchResp=await fetch('/api/chat/stream',{
         method:'POST',
-        body:JSON.stringify({conversation_id:chatConvId,model:modelId})
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({conversation_id:chatConvId,retry:true,model:modelId}),
+        credentials:'same-origin',
+        signal:chatAbortController.signal
       });
+
+      if(!fetchResp.ok){
+        const errData=await fetchResp.json().catch(()=>({}));
+        throw new Error(errData.error||'Retry failed ('+fetchResp.status+')');
+      }
 
       thinkDiv.remove();
 
-      let toolHtml='';
-      if(resp.tool_calls&&resp.tool_calls.length){
-        toolHtml=resp.tool_calls.map(t=>`<span class="tool-badge">🔧 ${t.tool}</span>`).join('')+'<br>';
-      }
-
-      const rLabel=resp.model_label||modelLabel;
       const aWrap=document.createElement('div');
       aWrap.className='chat-msg-wrap assistant';
-      aWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI <span class="model-badge">${esc(rLabel)}</span></div>`;
+      const aTs=new Date().toISOString();
+      aWrap.innerHTML=`<div class="chat-msg-meta"><img src="/static/athena-portrait.jpg" style="width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;object-fit:cover"/><span class="chat-msg-name">Athena AI</span><span class="model-badge">${esc(modelLabel)}</span><span class="chat-msg-time">${chatRelTime(aTs)}</span></div>`;
       const aDiv=document.createElement('div');
       aDiv.className='chat-msg assistant';
-      aDiv.innerHTML=toolHtml+renderMarkdown(resp.response||'(no response)');
       aWrap.appendChild(aDiv);
-      aWrap.appendChild(makeRetryBar());
       msgsEl.appendChild(aWrap);
+
+      let fullText='';
+      let toolCalls=[];
+      let respModelLabel=null;
+      const reader=fetchResp.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer='';
+
+      while(true){
+        const {done,value}=await reader.read();
+        if(done) break;
+        buffer+=decoder.decode(value,{stream:true});
+        const lines=buffer.split('\n');
+        buffer=lines.pop()||'';
+        for(const line of lines){
+          if(!line.startsWith('data: ')) continue;
+          const jsonStr=line.slice(6).trim();
+          if(!jsonStr) continue;
+          try {
+            const evt=JSON.parse(jsonStr);
+            if(evt.content){
+              fullText+=evt.content;
+              aDiv.innerHTML=renderMarkdown(fullText)+'<div class="msg-hover-actions"><button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button></div>';
+              msgsEl.scrollTop=msgsEl.scrollHeight;
+            }
+            if(evt.tool_calls) toolCalls=evt.tool_calls;
+            if(evt.model_label) respModelLabel=evt.model_label;
+            if(evt.done){
+              let toolHtml='';
+              if(toolCalls.length){
+                toolHtml=toolCalls.map(t=>`<span class="tool-badge">&#128295; ${esc(t.tool||t.name||'tool')}</span>`).join('')+'<br>';
+              }
+              aDiv.innerHTML=toolHtml+renderMarkdown(fullText||'(no response)')+'<div class="msg-hover-actions"><button class="msg-hover-btn" onclick="copyMsgText(this)" title="Copy">&#128203;</button></div>';
+              if(respModelLabel){
+                const badge=aWrap.querySelector('.model-badge');
+                if(badge) badge.textContent=respModelLabel;
+              }
+            }
+          } catch(pe){ /* skip */ }
+        }
+      }
+
+      aWrap.appendChild(makeRetryBar());
       msgsEl.scrollTop=msgsEl.scrollHeight;
     } catch(e){
       thinkDiv.remove();
-      const errWrap=document.createElement('div');
-      errWrap.className='chat-msg-wrap assistant';
-      errWrap.innerHTML=`<div class="chat-msg-name"><img src="/static/athena-portrait.jpg" style="width:32px;height:32px;border-radius:50%;margin-right:8px;vertical-align:middle;object-fit:cover"/>Athena AI</div>`;
-      const errDiv=document.createElement('div');
-      errDiv.className='chat-msg assistant';
-      errDiv.style.borderColor='var(--red)';
-      errDiv.textContent='Retry error: '+e.message;
-      errWrap.appendChild(errDiv);
-      errWrap.appendChild(makeRetryBar());
-      msgsEl.appendChild(errWrap);
-      msgsEl.scrollTop=msgsEl.scrollHeight;
+      if(e.name!=='AbortError'){
+        const errWrap=document.createElement('div');
+        errWrap.className='chat-msg-wrap assistant';
+        errWrap.innerHTML=`<div class="chat-msg-meta"><img src="/static/athena-portrait.jpg" style="width:28px;height:28px;border-radius:50%;margin-right:6px;vertical-align:middle;object-fit:cover"/><span class="chat-msg-name">Athena AI</span></div>`;
+        const errDiv=document.createElement('div');
+        errDiv.className='chat-error-wrap';
+        errDiv.innerHTML=`<span class="error-text">Retry error: ${esc(e.message)}</span>`;
+        errWrap.appendChild(errDiv);
+        errWrap.appendChild(makeRetryBar());
+        msgsEl.appendChild(errWrap);
+        msgsEl.scrollTop=msgsEl.scrollHeight;
+      }
     }
   }
 
   chatSending=false;
+  chatAbortController=null;
   $('chat-send-btn').disabled=false;
+  const stopBtn2=$('chat-stop-btn');
+  if(stopBtn2) stopBtn2.classList.remove('visible');
   $('chat-input').focus();
 }
 
-// Simple markdown renderer
+// Markdown renderer with code copy buttons, tables, full formatting
 function renderMarkdown(text){
   if(!text) return '';
   let html=esc(text);
-  // Code blocks
-  html=html.replace(/```(\w*)\n([\s\S]*?)```/g,(m,lang,code)=>
-    `<pre><code>${code}</code></pre>`);
+  // Code blocks with copy button
+  html=html.replace(/```(\w*)\n([\s\S]*?)```/g,(m,lang,code)=>{
+    const langLabel=lang?`<span style="position:absolute;top:6px;left:10px;font-size:.62rem;color:var(--muted);text-transform:uppercase">${lang}</span>`:'';
+    return `<pre style="position:relative">${langLabel}<button class="code-copy-btn" onclick="copyCodeBlock(this)">Copy</button><code>${code}</code></pre>`;
+  });
   // Inline code
   html=html.replace(/`([^`]+)`/g,'<code>$1</code>');
   // Bold
@@ -7176,15 +8246,27 @@ function renderMarkdown(text){
   html=html.replace(/^## (.+)$/gm,'<h2>$1</h2>');
   html=html.replace(/^# (.+)$/gm,'<h1>$1</h1>');
   // Links
-  html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
+  html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Tables
+  html=html.replace(/^(\|.+\|)\n(\|[\s\-:|]+\|)\n((?:\|.+\|\n?)*)/gm,(m,headerRow,sepRow,bodyRows)=>{
+    const headers=headerRow.split('|').filter(c=>c.trim());
+    const rows=bodyRows.trim().split('\n').filter(r=>r.trim());
+    let table='<table><thead><tr>'+headers.map(h=>'<th>'+h.trim()+'</th>').join('')+'</tr></thead><tbody>';
+    for(const row of rows){
+      const cells=row.split('|').filter(c=>c.trim());
+      table+='<tr>'+cells.map(c=>'<td>'+c.trim()+'</td>').join('')+'</tr>';
+    }
+    table+='</tbody></table>';
+    return table;
+  });
   // Unordered lists
-  html=html.replace(/^[•\-\*] (.+)$/gm,'<li>$1</li>');
-  html=html.replace(/(<li>.*<\/li>)/gs,'<ul>$1</ul>');
+  html=html.replace(/^[\u2022\-\*] (.+)$/gm,'<li>$1</li>');
+  html=html.replace(/(<li>[\s\S]*?<\/li>)/g,'<ul>$1</ul>');
   // Ordered lists
   html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');
   // Blockquotes
   html=html.replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>');
-  // Line breaks (double newline = paragraph break)
+  // Line breaks
   html=html.replace(/\n\n/g,'<br><br>');
   return html;
 }
@@ -7797,16 +8879,18 @@ let crPollTimer = null;
 
 const AGENT_INITIALS = {
   'orchestrator':'OR','watchdog':'WD','code-doctor':'CD','security-sentinel':'SS',
-  'self-healing':'SH','data-quality':'DQ','email-triage':'ET','db-tuner':'DT',
-  'case-strategy':'CS','retention':'RT','timeline':'TL','query-insight':'QI'
+  'self-healing':'SH','data-quality':'DQ','dba':'DB','athena':'AT',
+  'case-strategy':'CS','retention':'RT','query-insight':'QI','quality-eval':'QE',
+  'daily-digest':'DD'
 };
 
 const AGENT_NAMES = {
   'orchestrator':'Orchestrator','watchdog':'Watchdog','code-doctor':'Code Doctor',
   'security-sentinel':'Security Sentinel','self-healing':'Self Healing',
-  'data-quality':'Data Quality','email-triage':'Email Triage','db-tuner':'DB Tuner',
-  'case-strategy':'Case Strategy','retention':'Retention','timeline':'Timeline',
-  'query-insight':'Query Insight'
+  'data-quality':'Data Quality','dba':'DBA','athena':'Athena',
+  'case-strategy':'Case Strategy','retention':'Retention',
+  'query-insight':'Query Insight','quality-eval':'Quality Eval',
+  'daily-digest':'Daily Digest'
 };
 
 const CH_ICONS = {

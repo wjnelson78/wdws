@@ -31,15 +31,15 @@ _AGENT_LABELS = {
     "code-doctor":        "🩺 Code Doctor",
     "watchdog":           "🐕 Watchdog",
     "athena":             "🏛️ Athena",
-    "software-engineer":  "💻 Software Engineer",
     "dba":                "🗄️ DBA",
     "quality-eval":       "✅ Quality Eval",
-    "scorecard":          "📊 Scorecard",
     "orchestrator":       "🎯 Orchestrator",
     "security-sentinel":  "🔒 Security",
     "data-quality":       "📋 Data Quality",
     "self-healing":       "🔧 Self-Healing",
-    "db-tuner":           "⚡ DB Tuner",
+    "case-strategy":      "⚖️ Case Strategy",
+    "retention":          "🗑️ Retention",
+    "query-insight":      "🔍 Query Insight",
 }
 
 # Section type → human priority sort order (lower = more prominent)
@@ -53,15 +53,118 @@ _TYPE_PRIORITY = {
 
 
 class DailyDigestAgent(BaseAgent):
-    agent_id   = "daily-digest"
-    name       = "Daily Digest"
-    version    = "1.0.0"
-    schedule   = "0 7 * * *"   # 7:00 AM every day
-    priority   = 2
+    agent_id    = "daily-digest"
+    agent_name  = "Daily Digest"
+    version     = "1.0.0"
+    schedule    = "0 7 * * *"   # 7:00 AM every day
+    priority    = 2
     instructions = """You manage the daily platform report email. Your job is to collect all
 queued agent notifications and send a single, well-structured daily digest.
-You never modify agent behaviour — you only read the notification queue and
-compose the email."""
+On Mondays, a weekly scorecard section is appended with quality, reliability,
+and safety metrics. You never modify agent behaviour — you only read the
+notification queue and compose the email."""
+
+    async def _weekly_scorecard_sections(self, p) -> list[dict]:
+        """Build scorecard sections (called on Mondays only)."""
+        sections = []
+
+        # Quality eval pass rates (last 30 days)
+        eval_runs = await p.fetch("""
+            SELECT metrics FROM ops.agent_runs
+            WHERE agent_id = 'quality-eval'
+              AND started_at > now() - interval '30 days'
+            ORDER BY started_at DESC LIMIT 5
+        """)
+        pass_rates = []
+        for r in eval_runs:
+            m = r["metrics"] or {}
+            if isinstance(m, str):
+                try: m = json.loads(m)
+                except Exception: m = {}
+            pr = m.get("pass_rate")
+            if pr is not None:
+                pass_rates.append(float(pr))
+        avg_pass_rate = round(sum(pass_rates) / len(pass_rates), 3) if pass_rates else None
+
+        # Agent reliability (last 7 days)
+        agent_stats = await p.fetchrow("""
+            SELECT COUNT(*) AS total_runs,
+                   COUNT(*) FILTER (WHERE status = 'error') AS errors,
+                   AVG(duration_ms)::int AS avg_ms,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
+            FROM ops.agent_runs WHERE started_at > now() - interval '7 days'
+        """)
+
+        # MCP reliability (last 7 days)
+        mcp_stats = await p.fetchrow("""
+            SELECT COUNT(*) AS total_calls,
+                   COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+                   AVG(duration_ms)::int AS avg_ms,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms,
+                   PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99_ms
+            FROM ops.mcp_query_log WHERE created_at > now() - interval '7 days'
+        """)
+
+        # Open findings
+        findings = await p.fetch("""
+            SELECT severity, agent_id, title, created_at
+            FROM ops.agent_findings
+            WHERE status = 'open' AND created_at > now() - interval '7 days'
+            ORDER BY CASE severity WHEN 'critical' THEN 3 WHEN 'warning' THEN 2 ELSE 1 END DESC,
+                     created_at DESC
+            LIMIT 10
+        """)
+
+        # Top error agents
+        top_errors = await p.fetch("""
+            SELECT agent_id, COUNT(*) AS errors FROM ops.agent_runs
+            WHERE status = 'error' AND started_at > now() - interval '7 days'
+            GROUP BY agent_id ORDER BY errors DESC LIMIT 5
+        """)
+
+        # Build sections
+        total_agent = agent_stats["total_runs"] or 0
+        agent_errors = agent_stats["errors"] or 0
+        agent_error_rate = round(agent_errors / max(total_agent, 1), 3)
+        total_mcp = mcp_stats["total_calls"] or 0
+        mcp_errors = mcp_stats["errors"] or 0
+        mcp_error_rate = round(mcp_errors / max(total_mcp, 1), 3)
+
+        sections.append({
+            "heading": "Weekly Scorecard — Quality",
+            "content": (
+                f"Eval avg pass rate (30d): {avg_pass_rate if avg_pass_rate is not None else 'N/A'}\n"
+                f"Eval runs analyzed: {len(eval_runs)}"
+            ),
+            "type": "success" if avg_pass_rate and avg_pass_rate > 0.8 else "warning",
+        })
+        sections.append({
+            "heading": "Weekly Scorecard — Reliability",
+            "content": (
+                f"Agent runs: {total_agent} | errors: {agent_errors} | error rate: {agent_error_rate}\n"
+                f"Agent p95: {int(agent_stats['p95_ms'] or 0)}ms | avg: {int(agent_stats['avg_ms'] or 0)}ms\n"
+                f"MCP calls: {total_mcp} | errors: {mcp_errors} | error rate: {mcp_error_rate}\n"
+                f"MCP p95: {int(mcp_stats['p95_ms'] or 0)}ms | p99: {int(mcp_stats['p99_ms'] or 0)}ms"
+            ),
+            "type": "info",
+        })
+        if findings:
+            lines = [f"[{f['severity']}] {f['agent_id']}: {f['title']} ({f['created_at'].date()})"
+                     for f in findings]
+            sections.append({
+                "heading": "Weekly Scorecard — Open Findings",
+                "content": "\n".join(lines),
+                "type": "warning" if any(f["severity"] == "critical" for f in findings) else "info",
+            })
+        if top_errors:
+            lines = [f"{t['agent_id']}: {t['errors']} error(s)" for t in top_errors]
+            sections.append({
+                "heading": "Weekly Scorecard — Top Error Agents",
+                "content": "\n".join(lines),
+                "type": "warning",
+            })
+
+        return sections
 
     async def run(self, ctx: RunContext) -> dict:
         metrics = {"queued_items": 0, "agents_represented": 0, "email_sent": False}
@@ -132,6 +235,16 @@ compose the email."""
             )
             headline_type = "warning"
 
+        # ── 3b. Weekly scorecard (Mondays only) ─────────────────────────
+        is_monday = now.weekday() == 0
+        scorecard_sections = []
+        if is_monday:
+            try:
+                scorecard_sections = await self._weekly_scorecard_sections(p)
+                metrics["scorecard_included"] = True
+            except Exception as e:
+                ctx.log.warning("Scorecard generation failed: %s", e)
+
         # ── 4. Build digest sections ──────────────────────────────────────
         digest_sections = []
 
@@ -174,18 +287,28 @@ compose the email."""
             )
             digest_sections.extend(sorted_secs)
 
+        # Append weekly scorecard on Mondays
+        if scorecard_sections:
+            digest_sections.append({
+                "heading": "📊 Weekly Scorecard",
+                "content": "",
+                "type": "code",
+            })
+            digest_sections.extend(scorecard_sections)
+
         # ── 5. Send the digest ────────────────────────────────────────────
         if not _EMAIL_AVAILABLE:
             await ctx.action("Email not configured — digest built but not sent")
             return {"summary": "Daily Digest: email not configured", "metrics": metrics}
 
         date_str   = now.strftime("%B %-d, %Y")
-        email_subj = f"Athena Daily Report — {date_str}"
+        suffix     = " + Weekly Scorecard" if scorecard_sections else ""
+        email_subj = f"Athena Daily Report — {date_str}{suffix}"
 
         body_html = build_notification_html(
             title=email_subj,
             sections=digest_sections,
-            footer="Athena Cognitive Platform - Developed by William Nelson 2016",
+            footer="Athena Cognitive Engine - Developed by William Nelson 2016",
         )
 
         result = await send_email(

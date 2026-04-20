@@ -28,6 +28,7 @@ import multiprocessing
 import os
 import re
 import sys
+sys.path.insert(0, "/opt/wdws")
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -43,6 +44,12 @@ import pytesseract
 from pdf2image import convert_from_path, pdfinfo_from_path
 from PIL import Image
 
+from embedding_service import (
+    embed_texts_sync, embed_query_sync, _vec_literal as _embedding_vec_literal,
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks
+
 # OCR worker count — each worker spawns pdftoppm + tesseract subprocesses,
 # so real CPU usage = workers × 2-3. Keep this conservative to avoid
 # overloading the system (e.g., 8 workers × 3 subprocs = 24 on 32 cores).
@@ -52,15 +59,10 @@ OCR_WORKERS = min(8, max(1, multiprocessing.cpu_count() // 4))
 # Configuration
 # ============================================================
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://wdws:NEL2233obs@127.0.0.1:5432/wdws"
-)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072
+DATABASE_URL = os.environ["DATABASE_URL"]
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# EMBEDDING_MODEL and EMBEDDING_DIMENSIONS imported from embedding_service
+# (BGE-M3 local model, 1024 dimensions)
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/wdws/data"))
 CASES_DIR   = DATA_DIR / "cases"
@@ -558,35 +560,22 @@ def parse_ccda(xml_path: Path) -> Optional[Dict]:
 # ============================================================
 
 class EmbeddingClient:
-    """Async OpenAI embedding client with batching."""
+    """Local BGE-M3 embedding client with batching (delegates to embedding_service)."""
 
-    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = EMBEDDING_MODEL):
-        self.api_key = api_key
-        self.model = model
-        self.client = httpx.AsyncClient(timeout=60.0)
+    def __init__(self, **kwargs):
         self.total_tokens = 0
         self.total_requests = 0
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """Embed a batch of texts. Returns list of 3072-dim vectors."""
+        """Embed a batch of texts. Returns list of 1024-dim vectors."""
         if not texts:
             return []
-        # Truncate to 8191 tokens (OpenAI limit) — rough char estimate
-        truncated = [t[:30000] for t in texts]
-
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={"input": truncated, "model": self.model, "dimensions": EMBEDDING_DIMENSIONS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
+        result = embed_texts_sync(texts)
         self.total_requests += 1
-        return [d["embedding"] for d in data["data"]]
+        return result
 
     async def close(self):
-        await self.client.aclose()
+        pass  # No HTTP client to close
 
 
 # ============================================================
@@ -963,7 +952,7 @@ def process_medical_image(img_path: Path, chunker: TextChunker) -> Optional[Inge
 
 def _vec_literal(embedding: List[float]) -> str:
     """Convert embedding list to PostgreSQL halfvec literal."""
-    return "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+    return _embedding_vec_literal(embedding)
 
 
 async def ensure_cases_exist(pool: asyncpg.Pool):
@@ -1037,36 +1026,43 @@ async def write_document(pool: asyncpg.Pool, doc: IngestedDocument, embeddings: 
     """Write a fully processed document + chunks + enrichment to PostgreSQL."""
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # 1. core.documents
+            # 1. core.documents (raw_content preserves pre-cleaning text)
             await conn.execute("""
                 INSERT INTO core.documents
                     (id, domain, source_path, filename, document_type, title,
-                     content_hash, total_chunks, full_content, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                     content_hash, total_chunks, full_content, raw_content, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
                 ON CONFLICT (id) DO NOTHING
             """,
                 uuid.UUID(doc.doc_id), doc.domain, doc.source_path,
                 doc.filename, doc.document_type, doc.title,
                 doc.content_hash, len(doc.chunks),
-                doc.full_content[:500000],  # Safety cap
+                doc.full_content[:500000],  # Safety cap — cleaned text
+                doc.full_content[:500000],  # raw_content — same for now, differs when cleaning is added
                 json.dumps(doc.metadata),
             )
 
-            # 2. core.document_chunks
+            # 2. core.document_chunks (embedded_content = contextual text that was actually embedded)
             for chunk, emb in zip(doc.chunks, embeddings):
                 chunk_id = hashlib.md5(
                     f"{doc.source_path}:{chunk.chunk_index}".encode()
                 ).hexdigest()
+                # Use enriched text if available (from contextual retrieval)
+                embedded_content = chunk.metadata.pop("_embedded_content", chunk.content)
+                chunk.metadata.pop("_context", None)
                 await conn.execute("""
                     INSERT INTO core.document_chunks
                         (id, document_id, chunk_index, total_chunks,
-                         content, embedding, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                         content, embedding, embedding_model_id,
+                         embedded_content, embedded_at, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, 2,
+                            $7, now(), $8::jsonb)
                     ON CONFLICT (id) DO NOTHING
                 """,
                     chunk_id, uuid.UUID(doc.doc_id),
                     chunk.chunk_index, chunk.total_chunks,
                     chunk.content, _vec_literal(emb),
+                    embedded_content,
                     json.dumps(chunk.metadata),
                 )
 
@@ -1231,17 +1227,40 @@ async def embed_and_write_single(
     pool: asyncpg.Pool, embedder: EmbeddingClient,
     doc: IngestedDocument, stats: Dict,
 ):
-    """Embed and write a single document immediately to PostgreSQL."""
+    """Embed and write a single document with Contextual Retrieval.
+
+    1. Generate document-level context summary via Claude Sonnet
+    2. Prepend context to each chunk
+    3. Embed the enriched chunks with BGE-M3
+    4. Write to PostgreSQL with embedded_content tracking
+    """
     chunk_texts = [c.content for c in doc.chunks]
     if not chunk_texts:
         return
 
-    # Embed all chunks for this one document
+    # Generate contextual summary for this document
+    case_number = doc.case_numbers[0] if doc.case_numbers else None
+    context = generate_context_sync(
+        title=doc.title,
+        domain=doc.domain,
+        document_type=doc.document_type,
+        content_preview=doc.full_content[:3000],
+        case_number=case_number,
+    )
+
+    # Prepend context to each chunk before embedding
+    enriched_texts = enrich_chunks(context, chunk_texts)
+
+    # Store enriched texts on the chunks so write_document can persist them
+    for chunk, enriched in zip(doc.chunks, enriched_texts):
+        chunk.metadata["_embedded_content"] = enriched
+        chunk.metadata["_context"] = context[:100]
+
+    # Embed the enriched (contextual) texts
     try:
-        embeddings = await embedder.embed_batch(chunk_texts)
+        embeddings = await embedder.embed_batch(enriched_texts)
     except Exception as e:
         log.error(f"  Embedding failed for {doc.filename}: {e}")
-        # Use zero vectors as fallback so the document is still written
         embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunk_texts)
 
     try:

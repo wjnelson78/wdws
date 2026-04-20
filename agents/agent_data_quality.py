@@ -22,7 +22,7 @@ class DataQualityAgent(BaseAgent):
     priority = 3
     capabilities = ["embedding-audit", "ocr-quality", "dedup", "integrity-check"]
 
-    instructions = """You are the Data Quality Agent for the Athena Cognitive Platform.
+    instructions = """You are the Data Quality Agent for the Athena Cognitive Engine.
 
 DATABASE SCHEMA:
 - core.documents: id, domain, document_type, title, source_path, filename, content_hash, full_content, total_chunks, metadata, created_at, updated_at

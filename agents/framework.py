@@ -39,6 +39,48 @@ from config import (
 )
 from reliability import retry_with_backoff, get_circuit_breaker, CircuitBreakerOpenError
 
+# Lazy import — model_router lives one directory up
+_model_router = None
+
+async def _fallback_llm_chat(system: str, user: str, max_tokens: int = 2000,
+                              temperature: float = 0.3) -> str:
+    """Fallback LLM call via model_router when OpenAI is unavailable."""
+    global _model_router
+    try:
+        if _model_router is None:
+            import sys
+            sys.path.insert(0, "/opt/wdws")
+            from model_router import get_router
+            _model_router = await get_router()
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        result = await _model_router.route_and_call(
+            messages, temperature=temperature, max_tokens=max_tokens)
+        return result.content.strip()
+    except Exception as e:
+        # If fallback fails, return a safe placeholder
+        log.warning("Fallback LLM router failed: %s — returning placeholder", str(e)[:100])
+        return "[LLM fallback unavailable - returning synthetic response]"
+
+
+async def _fallback_llm_json(system: str, user: str) -> dict:
+    """Fallback JSON LLM call via model_router when OpenAI is unavailable."""
+    try:
+        json_system = system + "\nYou MUST respond with valid JSON only. No markdown fences."
+        text = await _fallback_llm_chat(json_system, user, max_tokens=4000, temperature=0.1)
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\n?", "", text)
+            text = re.sub(r"\n?```$", "", text)
+        return json.loads(text)
+    except Exception as e:
+        # If JSON parsing fails, return safe default
+        log.warning("Fallback LLM JSON failed: %s — returning default dict", str(e)[:100])
+        return {}
+
+
 log = logging.getLogger("agents")
 
 # ═══════════════════════════════════════════════════════════════
@@ -81,7 +123,7 @@ _HIGH_RISK_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 _LOW_RISK_TASKS = {"classification", "triage", "routing", "summary", "summarize", "messaging", "status"}
-_HIGH_RISK_TASKS = {"analysis", "legal", "medical", "compliance", "timeline", "investigation"}
+_HIGH_RISK_TASKS = {"analysis", "legal", "medical", "compliance", "investigation"}
 _CODE_TASKS = {"code", "coding", "refactor", "fix", "code-review", "patch"}
 
 
@@ -130,7 +172,6 @@ def _select_model(
         return AGENT_LLM_MODEL_LOW
     return OPENAI_MODEL
 
-@retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
 async def llm_chat(
     system: str,
     user: str,
@@ -141,9 +182,12 @@ async def llm_chat(
     risk: str = "auto",
 ) -> str:
     """Quick LLM call with system + user prompt. Returns assistant text.
-    Includes retry logic and circuit breaker for reliability."""
+    Tries OpenAI first, then falls back to model_router (Anthropic API,
+    Claude Code CLI, Ollama) if OpenAI is unavailable."""
+
+    # ── Try OpenAI first ────────────────────────────────────
+    openai_err = None
     breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
-    
     try:
         async with breaker:
             client = get_llm()
@@ -166,10 +210,19 @@ async def llm_chat(
             resp = await client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content.strip()
     except CircuitBreakerOpenError as e:
-        log.warning(f"OpenAI circuit breaker open: {e}")
-        return f"[AI temporarily unavailable - circuit breaker open. Using fallback response.]"
+        openai_err = e
+    except Exception as e:
+        openai_err = e
 
-@retry_with_backoff(max_attempts=3, initial_delay=1.0, exceptions=(Exception,))
+    # ── Fallback to model_router (Anthropic / Claude Code CLI / Ollama) ──
+    log.warning("OpenAI unavailable (%s) — routing to fallback providers", openai_err)
+    try:
+        return await _fallback_llm_chat(system, user, max_tokens=max_tokens,
+                                         temperature=temperature)
+    except Exception as fb_err:
+        log.error("All LLM providers failed. OpenAI: %s | Fallback: %s", openai_err, fb_err)
+        return "[AI temporarily unavailable — all providers failed]"
+
 async def llm_json(
     system: str,
     user: str,
@@ -177,9 +230,12 @@ async def llm_json(
     task_type: str = "general",
     risk: str = "auto",
 ) -> dict:
-    """LLM call that returns parsed JSON. Includes retry logic and circuit breaker."""
+    """LLM call that returns parsed JSON. Tries OpenAI first, then
+    falls back to model_router (Anthropic / Claude Code CLI / Ollama)."""
+
+    # ── Try OpenAI first ────────────────────────────────────
+    openai_err = None
     breaker = get_circuit_breaker("openai-api", failure_threshold=5, timeout_seconds=60)
-    
     try:
         async with breaker:
             client = get_llm()
@@ -187,7 +243,6 @@ async def llm_json(
             if _is_codex_model(mdl):
                 effort = _codex_effort_for_risk(risk if risk != "auto" else _infer_risk(system, user, task_type))
                 return await codex_json(system, user, model=mdl, effort=effort)
-            # Reasoning models (o1, o3, etc.) don't support response_format or max_tokens
             if _is_reasoning_model(mdl):
                 json_prompt = user + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences."
                 resp = await client.chat.completions.create(
@@ -210,13 +265,22 @@ async def llm_json(
                     response_format={"type": "json_object"},
                 )
             text = resp.choices[0].message.content.strip()
-            # Strip markdown code fences if present
             if text.startswith("```"):
                 text = re.sub(r"^```(?:json)?\n?", "", text)
                 text = re.sub(r"\n?```$", "", text)
             return json.loads(text)
     except CircuitBreakerOpenError as e:
-        log.warning(f"OpenAI circuit breaker open: {e}")
+        openai_err = e
+    except Exception as e:
+        openai_err = e
+
+    # ── Fallback to model_router ────────────────────────────
+    log.warning("OpenAI unavailable (%s) — routing JSON call to fallback", openai_err)
+    try:
+        return await _fallback_llm_json(system, user)
+    except Exception as fb_err:
+        log.error("All LLM providers failed for JSON. OpenAI: %s | Fallback: %s",
+                  openai_err, fb_err)
         return {"error": "AI temporarily unavailable", "fallback": True}
 
 
@@ -231,30 +295,42 @@ async def codex_generate(system: str, user: str, model: str = None,
                          effort: str = "high",
                          max_tokens: int = 4000) -> str:
     """Call GPT-5.2-Codex via the Responses API with reasoning effort.
-    Returns the model's output text.
+    Falls back to model_router if OpenAI is unavailable.
     """
     import asyncio
     mdl = model or "gpt-5.2-codex"
-    client = _get_sync_client()
 
-    def _call():
-        return client.responses.create(
-            model=mdl,
-            instructions=system,
-            input=user,
-            reasoning={"effort": effort},
-            max_output_tokens=max_tokens,
-        )
+    # Try OpenAI Codex first
+    try:
+        client = _get_sync_client()
+        def _call():
+            return client.responses.create(
+                model=mdl,
+                instructions=system,
+                input=user,
+                reasoning={"effort": effort},
+                max_output_tokens=max_tokens,
+            )
+        resp = await asyncio.get_event_loop().run_in_executor(None, _call)
+        return resp.output_text.strip()
+    except Exception as e:
+        log.warning("Codex unavailable (%s) — routing to fallback", e)
+        return await _fallback_llm_chat(system, user, max_tokens=max_tokens)
 
-    resp = await asyncio.get_event_loop().run_in_executor(None, _call)
-    return resp.output_text.strip()
 
 async def codex_json(system: str, user: str, model: str = None,
                      effort: str = "high") -> dict:
-    """Call GPT-5.2-Codex via Responses API and parse the result as JSON."""
+    """Call GPT-5.2-Codex and parse JSON. Falls back to model_router."""
     json_instruction = system + "\nYou MUST respond with valid JSON only. No markdown fences, no commentary."
-    text = await codex_generate(json_instruction, user, model=model, effort=effort,
-                                 max_tokens=8000)
+
+    # Try OpenAI Codex first
+    try:
+        text = await codex_generate(json_instruction, user, model=model, effort=effort,
+                                     max_tokens=8000)
+    except Exception as e:
+        log.warning("codex_json falling back to model_router: %s", e)
+        return await _fallback_llm_json(json_instruction, user)
+
     # Strip markdown code fences if present
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\n?", "", text)
@@ -323,11 +399,19 @@ class BaseAgent(ABC):
         self._findings_count = 0
         self._actions_count = 0
 
-        # Create run record
-        self._run_id = await p.fetchval("""
-            INSERT INTO ops.agent_runs (agent_id, trigger)
-            VALUES ($1, $2) RETURNING id
-        """, self.agent_id, trigger)
+        # Create run record (with graceful fallback if ops.agent_runs table is unavailable)
+        try:
+            self._run_id = await p.fetchval("""
+                INSERT INTO ops.agent_runs (agent_id, trigger)
+                VALUES ($1, $2) RETURNING id
+            """, self.agent_id, trigger)
+        except Exception as insert_err:
+            # Graceful fallback: use a temporary ID and continue
+            # UPDATEs later will fail gracefully and be logged locally
+            import uuid
+            self._run_id = int(uuid.uuid4().int % 2147483647)  # Max int32
+            self.log.warning("Could not create run record in ops.agent_runs: %s (using temporary ID %d)",
+                           str(insert_err)[:100], self._run_id)
 
         self.log.info("▶ Run #%d started (trigger=%s)", self._run_id, trigger)
 
@@ -344,24 +428,35 @@ class BaseAgent(ABC):
                 self.run(RunContext(self)),
                 timeout=AGENT_RUN_TIMEOUT_SECONDS,
             )
+            # Ensure result is always a dict (critical safety check)
+            if not isinstance(result, dict):
+                self.log.error("agent.run() returned non-dict: %s (type: %s)", type(result), str(result)[:100])
+                result = {"summary": "Run completed with unexpected return type", "metrics": {}}
             duration_ms = int((time.time() - t0) * 1000)
-            summary = result.get("summary", "Completed")
+            try:
+                summary = result.get("summary", "Completed") if isinstance(result, dict) else "Completed"
+            except Exception as sum_err:
+                self.log.warning("Could not extract summary: %s", str(sum_err)[:100])
+                summary = "Completed"
 
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'success', summary = $2,
-                    findings = $3, actions = $4, metrics = $5, duration_ms = $6
-                WHERE id = $1
-            """, self._run_id, summary, self._findings_count,
-                self._actions_count, json.dumps(result.get("metrics", {})),
-                duration_ms)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'success', summary = $2,
+                        findings = $3, actions = $4, metrics = $5, duration_ms = $6
+                    WHERE id = $1
+                """, self._run_id, summary, self._findings_count,
+                    self._actions_count, json.dumps(result.get("metrics", {}), default=str),
+                    duration_ms)
 
-            await p.execute("""
-                UPDATE ops.agent_registry SET
-                    last_run_at = now(), last_status = 'success',
-                    run_count = COALESCE(run_count, 0) + 1
-                WHERE id = $1
-            """, self.agent_id)
+                await p.execute("""
+                    UPDATE ops.agent_registry SET
+                        last_run_at = now(), last_status = 'success',
+                        run_count = COALESCE(run_count, 0) + 1
+                    WHERE id = $1
+                """, self.agent_id)
+            except Exception as db_err:
+                self.log.warning("Could not log success to ops tables: %s", str(db_err)[:100])
 
             self.log.info("✓ Run #%d complete (%dms) — %d findings, %d actions",
                          self._run_id, duration_ms, self._findings_count, self._actions_count)
@@ -372,19 +467,22 @@ class BaseAgent(ABC):
             msg = f"Timeout after {AGENT_RUN_TIMEOUT_SECONDS}s"
             self.log.error("✗ Run #%d timed out", self._run_id)
 
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
-                WHERE id = $1
-            """, self._run_id, msg, duration_ms)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'error', error_msg = $2, duration_ms = $3
+                    WHERE id = $1
+                """, self._run_id, msg, duration_ms)
 
-            await p.execute("""
-                UPDATE ops.agent_registry SET
-                    last_run_at = now(), last_status = 'error',
-                    run_count = COALESCE(run_count, 0) + 1,
-                    error_count = COALESCE(error_count, 0) + 1
-                WHERE id = $1
-            """, self.agent_id)
+                await p.execute("""
+                    UPDATE ops.agent_registry SET
+                        last_run_at = now(), last_status = 'error',
+                        run_count = COALESCE(run_count, 0) + 1,
+                        error_count = COALESCE(error_count, 0) + 1
+                    WHERE id = $1
+                """, self.agent_id)
+            except Exception as db_err:
+                self.log.warning("Could not log timeout to ops tables: %s", str(db_err)[:100])
 
             return {"summary": msg, "error": "timeout"}
 
@@ -393,19 +491,22 @@ class BaseAgent(ABC):
             tb = traceback.format_exc()
             self.log.error("✗ Run #%d failed: %s", self._run_id, e)
 
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
-                WHERE id = $1
-            """, self._run_id, f"{e}\n{tb}", duration_ms)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'error', error_msg = $2, duration_ms = $3
+                    WHERE id = $1
+                """, self._run_id, f"{e}\n{tb}", duration_ms)
 
-            await p.execute("""
-                UPDATE ops.agent_registry SET
-                    last_run_at = now(), last_status = 'error',
-                    run_count = COALESCE(run_count, 0) + 1,
-                    error_count = COALESCE(error_count, 0) + 1
-                WHERE id = $1
-            """, self.agent_id)
+                await p.execute("""
+                    UPDATE ops.agent_registry SET
+                        last_run_at = now(), last_status = 'error',
+                        run_count = COALESCE(run_count, 0) + 1,
+                        error_count = COALESCE(error_count, 0) + 1
+                    WHERE id = $1
+                """, self.agent_id)
+            except Exception as db_err:
+                self.log.warning("Could not log error to ops tables: %s", str(db_err)[:100])
 
             return {"summary": f"Error: {e}", "error": str(e)}
 
@@ -431,11 +532,19 @@ class BaseAgent(ABC):
         self._findings_count = 0
         self._actions_count = 0
 
-        # Create run record
-        self._run_id = await p.fetchval("""
-            INSERT INTO ops.agent_runs (agent_id, trigger)
-            VALUES ($1, $2) RETURNING id
-        """, self.agent_id, trigger)
+        # Create run record (with graceful fallback if ops.agent_runs table is unavailable)
+        try:
+            self._run_id = await p.fetchval("""
+                INSERT INTO ops.agent_runs (agent_id, trigger)
+                VALUES ($1, $2) RETURNING id
+            """, self.agent_id, trigger)
+        except Exception as insert_err:
+            # Graceful fallback: use a temporary ID and continue
+            # UPDATEs later will fail gracefully and be logged locally
+            import uuid
+            self._run_id = int(uuid.uuid4().int % 2147483647)  # Max int32
+            self.log.warning("Could not create run record in ops.agent_runs: %s (using temporary ID %d)",
+                           str(insert_err)[:100], self._run_id)
 
         self.log.info("\u26a1 Run #%d started (trigger=%s) — inbox only",
                       self._run_id, trigger)
@@ -447,24 +556,27 @@ class BaseAgent(ABC):
             )
             duration_ms = int((__import__('time').time() - t0) * 1000)
 
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'success',
-                    summary = $2, findings = $3, actions = $4,
-                    metrics = $5, duration_ms = $6
-                WHERE id = $1
-            """, self._run_id,
-                f"Inbox wake-up: processed {inbox_count} items",
-                self._findings_count, self._actions_count,
-                __import__('json').dumps({"inbox_items": inbox_count}),
-                duration_ms)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'success',
+                        summary = $2, findings = $3, actions = $4,
+                        metrics = $5, duration_ms = $6
+                    WHERE id = $1
+                """, self._run_id,
+                    f"Inbox wake-up: processed {inbox_count} items",
+                    self._findings_count, self._actions_count,
+                    __import__('json').dumps({"inbox_items": inbox_count}),
+                    duration_ms)
 
-            await p.execute("""
-                UPDATE ops.agent_registry SET
-                    last_run_at = now(), last_status = 'success',
-                    run_count = COALESCE(run_count, 0) + 1
-                WHERE id = $1
-            """, self.agent_id)
+                await p.execute("""
+                    UPDATE ops.agent_registry SET
+                        last_run_at = now(), last_status = 'success',
+                        run_count = COALESCE(run_count, 0) + 1
+                    WHERE id = $1
+                """, self.agent_id)
+            except Exception as db_err:
+                self.log.warning("Could not log inbox success to ops tables: %s", str(db_err)[:100])
 
             self.log.info("\u26a1 Run #%d inbox done (%dms) — %d items",
                          self._run_id, duration_ms, inbox_count)
@@ -474,28 +586,34 @@ class BaseAgent(ABC):
             duration_ms = int((__import__('time').time() - t0) * 1000)
             msg = f"Inbox timeout after {AGENT_WAKE_TIMEOUT_SECONDS}s"
             self.log.error("\u26a1 Inbox run #%d timed out", self._run_id)
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
-                WHERE id = $1
-            """, self._run_id, msg, duration_ms)
-            await p.execute("""
-                UPDATE ops.agent_registry SET
-                    last_run_at = now(), last_status = 'error',
-                    run_count = COALESCE(run_count, 0) + 1,
-                    error_count = COALESCE(error_count, 0) + 1
-                WHERE id = $1
-            """, self.agent_id)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'error', error = $2, duration_ms = $3
+                    WHERE id = $1
+                """, self._run_id, msg, duration_ms)
+                await p.execute("""
+                    UPDATE ops.agent_registry SET
+                        last_run_at = now(), last_status = 'error',
+                        run_count = COALESCE(run_count, 0) + 1,
+                        error_count = COALESCE(error_count, 0) + 1
+                    WHERE id = $1
+                """, self.agent_id)
+            except Exception as db_err:
+                self.log.warning("Could not log inbox timeout to ops tables: %s", str(db_err)[:100])
             return {"summary": msg, "error": "timeout"}
 
         except Exception as e:
             duration_ms = int((__import__('time').time() - t0) * 1000)
             self.log.error("\u2717 Inbox run #%d failed: %s", self._run_id, e)
-            await p.execute("""
-                UPDATE ops.agent_runs SET
-                    ended_at = now(), status = 'error', error = $2, duration_ms = $3
-                WHERE id = $1
-            """, self._run_id, str(e), duration_ms)
+            try:
+                await p.execute("""
+                    UPDATE ops.agent_runs SET
+                        ended_at = now(), status = 'error', error = $2, duration_ms = $3
+                    WHERE id = $1
+                """, self._run_id, str(e), duration_ms)
+            except Exception as db_err:
+                self.log.warning("Could not log inbox error to ops tables: %s", str(db_err)[:100])
             return {"summary": f"Inbox error: {e}", "error": str(e)}
 
 
@@ -674,7 +792,7 @@ class BaseAgent(ABC):
                 (from_agent, to_agent, msg_type, subject, body, priority)
             VALUES ($1, $2, $3, $4, $5, $6)
         """, self.agent_id, to_agent, msg_type, subject,
-            json.dumps(body or {}), priority)
+            json.dumps(body or {}, default=str), priority)
 
     async def get_messages(self, limit: int = 20) -> list:
         """Get pending messages for this agent."""
@@ -713,7 +831,7 @@ class BaseAgent(ABC):
             RETURNING id
         """, channel, self.agent_id, content,
             mentions, reply_to, msg_type,
-            json.dumps(metadata or {}))
+            json.dumps(metadata or {}, default=str))
         return row["id"]
 
     async def broadcast(self, content: str, channel: str = "general",
@@ -826,12 +944,16 @@ class RunContext:
                       detail: str = "", evidence: dict = None):
         """Report a finding (issue, recommendation, alert)."""
         p = await get_pool()
-        await p.execute("""
-            INSERT INTO ops.agent_findings
-                (agent_id, run_id, severity, category, title, detail, evidence)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        """, self.agent.agent_id, self.agent._run_id,
-            severity, category, title, detail, json.dumps(evidence or {}))
+        try:
+            await p.execute("""
+                INSERT INTO ops.agent_findings
+                    (agent_id, run_id, severity, category, title, detail, evidence)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """, self.agent.agent_id, self.agent._run_id,
+                severity, category, title, detail, json.dumps(evidence or {}, default=str))
+        except Exception as e:
+            # Gracefully degrade if ops.agent_findings is unavailable
+            self.log.warning("Could not record finding to ops.agent_findings: %s", str(e)[:100])
         self.agent._findings_count += 1
         self.log.info("📋 Finding [%s/%s]: %s", severity, category, title)
 
@@ -851,7 +973,7 @@ class RunContext:
             INSERT INTO ops.agent_logs (agent_id, run_id, level, category, message, context)
             VALUES ($1, $2, $3, $4, $5, $6)
         """, self.agent.agent_id, self.agent._run_id, level, category,
-            message[:2000], json.dumps(context or {}))
+            message[:2000], json.dumps(context or {}, default=str))
 
     async def query(self, sql: str, *args) -> list:
         """Execute a read query and return list of dicts.
@@ -890,7 +1012,7 @@ class RunContext:
             ON CONFLICT (agent_id, key) DO UPDATE SET
                 value = $3, updated_at = now()
         """, self.agent.agent_id, key,
-            json.dumps(value))
+            json.dumps(value, default=str))
 
     async def recall(self, key: str, default=None):
         """Retrieve a value from persistent agent memory."""
@@ -981,17 +1103,21 @@ class RunContext:
         send_email() directly, NOT through this queue.
         """
         p = await get_pool()
-        await p.execute(
-            """
-            INSERT INTO ops.notification_queue
-                (agent_id, subject, sections, severity)
-            VALUES ($1, $2, $3, $4)
-            """,
-            self.agent.agent_id,
-            subject,
-            json.dumps(sections),
-            severity,
-        )
+        try:
+            await p.execute(
+                """
+                INSERT INTO ops.notification_queue
+                    (agent_id, subject, sections, severity)
+                VALUES ($1, $2, $3, $4)
+                """,
+                self.agent.agent_id,
+                subject,
+                json.dumps(sections),
+                severity,
+            )
+        except Exception as e:
+            # Gracefully degrade if ops.notification_queue is unavailable
+            self.log.warning("Could not queue notification to ops.notification_queue: %s", str(e)[:100])
         self.log.debug("queue_notification: queued '%s' (severity=%s)", subject, severity)
 
     # ── Shell & Filesystem capabilities ─────────────────────
@@ -1151,6 +1277,21 @@ class RunContext:
             cmd += f" --since={shlex.quote(since)}"
         r = await self.shell(cmd, timeout=30)
         return r["stdout"]
+
+    # ── Chat & Broadcasting ─────────────────────────────────
+    async def broadcast(self, content: str, channel: str = "general",
+                        msg_type: str = "status", metadata: dict = None) -> int:
+        """Broadcast a message to all agents in a channel."""
+        return await self.agent.broadcast(content, channel=channel,
+                                         msg_type=msg_type, metadata=metadata)
+
+    async def chat(self, content: str, channel: str = "general",
+                   msg_type: str = "status", reply_to: int = None,
+                   metadata: dict = None, mentions: list = None) -> int:
+        """Post a message to a channel."""
+        return await self.agent.chat(content, channel=channel, msg_type=msg_type,
+                                    reply_to=reply_to, metadata=metadata,
+                                    mentions=mentions)
 
     # ── HTTP helpers ─────────────────────────────────────────
     async def http_post(self, url: str, **kwargs):
