@@ -16,7 +16,9 @@ Usage:
 """
 import os
 import sys
+sys.path.insert(0, "/opt/wdws")
 import json
+import importlib.util
 import re
 import uuid
 import hashlib
@@ -26,6 +28,7 @@ import time
 import argparse
 import subprocess
 import tempfile
+import traceback
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -37,6 +40,56 @@ import email as email_lib
 
 import httpx
 import asyncpg
+
+
+def _ensure_project_venv_for_embeddings() -> None:
+    """Re-exec under the project venv when embedding deps are missing.
+
+    Operators sometimes invoke this script with the system `python3`, but the
+    local BGE-M3 stack lives in `/opt/wdws/venv`. When that happens the sync can
+    still ingest emails/OCR attachments yet fall back to zero vectors once
+    `sentence_transformers` is needed. Detect that early and transparently
+    relaunch the same command under the project venv.
+    """
+    if os.getenv("WDWS_SKIP_VENV_REEXEC") == "1":
+        return
+
+    venv_python = Path(os.getenv("WDWS_VENV_PYTHON", "/opt/wdws/venv/bin/python3"))
+    if not venv_python.exists():
+        return
+
+    current_python = Path(sys.executable).resolve()
+    target_python = venv_python.resolve()
+    if current_python == target_python:
+        return
+
+    if importlib.util.find_spec("sentence_transformers") is not None:
+        return
+
+    print(
+        f"[email_sync] sentence_transformers missing in {current_python}; "
+        f"relaunching with {target_python}",
+        file=sys.stderr,
+        flush=True,
+    )
+    os.execv(str(target_python), [str(target_python), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+from email_sync_config import (
+    MAILBOXES,
+    TARGET_DOMAINS,
+    TARGET_SPECIFIC_EMAILS,
+    resolve_sync_configuration,
+)
+from embedding_service import (
+    embed_texts_sync, embed_query_sync,
+    _vec_literal as _embedding_vec_literal,
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+)
+from contextual_retrieval import generate_context_sync, enrich_chunks
+from agents.email_util import (
+    build_notification_html as build_alert_notification_html,
+    send_email as send_alert_email,
+)
 
 # ============================================================
 # Configuration
@@ -53,12 +106,14 @@ if _env_file.exists():
             _os.environ.setdefault(_k.strip(), _v.strip())
 
 
+_ensure_project_venv_for_embeddings()
+
+
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
     raise RuntimeError("Missing DATABASE_URL — check /opt/wdws/.env")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-if not OPENAI_API_KEY:
-    raise RuntimeError("Missing OPENAI_API_KEY — check /opt/wdws/.env")
+# OpenAI API key no longer required — embeddings use local BGE-M3 model
 
 # Graph API credentials
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
@@ -70,65 +125,25 @@ if not GRAPH_CLIENT_SECRET:
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 if not GRAPH_TENANT_ID:
     raise RuntimeError("Missing GRAPH_TENANT_ID — check /opt/wdws/.env")
+GRAPH_SENDER_EMAIL = (
+    os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me")
+    or "athena@seattleseahawks.me"
+).strip()
+ATHENA_ALERT_EMAIL = (
+    os.getenv("ATHENA_ALERT_EMAIL", "athena@seattleseahawks.me")
+    or "athena@seattleseahawks.me"
+).strip()
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token"
 
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072
+# EMBEDDING_MODEL and EMBEDDING_DIMENSIONS imported from embedding_service
+# (BGE-M3 local model, 1024 dimensions)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 EMAILS_DIR = Path(os.getenv("EMAILS_DIR", "/opt/wdws/data/emails"))
 RAW_EMAILS_DIR = EMAILS_DIR / "emails"
 ATTACHMENTS_DIR = EMAILS_DIR / "attachments"
-
-# Mailboxes to scan
-MAILBOXES = [
-    "william@seattleseahawks.me",
-    "athena@seattleseahawks.me",
-]
-
-# Target domains — emails to/from these domains will be synced
-TARGET_DOMAINS = [
-    # Government / court
-    "snoco.org",
-    "co.snohomish.wa.us",
-    "courts.wa.gov",
-    "ca9.uscourts.gov",
-    # Opposing / defense counsel law firms
-    "workerlaw.com",        # Iglitzin, Cole, Fernando, Rozzano
-    "csdlaw.com",           # Becker, Davis, Dobbs, Paxton (same firm as cabornelaw)
-    "cabornelaw.com",       # alternate domain for CSD Law
-    "clearpathpllc.com",   # Daniel Fox
-    "fwwlaw.com",           # Lyman, Bertolino, Himes, Ross
-    "kantorlaw.net",        # B. Davis
-    "bn-lawyers.com",       # Suttell
-    "ogletree.com",         # Shapero, Shely
-    "ogletreedeakins.com",  # Shapero, Shely (alternate domain)
-    "lewisbrisbois.com",    # Hunter
-    "grsm.com",             # Jardine, Lockwood
-    "insleebest.com",       # Chambers, Lee
-    "jmblawyers.com",       # Baker
-    "uscanadalaw.com",      # Paul
-    "favros.com",           # James B. Meade
-    "cozen.com",            # Lee
-    "slwsd.com",            # Brees
-    "lldkb.com",            # tam@
-    "starbucks.com",        # Starbucks corp counsel
-    "wahbexchange.org",     # Washington Health Benefit Exchange (WAHBE) — ADA accommodation requests
-    "evergreenhealthcare.org", # EvergreenHealth — primary domain (MyChart, staff, donotreply)
-    "evergreenhealth.com",     # EvergreenHealth — staff email domain (rameeks@, cbredeson@, mshepler@)
-]
-
-# Specific email addresses to always include (regardless of domain)
-# Used for individual contacts whose domains aren't exclusively legal
-TARGET_SPECIFIC_EMAILS = [
-    "fayejwonglawfirm@gmail.com",   # GAL Faye Wong
-    "wjnelson78@gmail.com",         # William personal
-    "rcwcodebuster@gmail.com",      # self research
-    "rcwcodebuster@aol.com",        # self research
-    "rcwcodebuster@yahoo.com",      # self research
-]
 
 # ============================================================
 # Logging
@@ -350,6 +365,119 @@ class IngestedDocument:
     email_meta: Optional[Dict] = None
 
 
+@dataclass
+class AlertIssueBucket:
+    severity: str
+    heading: str
+    count: int = 0
+    details: List[str] = field(default_factory=list)
+
+
+class SyncAlertCollector:
+    def __init__(self, run_label: str):
+        self.run_label = run_label
+        self._buckets: Dict[Tuple[str, str], AlertIssueBucket] = {}
+
+    def record(self, severity: str, heading: str, detail: str) -> None:
+        severity = (severity or "warning").strip().lower()
+        heading = (heading or "Unhandled sync issue").strip()
+        detail = (detail or "").strip()
+        key = (severity, heading)
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            bucket = AlertIssueBucket(severity=severity, heading=heading)
+            self._buckets[key] = bucket
+        bucket.count += 1
+        if detail and detail not in bucket.details and len(bucket.details) < 5:
+            bucket.details.append(detail[:4000])
+
+    def has_issues(self) -> bool:
+        return bool(self._buckets)
+
+    async def flush_email(self) -> None:
+        if not self._buckets:
+            return
+
+        errors = sum(bucket.count for bucket in self._buckets.values() if bucket.severity == "error")
+        warnings = sum(bucket.count for bucket in self._buckets.values() if bucket.severity != "error")
+        subject = (
+            f"Athena Alert — {self.run_label}: {errors} error(s), {warnings} warning(s)"
+        )
+
+        sections = [{
+            "heading": "Run summary",
+            "type": "info" if errors == 0 else "error",
+            "plain_summary": (
+                f"{self.run_label} completed with {errors} error(s) and {warnings} warning(s)."
+            ),
+            "content": "\n".join([
+                f"Run label: {self.run_label}",
+                f"Errors: {errors}",
+                f"Warnings: {warnings}",
+                f"Host: {os.uname().nodename}",
+                f"Python: {sys.executable}",
+                f"Time (UTC): {datetime.now(timezone.utc).isoformat()}",
+            ]),
+        }]
+
+        for bucket in sorted(
+            self._buckets.values(),
+            key=lambda item: (0 if item.severity == "error" else 1, item.heading.lower()),
+        ):
+            sections.append({
+                "heading": bucket.heading,
+                "type": "error" if bucket.severity == "error" else "warning",
+                "plain_summary": f"{bucket.count} occurrence(s)",
+                "content": "\n\n".join(bucket.details) if bucket.details else "No details captured.",
+            })
+
+        body_html = build_alert_notification_html(subject, sections)
+        result = await send_alert_email(
+            tenant_id=GRAPH_TENANT_ID,
+            client_id=GRAPH_CLIENT_ID,
+            client_secret=GRAPH_CLIENT_SECRET,
+            sender=GRAPH_SENDER_EMAIL,
+            to_recipients=[ATHENA_ALERT_EMAIL],
+            subject=subject,
+            body_html=body_html,
+            importance="high" if errors else "normal",
+        )
+        if result.get("status") == "sent":
+            log.info(
+                "Sent Athena alert email for %s (%s error(s), %s warning(s))",
+                self.run_label,
+                errors,
+                warnings,
+            )
+        else:
+            log.error("Failed sending Athena alert email: %s", result.get("error", "unknown error"))
+
+
+_ACTIVE_ALERT_COLLECTOR: Optional[SyncAlertCollector] = None
+
+
+def _record_run_issue(severity: str, heading: str, detail: str) -> None:
+    if _ACTIVE_ALERT_COLLECTOR is not None:
+        _ACTIVE_ALERT_COLLECTOR.record(severity, heading, detail)
+
+
+async def _run_with_error_alerts(run_label: str, coro):
+    global _ACTIVE_ALERT_COLLECTOR
+    collector = SyncAlertCollector(run_label)
+    _ACTIVE_ALERT_COLLECTOR = collector
+    try:
+        return await coro
+    except Exception:
+        collector.record("error", f"{run_label} crashed", traceback.format_exc())
+        raise
+    finally:
+        _ACTIVE_ALERT_COLLECTOR = None
+        try:
+            await collector.flush_email()
+        except Exception as e:
+            log.error("Failed to flush Athena alert email: %s", e)
+
+
 # ============================================================
 # Text chunker
 # ============================================================
@@ -420,30 +548,21 @@ class TextChunker:
 # ============================================================
 
 class EmbeddingClient:
-    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = EMBEDDING_MODEL):
-        self.api_key = api_key
-        self.model = model
-        self.client = httpx.AsyncClient(timeout=60.0)
+    """Local BGE-M3 embedding client with batching (delegates to embedding_service)."""
+
+    def __init__(self, **kwargs):
         self.total_tokens = 0
         self.total_requests = 0
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        truncated = [t[:30000] for t in texts]
-        resp = await self.client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={"input": truncated, "model": self.model, "dimensions": EMBEDDING_DIMENSIONS},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.total_tokens += data.get("usage", {}).get("total_tokens", 0)
+        result = embed_texts_sync(texts)
         self.total_requests += 1
-        return [d["embedding"] for d in data["data"]]
+        return result
 
     async def close(self):
-        await self.client.aclose()
+        pass  # No HTTP client to close
 
 
 # ============================================================
@@ -478,6 +597,7 @@ class GraphClient:
             return True
         except Exception as e:
             log.error(f"✗ Graph API authentication failed: {e}")
+            _record_run_issue("error", "Graph API authentication failed", str(e))
             return False
 
     async def _ensure_token(self):
@@ -486,50 +606,65 @@ class GraphClient:
             await self.authenticate()
 
     async def _get(self, url: str, params: dict = None) -> Optional[dict]:
-        """Make authenticated GET request."""
-        await self._ensure_token()
-        try:
-            resp = await self.client.get(
-                url,
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                params=params,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                # Rate limited — wait and retry
-                retry_after = int(e.response.headers.get("Retry-After", "10"))
-                log.warning(f"  Rate limited, waiting {retry_after}s...")
-                await asyncio.sleep(retry_after)
-                return await self._get(url, params)
-            log.error(f"  Graph API error {e.response.status_code}: {e.response.text[:200]}")
-            return None
-        except Exception as e:
-            log.error(f"  Graph API request failed: {e}")
-            return None
+        """Make authenticated GET request with iterative rate-limit retry."""
+        for attempt in range(5):
+            await self._ensure_token()
+            try:
+                resp = await self.client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                    params=params,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < 4:
+                    retry_after = int(e.response.headers.get("Retry-After", "10"))
+                    log.warning(f"  Rate limited (attempt {attempt+1}/5), waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                log.error(f"  Graph API error {e.response.status_code}: {e.response.text[:200]}")
+                _record_run_issue(
+                    "warning",
+                    "Graph API request failed",
+                    f"URL: {url}\nHTTP {e.response.status_code}\n{e.response.text[:500]}",
+                )
+                return None
+            except Exception as e:
+                log.error(f"  Graph API request failed: {e}")
+                _record_run_issue("warning", "Graph API request failed", f"URL: {url}\n{e}")
+                return None
+        return None
 
     async def _get_raw(self, url: str) -> Optional[bytes]:
         """Make authenticated GET request returning raw bytes (for MIME)."""
-        await self._ensure_token()
-        try:
-            resp = await self.client.get(
-                url,
-                headers={"Authorization": f"Bearer {self.access_token}"},
-            )
-            resp.raise_for_status()
-            return resp.content
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                retry_after = int(e.response.headers.get("Retry-After", "10"))
-                log.warning(f"  Rate limited, waiting {retry_after}s...")
-                await asyncio.sleep(retry_after)
-                return await self._get_raw(url)
-            log.error(f"  MIME fetch error {e.response.status_code}")
-            return None
-        except Exception as e:
-            log.error(f"  MIME fetch failed: {e}")
-            return None
+        for attempt in range(5):
+            await self._ensure_token()
+            try:
+                resp = await self.client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.content
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < 4:
+                    retry_after = int(e.response.headers.get("Retry-After", "10"))
+                    log.warning(f"  Rate limited (attempt {attempt+1}/5), waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                log.error(f"  MIME fetch error {e.response.status_code}")
+                _record_run_issue(
+                    "warning",
+                    "Graph MIME fetch failed",
+                    f"URL: {url}\nHTTP {e.response.status_code}",
+                )
+                return None
+            except Exception as e:
+                log.error(f"  MIME fetch failed: {e}")
+                _record_run_issue("warning", "Graph MIME fetch failed", f"URL: {url}\n{e}")
+                return None
+        return None
 
     async def get_user_info(self, mailbox: str) -> Optional[dict]:
         """Get user profile info."""
@@ -675,6 +810,7 @@ def parse_mime_bytes(mime_data: bytes) -> Optional[Dict]:
         }
     except Exception as e:
         log.error(f"MIME parse failed: {e}")
+        _record_run_issue("error", "MIME parse failed", str(e))
         return None
 
 
@@ -777,7 +913,7 @@ def email_involves_domains(msg_data: dict, domains: List[str]) -> bool:
 
 def _vec_literal(embedding: List[float]) -> str:
     """Convert embedding list to PostgreSQL halfvec literal."""
-    return "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+    return _embedding_vec_literal(embedding)
 
 
 def _parse_email_date(date_str: str) -> Optional[datetime]:
@@ -920,17 +1056,19 @@ async def write_email_document(pool: asyncpg.Pool, doc: IngestedDocument, embedd
                 chunk_id = hashlib.md5(
                     f"{doc.source_path}:{chunk.chunk_index}".encode()
                 ).hexdigest()
+                chunk_meta = dict(chunk.metadata)
+                enriched = chunk_meta.pop("_embedded_content", None)
                 await conn.execute("""
                     INSERT INTO core.document_chunks
                         (id, document_id, chunk_index, total_chunks,
-                         content, embedding, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                         content, embedded_content, embedding, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
                     ON CONFLICT (id) DO NOTHING
                 """,
                     chunk_id, uuid.UUID(doc.doc_id),
                     chunk.chunk_index, chunk.total_chunks,
-                    chunk.content, _vec_literal(emb),
-                    json.dumps(chunk.metadata),
+                    chunk.content, enriched, _vec_literal(emb),
+                    json.dumps(chunk_meta),
                 )
 
             # 3. Link to legal cases
@@ -1061,9 +1199,9 @@ async def process_email_attachments(
         att_source_path = local_attachment_path or f"{email_source_path}/attachment/{fname}"
 
         try:
-            # 1. OCR / extract text
-            extracted_text, extraction_method = extract_text_from_binary(
-                fname, content_type, data
+            # 1. OCR / extract text (run in thread to avoid blocking event loop)
+            extracted_text, extraction_method = await asyncio.to_thread(
+                extract_text_from_binary, fname, content_type, data
             )
             child_doc_id = existing_row.get("child_doc_id") if existing_row else None
             if not child_doc_id:
@@ -1160,11 +1298,26 @@ async def process_email_attachments(
             if not chunks_text:
                 chunks_text = [extracted_text[:CHUNK_SIZE]]
 
-            # 3. Embed
+            # 2b. Contextual Retrieval: generate context and enrich chunks
+            att_context = generate_context_sync(
+                title=title,
+                domain="legal",
+                document_type="email_attachment",
+                content_preview=extracted_text[:3000],
+                case_number=None,
+            )
+            att_enriched_texts = enrich_chunks(att_context, chunks_text)
+
+            # 3. Embed enriched texts
             try:
-                embeddings = await embedder.embed_batch(chunks_text)
+                embeddings = await embedder.embed_batch(att_enriched_texts)
             except Exception as e:
                 log.warning(f"    Embedding failed for attachment {fname}: {e}")
+                _record_run_issue(
+                    "error",
+                    "Attachment embedding fallback used",
+                    f"attachment: {fname}\nparent_email: {email_subject[:200]}\nerror: {e}",
+                )
                 embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunks_text)
 
             # 4. Create child document
@@ -1193,15 +1346,16 @@ async def process_email_attachments(
                         chunk_id = hashlib.md5(
                             f"att:{att_id}:{i}".encode()
                         ).hexdigest()
+                        att_enriched = att_enriched_texts[i] if i < len(att_enriched_texts) else None
                         await conn.execute("""
                             INSERT INTO core.document_chunks
                                 (id, document_id, chunk_index, total_chunks,
-                                 content, embedding, metadata)
-                            VALUES ($1, $2, $3, $4, $5, $6::halfvec, $7::jsonb)
+                                 content, embedded_content, embedding, metadata)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
                             ON CONFLICT (id) DO NOTHING
                         """,
                             chunk_id, child_doc_id, i, len(chunks_text),
-                            chunk_text, _vec_literal(emb),
+                            chunk_text, att_enriched, _vec_literal(emb),
                             json.dumps({"case_numbers": case_numbers}),
                         )
 
@@ -1264,8 +1418,58 @@ async def process_email_attachments(
 
         except Exception as e:
             log.error(f"    ✗ Attachment failed: {fname}: {e}")
+            _record_run_issue(
+                "error",
+                "Attachment ingest failed",
+                f"attachment: {fname}\nparent_email: {email_subject[:200]}\nerror: {e}",
+            )
+
+    await refresh_email_attachment_text(pool, email_doc_id)
 
     return processed
+
+
+async def refresh_email_attachment_text(pool: asyncpg.Pool, email_doc_id: str) -> None:
+    """Refresh legacy attachment_text cache on the parent email row.
+
+    Attachment child documents and embeddings are the primary source of truth,
+    but older Athena/email-agent paths still consult legal.email_metadata
+    attachment_text directly. Keep that field synchronized from the extracted
+    attachment text we already persist in legal.email_attachments.
+    """
+    email_uuid = uuid.UUID(str(email_doc_id))
+
+    async with pool.acquire() as conn:
+        combined = await conn.fetchval(
+            """
+            SELECT COALESCE(
+                STRING_AGG(formatted_text, E'\n\n---\n\n' ORDER BY filename, attachment_id),
+                ''
+            )
+            FROM (
+                SELECT id AS attachment_id,
+                       filename,
+                       CASE
+                           WHEN COALESCE(BTRIM(extracted_text), '') = '' THEN NULL
+                           ELSE '[Attachment: ' || filename || E']\n' || extracted_text
+                       END AS formatted_text
+                FROM legal.email_attachments
+                WHERE email_doc_id = $1::uuid
+            ) att
+            WHERE formatted_text IS NOT NULL
+            """,
+            email_uuid,
+        )
+
+        await conn.execute(
+            """
+            UPDATE legal.email_metadata
+            SET attachment_text = $2
+            WHERE document_id = $1::uuid
+            """,
+            email_uuid,
+            combined or "",
+        )
 
 
 # ============================================================
@@ -1568,6 +1772,19 @@ async def process_and_ingest_email(
 
     # Create a stable source_path based on mailbox + message_id
     source_path = f"graph://{mailbox}/{msg_id or msg_meta.get('id', '')}"
+    existing_doc_id = await pool.fetchval(
+        "SELECT id FROM core.documents WHERE source_path = $1 LIMIT 1",
+        source_path,
+    )
+    if existing_doc_id:
+        log.info(f"  Duplicate graph source_path already exists, skipping {source_path}")
+        _record_run_issue(
+            "warning",
+            "Duplicate graph email skipped",
+            f"source_path: {source_path}\nexisting_document_id: {existing_doc_id}",
+        )
+        return None
+
     local_eml_path = persist_graph_mime_copy(
         mailbox=mailbox,
         mime_data=mime_data,
@@ -1623,10 +1840,29 @@ async def process_and_ingest_email(
     if not chunk_texts:
         return None
 
+    # Contextual Retrieval: generate context and enrich chunks
+    context = generate_context_sync(
+        title=subject,
+        domain="legal",
+        document_type="email",
+        content_preview=parsed["full_text"][:3000],
+        case_number=case_nums[0] if case_nums else None,
+    )
+    enriched_texts = enrich_chunks(context, chunk_texts)
+
+    # Store enriched text on chunks for DB persistence
+    for chunk, enriched in zip(doc.chunks, enriched_texts):
+        chunk.metadata["_embedded_content"] = enriched
+
     try:
-        embeddings = await embedder.embed_batch(chunk_texts)
+        embeddings = await embedder.embed_batch(enriched_texts)
     except Exception as e:
         log.error(f"  Embedding failed for {filename}: {e}")
+        _record_run_issue(
+            "error",
+            "Email embedding fallback used",
+            f"filename: {filename}\nsource_path: {source_path}\nerror: {e}",
+        )
         embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunk_texts)
 
     # Write to DB
@@ -1634,6 +1870,11 @@ async def process_and_ingest_email(
         await write_email_document(pool, doc, embeddings)
     except Exception as e:
         log.error(f"  DB write error for {filename}: {e}")
+        _record_run_issue(
+            "error",
+            "Email DB write failed",
+            f"filename: {filename}\nsource_path: {source_path}\nerror: {e}",
+        )
         return None
 
     # Process attachments inline
@@ -1653,6 +1894,11 @@ async def process_and_ingest_email(
                 doc.metadata["attachments_processed"] = att_count
         except Exception as e:
             log.error(f"  Attachment processing error for {filename}: {e}")
+            _record_run_issue(
+                "error",
+                "Attachment processing failed",
+                f"filename: {filename}\nsource_path: {source_path}\nerror: {e}",
+            )
 
     return doc
 
@@ -1666,46 +1912,88 @@ async def main(
     domains: List[str] = None,
     since: Optional[str] = None,
     dry_run: bool = False,
+    audit_config: bool = False,
 ):
-    mailboxes = mailboxes or MAILBOXES
-    domains = domains or TARGET_DOMAINS
-
-    log.info("")
-    log.info("╔══════════════════════════════════════════════════════════╗")
-    log.info("║  ACP Graph API Email Sync                               ║")
-    log.info("╠══════════════════════════════════════════════════════════╣")
-    log.info(f"║  Mailboxes:  {', '.join(mailboxes):<43}║")
-    log.info(f"║  Domains:    {', '.join(domains):<43}║")
-    log.info(f"║  Since:      {since or 'all time':<43}║")
-    log.info(f"║  Dry run:    {str(dry_run):<43}║")
-    log.info("╚══════════════════════════════════════════════════════════╝")
-    log.info("")
-
     # Connect to database
     log.info("Connecting to PostgreSQL...")
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=5)
 
     # Read sync config from database (if management tables exist)
+    db_mailboxes = []
+    db_rules = []
     try:
         db_mbs = await pool.fetch(
             "SELECT email FROM ops.sync_mailboxes WHERE is_active = true ORDER BY id"
         )
-        if db_mbs:
-            mailboxes = [r["email"] for r in db_mbs]
-            log.info(f"  \U0001f4cb Loaded {len(mailboxes)} mailboxes from DB config")
+        db_mailboxes = [r["email"] for r in db_mbs]
         db_rules = await pool.fetch(
             "SELECT pattern, rule_type FROM ops.sync_rules WHERE is_active = true "
             "AND rule_type IN ('domain', 'email_address') ORDER BY priority DESC"
         )
-        if db_rules:
-            domains = [r["pattern"] for r in db_rules if r["rule_type"] == "domain"]
-            db_specific = [r["pattern"] for r in db_rules if r["rule_type"] == "email_address"]
-            if db_specific:
-                TARGET_SPECIFIC_EMAILS.extend(e for e in db_specific if e not in TARGET_SPECIFIC_EMAILS)
-                log.info(f"  \U0001f4cb Loaded {len(db_specific)} specific email rules from DB config")
-            log.info(f"  \U0001f4cb Loaded {len(domains)} domain rules from DB config")
     except Exception:
         log.info("  Using default mailboxes and domains (DB config tables not found)")
+
+    config = resolve_sync_configuration(
+        default_mailboxes=MAILBOXES,
+        default_domains=TARGET_DOMAINS,
+        default_specific_emails=TARGET_SPECIFIC_EMAILS,
+        cli_mailboxes=mailboxes,
+        cli_domains=domains,
+        db_mailboxes=db_mailboxes,
+        db_rules=db_rules,
+    )
+    mailboxes = config.mailboxes
+    domains = config.domains
+    specific_emails = config.specific_emails
+
+    log.info("")
+    log.info("╔══════════════════════════════════════════════════════════╗")
+    log.info("║  ACP Graph API Email Sync                               ║")
+    log.info("╠══════════════════════════════════════════════════════════╣")
+    log.info(f"║  Mailboxes:  {f'{len(mailboxes)} configured':<43}║")
+    log.info(f"║  Domains:    {f'{len(domains)} configured':<43}║")
+    log.info(f"║  Since:      {since or 'all time':<43}║")
+    log.info(f"║  Dry run:    {str(dry_run):<43}║")
+    log.info(f"║  Audit only: {str(audit_config):<43}║")
+    log.info("╚══════════════════════════════════════════════════════════╝")
+    log.info("")
+    log.info(f"  📫 Effective mailboxes: {', '.join(mailboxes)}")
+    log.info(f"  🌐 Effective domains ({len(domains)}): {', '.join(domains)}")
+
+    if config.db_mailboxes:
+        if config.explicit_mailboxes:
+            log.info(f"  📋 Explicit --mailbox override: using {mailboxes} (DB config ignored)")
+        else:
+            log.info(f"  📋 Loaded {len(config.db_mailboxes)} mailboxes from DB config")
+
+    if config.db_domains:
+        if config.explicit_domains:
+            log.info(f"  📋 Explicit --domains override: using {domains} (DB config ignored)")
+        else:
+            log.info(f"  📋 Loaded {len(config.db_domains)} domain rules from DB config")
+
+    if config.db_specific_emails:
+        log.info(f"  📋 Loaded {len(config.db_specific_emails)} specific email rules from DB config")
+
+    if config.code_only_domains:
+        log.warning(
+            "  ⚠ Active DB sync_rules is missing %d code default domains: %s",
+            len(config.code_only_domains),
+            ", ".join(config.code_only_domains),
+        )
+    if config.db_only_domains:
+        log.warning(
+            "  ⚠ Active DB sync_rules includes %d domains not present in code defaults: %s",
+            len(config.db_only_domains),
+            ", ".join(config.db_only_domains),
+        )
+    if config.db_domains and not config.code_only_domains and not config.db_only_domains:
+        log.info("  ✅ Code defaults and active DB domain rules are in sync")
+
+    if audit_config:
+        log.info("Configuration audit complete — not contacting Graph API or ingesting emails.")
+        await pool.close()
+        return 0
 
     # Get existing message IDs for dedup
     existing_msg_ids = await get_existing_message_ids(pool)
@@ -1720,6 +2008,7 @@ async def main(
     graph = GraphClient()
     if not await graph.authenticate():
         log.error("Cannot continue without Graph API authentication")
+        _record_run_issue("error", "Email sync aborted", "Graph API authentication failed before mailbox scan.")
         await pool.close()
         return
 
@@ -1730,6 +2019,7 @@ async def main(
             log.info(f"✓ Access confirmed: {user.get('displayName', mb)} ({mb})")
         else:
             log.error(f"✗ Cannot access mailbox: {mb}")
+            _record_run_issue("error", "Mailbox access failed", mb)
             await graph.close()
             await pool.close()
             return
@@ -1745,7 +2035,7 @@ async def main(
 
         emails = await fetch_target_emails(
             graph, mb, domains,
-            specific_emails=TARGET_SPECIFIC_EMAILS,
+            specific_emails=specific_emails,
             since=since,
             existing_msg_ids=existing_msg_ids,
         )
@@ -1785,6 +2075,7 @@ async def main(
             """, mailboxes)
         except Exception as e:
             log.error(f"AUDIT FAILURE - sync_runs INSERT (empty run): {e}")
+            _record_run_issue("warning", "Audit insert failed", f"empty sync run insert\n{e}")
         # Always update mailbox last-checked timestamps
         try:
             for mb in mailboxes:
@@ -1793,6 +2084,7 @@ async def main(
                     mb)
         except Exception as e:
             log.error(f"AUDIT FAILURE - mailbox timestamp update: {e}")
+            _record_run_issue("warning", "Audit mailbox timestamp update failed", str(e))
         await graph.close()
         await pool.close()
         return
@@ -1807,6 +2099,7 @@ async def main(
         """, mailboxes, len(all_emails))
     except Exception as e:
         log.error(f"AUDIT FAILURE: {e}")
+        _record_run_issue("warning", "Audit insert failed", str(e))
 
     # Ingest emails
     log.info("")
@@ -1847,6 +2140,7 @@ async def main(
             icon = "✗"
             detail = str(e)[:60]
             log.error(f"  Error processing email: {e}")
+            _record_run_issue("error", "Email processing loop failure", str(e))
 
         elapsed = time.time() - start_time
         rate = i / elapsed if elapsed > 0 else 0
@@ -1912,6 +2206,7 @@ async def main(
                 embedder.total_tokens, elapsed)
         except Exception as e:
             log.error(f"AUDIT FAILURE - sync_runs UPDATE: {e}")
+            _record_run_issue("warning", "Audit sync_run update failed", str(e))
 
     # Update mailbox sync timestamps
     try:
@@ -1930,6 +2225,7 @@ async def main(
                     mb)
     except Exception as e:
         log.error(f"AUDIT FAILURE: {e}")
+        _record_run_issue("warning", "Audit mailbox update failed", str(e))
 
     await embedder.close()
     await graph.close()
@@ -2060,6 +2356,7 @@ async def backfill_attachments(
         graph = GraphClient()
         if not await graph.authenticate():
             log.error("Cannot continue without Graph API authentication")
+            _record_run_issue("error", "Attachment backfill aborted", "Graph API authentication failed before MIME backfill.")
             await pool.close()
             return
 
@@ -2083,6 +2380,11 @@ async def backfill_attachments(
         if not mime_data:
             log.warning(f"  ⊘ {load_error}")
             stats["errors"] += 1
+            _record_run_issue(
+                "warning",
+                "Attachment backfill MIME load failed",
+                f"subject: {subject[:200]}\nsource_path: {source_path}\nerror: {load_error}",
+            )
             continue
 
         if source_path.startswith("graph://") and not metadata.get("local_eml_path"):
@@ -2139,6 +2441,11 @@ async def backfill_attachments(
         except Exception as e:
             log.error(f"  [{i}/{len(rows)}] ✗ {subject[:50]}: {e}")
             stats["errors"] += 1
+            _record_run_issue(
+                "error",
+                "Attachment backfill processing failed",
+                f"subject: {subject[:200]}\nsource_path: {source_path}\nerror: {e}",
+            )
 
         # Throttle to avoid rate limits
         if i % 10 == 0:
@@ -2171,8 +2478,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--domains", "-d", nargs="+",
-        default=TARGET_DOMAINS,
-        help="Target domains to filter for"
+        default=None,
+        help="Target domains to filter for (overrides DB sync_rules config)"
     )
     parser.add_argument(
         "--since", "-s",
@@ -2181,6 +2488,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Show what would be fetched without writing to DB"
+    )
+    parser.add_argument(
+        "--audit-config", action="store_true",
+        help="Show the resolved mailbox/domain config and drift warnings, then exit"
     )
     parser.add_argument(
         "--backfill-attachments", action="store_true",
@@ -2194,14 +2505,23 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.backfill_attachments:
-        asyncio.run(backfill_attachments(
-            mailboxes=args.mailbox or MAILBOXES,
-            limit=args.limit,
+        exit_code = asyncio.run(_run_with_error_alerts(
+            "Email attachment backfill",
+            backfill_attachments(
+                mailboxes=args.mailbox,
+                limit=args.limit,
+            ),
         ))
     else:
-        asyncio.run(main(
-            mailboxes=args.mailbox or MAILBOXES,
-            domains=args.domains,
-            since=args.since,
-            dry_run=args.dry_run,
+        exit_code = asyncio.run(_run_with_error_alerts(
+            "Email sync",
+            main(
+                mailboxes=args.mailbox,
+                domains=args.domains,
+                since=args.since,
+                dry_run=args.dry_run,
+                audit_config=args.audit_config,
+            ),
         ))
+
+    raise SystemExit(exit_code or 0)

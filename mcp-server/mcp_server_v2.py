@@ -88,6 +88,10 @@ try:
 except ImportError:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     log = logging.getLogger("athena-mcp")
+from agents.email_util import (
+    build_notification_html as build_alert_notification_html,
+    send_email as send_alert_email,
+)
 
 # ── Config ───────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -100,11 +104,13 @@ GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
 DEFAULT_ATHENA_MAILBOX = (os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me") or "athena@seattleseahawks.me").strip()
+ATHENA_ALERT_EMAIL = (os.getenv("ATHENA_ALERT_EMAIL", DEFAULT_ATHENA_MAILBOX) or DEFAULT_ATHENA_MAILBOX).strip()
 ATHENA_EMAIL_DRAFT_MODEL = os.getenv("ATHENA_EMAIL_DRAFT_MODEL", os.getenv("AGENT_LLM_MODEL_HIGH", "gpt-5.4"))
 GRAPH_ATTACHMENT_SIMPLE_LIMIT = 3 * 1024 * 1024
 GRAPH_ATTACHMENT_UPLOAD_CHUNK_SIZE = 320 * 1024 * 10
 from embedding_service import embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, _vec_literal
 EMBEDDING_DIMS = EMBEDDING_DIMENSIONS   # 1024 (BGE-M3 local)
+EMBEDDING_PROVIDER = (os.getenv("EMBEDDING_PROVIDER", "local") or "local").strip()
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 TRANSFER_DIR = Path(os.getenv("TRANSFER_DIR", "/opt/wdws/data/transfers"))
@@ -153,6 +159,7 @@ pool: Optional[asyncpg.Pool] = None
 _graph_access_token: Optional[str] = None
 _graph_token_expires_at: float = 0.0
 _transfer_schema_ready = False
+_embedding_model_id_cache: dict[tuple[str, int], int] = {}
 
 # ── Schema Alias Resolution ─────────────────────────────────
 # Transparently rewrites column name variations (filed_date → date_filed, etc.)
@@ -1112,6 +1119,59 @@ async def _log_tool_call(tool_name: str, arguments: dict, result: str,
         log.warning("Failed to log tool call: %s", e)
 
 
+async def _log_access(tool_name: str, query: str = "", result_count: int = 0):
+    """Backward-compatible lightweight access logger.
+
+    Older MCP tools in this server call `_log_access(...)` directly. A newer
+    decorator-based logging path superseded it, but the helper itself was
+    removed, leaving runtime NameErrors in tools that still reference it.
+    Keep a small compatibility shim so those tools remain stable.
+    """
+    preview = (query or "")[:500]
+    summary = {"query": preview, "count": int(result_count or 0)}
+    await _log_tool_call(
+        tool_name,
+        {"query": preview} if preview else {},
+        json.dumps(summary),
+        0,
+        None,
+    )
+
+
+async def _send_athena_error_alert(title: str, detail: str) -> None:
+    if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID]):
+        return
+
+    body_html = build_alert_notification_html(
+        title,
+        [{
+            "heading": "Technical details",
+            "type": "error",
+            "plain_summary": "Athena captured an MCP server error that needs review.",
+            "content": detail,
+        }],
+    )
+    result = await send_alert_email(
+        tenant_id=GRAPH_TENANT_ID,
+        client_id=GRAPH_CLIENT_ID,
+        client_secret=GRAPH_CLIENT_SECRET,
+        sender=DEFAULT_ATHENA_MAILBOX,
+        to_recipients=[ATHENA_ALERT_EMAIL],
+        subject=title,
+        body_html=body_html,
+        importance="high",
+    )
+    if result.get("status") != "sent":
+        log.warning("Failed to send Athena MCP alert email: %s", result.get("error", "unknown error"))
+
+
+def _schedule_athena_error_alert(title: str, detail: str) -> None:
+    try:
+        asyncio.create_task(_send_athena_error_alert(title, detail))
+    except Exception as e:
+        log.warning("Unable to schedule Athena MCP alert email: %s", e)
+
+
 def logged_tool(func):
     """Decorator that wraps an MCP tool function to log its invocation."""
     @functools.wraps(func)
@@ -1125,6 +1185,15 @@ def logged_tool(func):
             return result
         except Exception as e:
             error = str(e)
+            _schedule_athena_error_alert(
+                f"Athena MCP tool error — {tool_name}",
+                "\n".join([
+                    f"tool: {tool_name}",
+                    f"client: {_current_client_id()}",
+                    f"error: {error}",
+                    f"kwargs: {json.dumps({k: str(v)[:500] for k, v in kwargs.items() if v is not None}, default=str)}",
+                ]),
+            )
             raise
         finally:
             duration_ms = int((time.time() - t0) * 1000)
@@ -1175,6 +1244,35 @@ async def _embed_query(text: str) -> list[float]:
         pass
 
     return embedding
+
+
+async def _get_current_embedding_model_id() -> int:
+    """Resolve the current embedding model ID, creating/updating the registry row if needed."""
+    cache_key = (EMBEDDING_MODEL, EMBEDDING_DIMS)
+    cached = _embedding_model_id_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    p = await get_pool()
+    row = await p.fetchrow(
+        """
+        INSERT INTO core.embedding_models (name, provider, dimensions)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (name) DO UPDATE SET
+            provider = EXCLUDED.provider,
+            dimensions = EXCLUDED.dimensions
+        RETURNING id
+        """,
+        EMBEDDING_MODEL,
+        EMBEDDING_PROVIDER,
+        EMBEDDING_DIMS,
+    )
+    if not row:
+        raise RuntimeError("Unable to resolve the current embedding model ID")
+
+    model_id = int(row["id"])
+    _embedding_model_id_cache[cache_key] = model_id
+    return model_id
 
 
 _CASE_NUMBER_PATTERNS = [
@@ -6312,19 +6410,39 @@ async def save_personal_memory(
         importance: 0.0 to 1.0 — how important this is (default 0.5)
     """
     try:
+        content = (content or "").strip()
+        if not content:
+            return json.dumps({"error": "content is required"})
+
+        memory_type = (memory_type or "fact").strip().lower() or "fact"
+        importance = max(0.0, min(float(importance), 1.0))
         p = await get_pool()
+        embedding_model_id = await _get_current_embedding_model_id()
+        source = _current_client_id() or "claude-desktop"
+
         # Embed the memory for semantic retrieval
         vec = await _embed_query(content)
-        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+        vec_str = _vec_literal(vec)
 
-        row = await p.fetchrow("""
+        row = await p.fetchrow(f"""
             INSERT INTO core.memories
-                (memory_type, content, source, importance, embedding, metadata)
-            VALUES ($1, $2, 'claude-desktop', $3, $4::halfvec, $5::jsonb)
+                (memory_type, content, source, importance, embedding, embedding_model_id, metadata)
+            VALUES ($1, $2, $3, $4, $5::halfvec({EMBEDDING_DIMS}), $6, $7::jsonb)
             RETURNING id
         """,
-            memory_type, content, importance, vec_str,
-            json.dumps({"saved_at": datetime.now(timezone.utc).isoformat()}),
+            memory_type,
+            content,
+            source,
+            importance,
+            vec_str,
+            embedding_model_id,
+            json.dumps({
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "semantic": True,
+                "embedding_model": EMBEDDING_MODEL,
+                "embedding_provider": EMBEDDING_PROVIDER,
+                "embedding_dimensions": EMBEDDING_DIMS,
+            }),
         )
 
         await _log_access("save_personal_memory", content[:80], 1)
@@ -6334,6 +6452,17 @@ async def save_personal_memory(
         })
     except Exception as e:
         log.error("save_personal_memory error: %s", e)
+        _schedule_athena_error_alert(
+            "Athena MCP tool error — save_personal_memory",
+            "\n".join([
+                "tool: save_personal_memory",
+                f"client: {_current_client_id()}",
+                f"memory_type: {memory_type}",
+                f"importance: {importance}",
+                f"content_preview: {content[:500]}",
+                f"error: {e}",
+            ]),
+        )
         return json.dumps({"error": str(e)})
 
 
@@ -6350,17 +6479,24 @@ async def recall_personal_memories(query: str, limit: int = 5) -> str:
         limit: Max memories to return (default 5)
     """
     try:
+        query = (query or "").strip()
+        if not query:
+            return json.dumps({"error": "query is required"})
+
+        limit = min(max(int(limit), 1), 20)
         p = await get_pool()
         vec = await _embed_query(query)
-        vec_str = "[" + ",".join(str(v) for v in vec) + "]"
+        vec_str = _vec_literal(vec)
 
-        rows = await p.fetch("""
+        rows = await p.fetch(f"""
             SELECT id, memory_type, content, importance, source, created_at,
-                   (embedding <=> $1::halfvec(1024)) AS distance
+                   (embedding <=> $1::halfvec({EMBEDDING_DIMS})) AS distance
             FROM core.memories
             WHERE is_active = true
               AND embedding IS NOT NULL
-            ORDER BY embedding <=> $1::halfvec(1024)
+              AND COALESCE(source, '') <> 'morning_briefing'
+              AND COALESCE(metadata->>'type', '') <> 'daily_briefing'
+            ORDER BY embedding <=> $1::halfvec({EMBEDDING_DIMS})
             LIMIT $2
         """, vec_str, limit)
 
