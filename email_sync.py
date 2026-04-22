@@ -1350,6 +1350,25 @@ async def write_email_document(pool: asyncpg.Pool, doc: IngestedDocument, embedd
                     em.get("subject"),
                 )
 
+                # 5. SMS notification — only for inbound, only if the filter
+                #    matches (courts, counsel, medical providers, VIPs, urgency
+                #    keywords, importance=high). Failures must never break the
+                #    ingest transaction, so we swallow errors.
+                if em.get("direction") == "inbound":
+                    try:
+                        from email_notify import queue_email_sms
+                        await queue_email_sms(
+                            pool,
+                            sender=em.get("sender", "") or "",
+                            subject=em.get("subject", "") or "",
+                            received_at=_parse_email_date(em.get("date_sent", "")),
+                            importance=em.get("importance"),
+                            graph_id=em.get("message_id"),
+                            mailbox=em.get("mailbox"),
+                        )
+                    except Exception as sms_e:
+                        log.warning(f"SMS queue failed for {em.get('sender','?')}: {sms_e}")
+
 
 def _match_existing_attachment_record(
     existing_rows: List[Dict],

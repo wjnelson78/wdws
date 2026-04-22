@@ -15,6 +15,13 @@ A comprehensive legal workflow automation system featuring email management, cas
    - Mark messages important / read-unread
    - Request read and delivery receipts
    - Attach documents Athena generates via MCP document IDs
+- **SMS alerts on priority mail arrival** — Telnyx SMS to William's mobile
+  when a new inbound email matches VIP filters (courts, opposing counsel,
+  medical providers, specific contacts, `importance=high`, urgency keywords).
+  Dispatcher enforces quiet hours (10pm–7am PT), a 5-minute rate-limit,
+  and batches bursts into a single SMS. See [telnyx_sms.py](telnyx_sms.py),
+  [email_notify.py](email_notify.py), and `_deliver_sms_batch` in
+  [notification_service.py](notification_service.py).
 
 ### Case Management
 - Legal case tracking and organization

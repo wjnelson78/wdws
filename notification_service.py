@@ -51,6 +51,12 @@ NTFY_TOPIC = os.getenv("NTFY_TOPIC", "athena-william")
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh")
 CHECK_INTERVAL = 60  # Check every minute
 
+# SMS dispatch policy
+SMS_TO = os.getenv("TELNYX_SMS_TO_WILLIAM", "")
+SMS_QUIET_START_HOUR = 22  # 22:00 PT — defer overnight to morning digest
+SMS_QUIET_END_HOUR = 7     # 07:00 PT — resume
+SMS_RATE_LIMIT_SECONDS = 300  # max 1 SMS every 5 min; within that window, batch
+
 
 async def send_push(title: str, message: str, priority: str = "default",
                     tags: str = "bell", click_url: str = "") -> bool:
@@ -193,15 +199,37 @@ async def check_deadline_alerts(pool: asyncpg.Pool):
 
 
 async def deliver_queued_notifications(pool: asyncpg.Pool):
-    """Deliver pending notifications from ops.notification_queue."""
-    rows = await pool.fetch("""
+    """Deliver pending notifications from ops.notification_queue.
+
+    Branches on `channel`:
+      - "sms"   → Telnyx SMS to $TELNYX_SMS_TO_WILLIAM, respecting quiet hours
+                  and the 5-minute rate limit (multiple pending SMS entries
+                  get batched into a single outbound message).
+      - "email" | default → ntfy push (existing behavior).
+    """
+    # -- SMS channel (batched, rate-limited, quiet-hours aware) --
+    sms_pending = await pool.fetch(
+        """
+        SELECT id, subject, sections, severity, created_at
+        FROM ops.notification_queue
+        WHERE delivered_at IS NULL AND channel = 'sms'
+        ORDER BY created_at
+        LIMIT 20
+        """
+    )
+    if sms_pending:
+        await _deliver_sms_batch(pool, sms_pending)
+
+    # -- Non-SMS channels (push / email / default) --
+    rows = await pool.fetch(
+        """
         SELECT id, subject, sections, severity
         FROM ops.notification_queue
-        WHERE delivered_at IS NULL
+        WHERE delivered_at IS NULL AND (channel IS NULL OR channel != 'sms')
         ORDER BY created_at
         LIMIT 10
-    """)
-
+        """
+    )
     for r in rows:
         sections = r["sections"] if isinstance(r["sections"], list) else json.loads(r["sections"] or "[]")
         body_parts = []
@@ -226,6 +254,106 @@ async def deliver_queued_notifications(pool: asyncpg.Pool):
                 "UPDATE ops.notification_queue SET delivered_at = now() WHERE id = $1",
                 r["id"],
             )
+
+
+def _is_sms_quiet_hours() -> bool:
+    """True if we're in the overnight no-SMS window in Pacific Time."""
+    import zoneinfo
+    try:
+        pt = datetime.now(zoneinfo.ZoneInfo("America/Los_Angeles"))
+    except Exception:
+        pt = datetime.now()
+    h = pt.hour
+    if SMS_QUIET_START_HOUR > SMS_QUIET_END_HOUR:  # spans midnight
+        return h >= SMS_QUIET_START_HOUR or h < SMS_QUIET_END_HOUR
+    return SMS_QUIET_START_HOUR <= h < SMS_QUIET_END_HOUR
+
+
+async def _deliver_sms_batch(pool: asyncpg.Pool, pending):
+    """Send pending SMS entries — batch within the rate-limit window."""
+    if not SMS_TO:
+        log.warning("TELNYX_SMS_TO_WILLIAM not set; SMS dispatch disabled")
+        return
+
+    if _is_sms_quiet_hours():
+        log.info("SMS quiet hours active; %d entries queued for morning", len(pending))
+        return
+
+    # Rate limit: defer if any SMS has been delivered within the window.
+    cutoff_row = await pool.fetchrow(
+        """
+        SELECT MAX(delivered_at) AS last_sent
+        FROM ops.notification_queue
+        WHERE channel = 'sms' AND delivered_at IS NOT NULL
+        """
+    )
+    last_sent = cutoff_row["last_sent"] if cutoff_row else None
+    if last_sent:
+        age = (datetime.now(timezone.utc) - last_sent).total_seconds()
+        if age < SMS_RATE_LIMIT_SECONDS:
+            wait = int(SMS_RATE_LIMIT_SECONDS - age)
+            log.info("SMS rate-limited; %d entries, %ds until next send window", len(pending), wait)
+            return
+
+    # Build one combined message from all pending entries.
+    from telnyx_sms import send_sms
+    if len(pending) == 1:
+        text = pending[0]["subject"]
+    else:
+        # Batch: "[ATHENA] N new: sender1 / sender2 / ... (+K more)"
+        n = len(pending)
+        senders = []
+        for p in pending:
+            try:
+                sections = p["sections"] if isinstance(p["sections"], list) else json.loads(p["sections"] or "[]")
+                meta = sections[0].get("meta", {}) if sections else {}
+                s = meta.get("sender", "") or ""
+                # Display name or email
+                import re as _re
+                m = _re.match(r'^"?([^"<]+?)"?\s*<', s)
+                senders.append((m.group(1).strip() if m else s.split("@")[0])[:25])
+            except Exception:
+                senders.append("?")
+        uniq = []
+        for s in senders:
+            if s not in uniq:
+                uniq.append(s)
+        listed = " / ".join(uniq[:3])
+        overflow = f" (+{n - 3} more)" if len(uniq) > 3 else ""
+        text = f"[ATHENA] {n} new priority emails: {listed}{overflow}"
+        text = text[:160]
+
+    result = send_sms(SMS_TO, text)
+    if result.ok:
+        ids = [p["id"] for p in pending]
+        await pool.execute(
+            """
+            UPDATE ops.notification_queue
+            SET delivered_at = now()
+            WHERE id = ANY($1::bigint[])
+            """,
+            ids,
+        )
+        log.info(
+            "SMS sent: %d entries batched, id=%s cost=$%s",
+            len(pending), result.message_id, result.cost_usd,
+        )
+    else:
+        # Mark the first one with the error so it's visible for debugging,
+        # but don't mark as delivered — it'll retry next cycle.
+        await pool.execute(
+            """
+            UPDATE ops.notification_queue
+            SET delivery_error = $2
+            WHERE id = $1
+            """,
+            pending[0]["id"],
+            f"[{result.error_code}] {result.error_title}: {result.error_detail}"[:500],
+        )
+        log.error(
+            "SMS send failed: [%s] %s: %s",
+            result.error_code, result.error_title, result.error_detail,
+        )
 
 
 async def main():
