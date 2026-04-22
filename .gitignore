@@ -41,3 +41,16 @@ mcp-servers/paperless-ngx/.oauth_tokens.json
 .idea/
 *.swp
 *.swo
+
+# Claude Code local settings
+.claude/
+
+# Large / PII-bearing archives never committed
+/HealthSummary_*.zip
+/*.zip
+/backups/
+/"Cost Optimization on Azure.pdf"
+
+# .NET build outputs (purview-decrypt)
+purview-decrypt/bin/
+purview-decrypt/obj/

@@ -27,6 +27,12 @@ A comprehensive legal workflow automation system featuring email management, cas
 - Paperless-NGX integration
 - Word/DOCX proxy, iMessage proxy, Investigator MCP
 
+### Rights-Managed Content (Microsoft Purview / AIP)
+Server-side decrypt pipeline for Microsoft RMS-encrypted emails and AIP-protected
+files on Debian — no Outlook required. Handles `.rpmsg` wrappers and the AIP
+PDFs/Office docs nested inside them, including cross-tenant content issued by
+external tenants where you are a valid recipient. See [PURVIEW_DECRYPT.md](PURVIEW_DECRYPT.md).
+
 ### Multi-Provider LLM Routing
 The platform uses an intelligent model router with automatic failover:
 
@@ -205,7 +211,7 @@ For larger documents and attachments, prefer the Graph-style raw HTTP transfer f
 Control plane via Athena MCP tools:
 - `create_document_upload_session(...)` returns an `upload_url`
 - `create_document_download_session(document_id=...)` returns a `download_url`
-- `upload_document(...)` and `download_original_document(...)` remain available as base64 fallbacks
+- `download_original_document(...)` remains available as a base64 fallback for reads
 
 Data plane via raw HTTP:
 - Upload with `PUT` to `upload_url` and a `Content-Range` header

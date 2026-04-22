@@ -45,7 +45,9 @@ TARGET_DOMAINS = [
     "wahbexchange.org",         # Washington Health Benefit Exchange (WAHBE) — ADA accommodation requests
     "evergreenhealthcare.org",  # EvergreenHealth — primary domain (MyChart, staff, donotreply)
     "evergreenhealth.com",      # EvergreenHealth — staff email domain (rameeks@, cbredeson@, mshepler@)
-    "starbucks.com",            # Starbucks corp counsel
+    "starbucks.com",            # Starbucks corp counsel / employment
+    "sedgwick.com",             # Sedgwick claims management (workers' comp / disability)
+    "unum.com",                 # Unum — disability insurance / LTD claims correspondence
     "playfasa.com",             # PlayFASA website development correspondence
 ]
 

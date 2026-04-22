@@ -394,6 +394,83 @@ class SyncAlertCollector:
     def has_issues(self) -> bool:
         return bool(self._buckets)
 
+    # Suppress resending an identical alert within this window. Counts still
+    # accrue in ops.sync_alert_dedup so we can see how often the same
+    # condition was observed.
+    DEDUP_WINDOW_HOURS = 6
+
+    def _content_fingerprint(self) -> str:
+        """Fingerprint the alert body so runs producing the same set of
+        (severity, heading, detail) tuples collapse into one notification.
+
+        Deliberately excludes run-label, host, python, timestamp — those
+        change every run. Error counts are included so an alert expanding
+        from 18 -> 19 warnings does notify. Detail text is hashed raw so
+        the fingerprint flips the moment a new failing URL appears.
+        """
+        parts: List[str] = []
+        for key in sorted(self._buckets.keys()):
+            bucket = self._buckets[key]
+            details_joined = "\n".join(sorted(bucket.details))
+            parts.append(
+                f"{bucket.severity}|{bucket.heading}|{bucket.count}|{details_joined}"
+            )
+        blob = "\n---\n".join(parts).encode("utf-8", errors="replace")
+        return hashlib.sha256(blob).hexdigest()
+
+    async def _should_send(self, content_hash: str) -> bool:
+        """Return True if this fingerprint hasn't been sent inside the dedup
+        window. Updates ops.sync_alert_dedup either way. Fails open: any DB
+        error logs and still sends (noisy is better than silent)."""
+        try:
+            pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=1)
+        except Exception as e:
+            log.warning(f"Alert dedup: DB connect failed ({e}); sending anyway")
+            return True
+        try:
+            row = await pool.fetchrow(
+                """
+                SELECT last_sent_at,
+                       (now() - last_sent_at) < ($2 * INTERVAL '1 hour') AS within_window
+                FROM ops.sync_alert_dedup
+                WHERE run_label = $1 AND content_hash = $3
+                """,
+                self.run_label, self.DEDUP_WINDOW_HOURS, content_hash,
+            )
+            if row and row["within_window"]:
+                await pool.execute(
+                    """
+                    UPDATE ops.sync_alert_dedup
+                       SET last_seen_at   = now(),
+                           suppress_count = suppress_count + 1
+                     WHERE run_label = $1 AND content_hash = $2
+                    """,
+                    self.run_label, content_hash,
+                )
+                return False
+            # First time seeing this fingerprint, or outside the window: send.
+            await pool.execute(
+                """
+                INSERT INTO ops.sync_alert_dedup
+                    (run_label, content_hash, last_sent_at, last_seen_at, send_count)
+                VALUES ($1, $2, now(), now(), 1)
+                ON CONFLICT (run_label, content_hash) DO UPDATE
+                SET last_sent_at = now(),
+                    last_seen_at = now(),
+                    send_count   = ops.sync_alert_dedup.send_count + 1
+                """,
+                self.run_label, content_hash,
+            )
+            return True
+        except Exception as e:
+            log.warning(f"Alert dedup: query failed ({e}); sending anyway")
+            return True
+        finally:
+            try:
+                await pool.close()
+            except Exception:
+                pass
+
     async def flush_email(self) -> None:
         if not self._buckets:
             return
@@ -403,6 +480,15 @@ class SyncAlertCollector:
         subject = (
             f"Athena Alert — {self.run_label}: {errors} error(s), {warnings} warning(s)"
         )
+
+        content_hash = self._content_fingerprint()
+        should_send = await self._should_send(content_hash)
+        if not should_send:
+            log.info(
+                "Alert suppressed (identical fingerprint sent within last %sh): %s",
+                self.DEDUP_WINDOW_HOURS, subject,
+            )
+            return
 
         sections = [{
             "heading": "Run summary",
@@ -476,6 +562,148 @@ async def _run_with_error_alerts(run_label: str, coro):
             await collector.flush_email()
         except Exception as e:
             log.error("Failed to flush Athena alert email: %s", e)
+
+
+# ============================================================
+# MIME-fetch failure tracking (dead-letter)
+# ============================================================
+#
+# Graph /$value returns HTTP 500 for items with no RFC-822 MIME
+# representation — meeting responses (IPM.Schedule.Meeting.Resp.*),
+# meeting cancellations, Teams chat items, voicemail, and occasional
+# corrupt items. These failures repeat every sync, producing endless
+# identical operator alerts. We detect HTTP 500 from /$value as a
+# permanent condition and persist the graph_id to ops.email_mime_failures
+# so future runs skip it. (Graph v1.0 does not expose itemClass on the
+# Message resource's $select, so class-based pre-filtering is not
+# available — failure-based marking is what we use instead.)
+
+
+class MimeFailureTracker:
+    """Tracks Graph MIME fetch failures across a sync run.
+
+    Loads the set of (mailbox, graph_id) pairs that should be skipped
+    (permanent or attempted >= 3 times). Callers check should_skip()
+    before the MIME call; after a MIME failure they record() to update
+    the counter. flush() upserts all new/updated failures back to the DB.
+    """
+
+    SKIP_AFTER_ATTEMPTS = 3
+
+    def __init__(self) -> None:
+        # (mailbox, graph_id) already known to be unfetchable — skip entirely.
+        self._skip: Set[Tuple[str, str]] = set()
+        # (mailbox, graph_id) -> pending upsert payload for this run.
+        self._pending: Dict[Tuple[str, str], Dict] = {}
+
+    async def load(self, pool) -> None:
+        try:
+            rows = await pool.fetch(
+                "SELECT mailbox, graph_id FROM ops.email_mime_failures "
+                "WHERE permanent = TRUE OR attempt_count >= $1",
+                self.SKIP_AFTER_ATTEMPTS,
+            )
+            self._skip = {(r["mailbox"], r["graph_id"]) for r in rows}
+            if self._skip:
+                log.info(f"MIME failure tracker: skipping {len(self._skip)} known-bad message IDs")
+        except Exception as e:
+            # Table may not exist yet on first-deploy — fail open (don't block sync).
+            log.warning(f"MIME failure tracker: load failed ({e}); continuing with empty skip set")
+            self._skip = set()
+
+    def should_skip(self, mailbox: str, graph_id: str) -> bool:
+        return (mailbox, graph_id) in self._skip
+
+    def record(
+        self,
+        mailbox: str,
+        graph_id: str,
+        *,
+        item_class: Optional[str] = None,
+        subject: Optional[str] = None,
+        http_status: Optional[int] = None,
+        error: Optional[str] = None,
+        permanent: bool = False,
+    ) -> None:
+        key = (mailbox, graph_id)
+        existing = self._pending.get(key)
+        if existing is None:
+            self._pending[key] = {
+                "item_class": item_class,
+                "subject": (subject or "")[:500],
+                "http_status": http_status,
+                "error": (error or "")[:2000] or None,
+                "permanent": permanent,
+            }
+        else:
+            # Upgrade with any additional info seen this run.
+            if item_class and not existing.get("item_class"):
+                existing["item_class"] = item_class
+            if subject and not existing.get("subject"):
+                existing["subject"] = subject[:500]
+            if http_status is not None:
+                existing["http_status"] = http_status
+            if error:
+                existing["error"] = error[:2000]
+            if permanent:
+                existing["permanent"] = True
+
+    async def flush(self, pool) -> None:
+        if not self._pending:
+            return
+        try:
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    for (mailbox, graph_id), info in self._pending.items():
+                        await conn.execute(
+                            """
+                            INSERT INTO ops.email_mime_failures
+                                (mailbox, graph_id, item_class, subject,
+                                 last_http_status, last_error, permanent)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            ON CONFLICT (mailbox, graph_id) DO UPDATE
+                            SET last_failed_at   = now(),
+                                attempt_count    = ops.email_mime_failures.attempt_count + 1,
+                                item_class       = COALESCE(EXCLUDED.item_class, ops.email_mime_failures.item_class),
+                                subject          = COALESCE(EXCLUDED.subject, ops.email_mime_failures.subject),
+                                last_http_status = COALESCE(EXCLUDED.last_http_status, ops.email_mime_failures.last_http_status),
+                                last_error       = COALESCE(EXCLUDED.last_error, ops.email_mime_failures.last_error),
+                                permanent        = ops.email_mime_failures.permanent OR EXCLUDED.permanent
+                            """,
+                            mailbox, graph_id,
+                            info.get("item_class"),
+                            info.get("subject"),
+                            info.get("http_status"),
+                            info.get("error"),
+                            info.get("permanent", False),
+                        )
+            log.info(f"MIME failure tracker: recorded {len(self._pending)} failure(s) to ops.email_mime_failures")
+        except Exception as e:
+            log.error(f"MIME failure tracker: flush failed ({e}); failures will be retried next run")
+
+
+_ACTIVE_MIME_TRACKER: Optional[MimeFailureTracker] = None
+
+
+def _mime_tracker() -> Optional[MimeFailureTracker]:
+    return _ACTIVE_MIME_TRACKER
+
+
+async def _finalize_sync_pool(pool) -> None:
+    """Flush the MIME failure tracker, then close the DB pool.
+
+    Used at every exit path in main() so we always persist newly-seen
+    Graph MIME failures before tearing down.
+    """
+    global _ACTIVE_MIME_TRACKER
+    if _ACTIVE_MIME_TRACKER is not None:
+        try:
+            await _ACTIVE_MIME_TRACKER.flush(pool)
+        except Exception as e:
+            log.error(f"MIME failure tracker flush error on finalize: {e}")
+        _ACTIVE_MIME_TRACKER = None
+    # NOTE: call the pool's own close() here, not the helper — self-recursion.
+    await asyncpg.pool.Pool.close(pool)
 
 
 # ============================================================
@@ -636,8 +864,14 @@ class GraphClient:
                 return None
         return None
 
-    async def _get_raw(self, url: str) -> Optional[bytes]:
-        """Make authenticated GET request returning raw bytes (for MIME)."""
+    async def _get_raw(self, url: str) -> Tuple[Optional[bytes], Optional[Dict]]:
+        """Make authenticated GET request returning raw bytes (for MIME).
+
+        Returns (bytes, None) on success, or (None, error_info) on failure.
+        error_info is a dict with keys: status (int|None), message (str),
+        permanent (bool — True when the error is known-permanent, e.g. 500
+        from /$value indicating a non-MIMEable item class).
+        """
         for attempt in range(5):
             await self._ensure_token()
             try:
@@ -646,25 +880,31 @@ class GraphClient:
                     headers={"Authorization": f"Bearer {self.access_token}"},
                 )
                 resp.raise_for_status()
-                return resp.content
+                return resp.content, None
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 and attempt < 4:
+                status = e.response.status_code
+                if status == 429 and attempt < 4:
                     retry_after = int(e.response.headers.get("Retry-After", "10"))
                     log.warning(f"  Rate limited (attempt {attempt+1}/5), waiting {retry_after}s...")
                     await asyncio.sleep(retry_after)
                     continue
-                log.error(f"  MIME fetch error {e.response.status_code}")
+                log.error(f"  MIME fetch error {status}")
                 _record_run_issue(
                     "warning",
                     "Graph MIME fetch failed",
-                    f"URL: {url}\nHTTP {e.response.status_code}",
+                    f"URL: {url}\nHTTP {status}",
                 )
-                return None
+                # HTTP 500 from /$value on a specific message is Graph's
+                # signal that the item has no RFC-822 MIME representation
+                # (meeting responses, Teams items, voicemail). Mark these
+                # permanent so we never retry them.
+                permanent = status == 500 and url.endswith("/$value")
+                return None, {"status": status, "message": f"HTTP {status}", "permanent": permanent}
             except Exception as e:
                 log.error(f"  MIME fetch failed: {e}")
                 _record_run_issue("warning", "Graph MIME fetch failed", f"URL: {url}\n{e}")
-                return None
-        return None
+                return None, {"status": None, "message": str(e), "permanent": False}
+        return None, {"status": None, "message": "exhausted retries", "permanent": False}
 
     async def get_user_info(self, mailbox: str) -> Optional[dict]:
         """Get user profile info."""
@@ -700,8 +940,14 @@ class GraphClient:
             params=params,
         )
 
-    async def get_message_mime(self, mailbox: str, message_id: str) -> Optional[bytes]:
-        """Get message in MIME (.eml) format."""
+    async def get_message_mime(
+        self, mailbox: str, message_id: str
+    ) -> Tuple[Optional[bytes], Optional[Dict]]:
+        """Get message in MIME (.eml) format.
+
+        Returns (mime_bytes, None) on success or (None, error_info) on
+        failure. See _get_raw for the error_info shape.
+        """
         return await self._get_raw(
             f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{message_id}/$value"
         )
@@ -1506,6 +1752,8 @@ async def _fetch_recent_target_emails(
         "id,subject,from,toRecipients,ccRecipients,bccRecipients,"
         "receivedDateTime,bodyPreview,hasAttachments,internetMessageId"
     )
+    tracker = _mime_tracker()
+    skipped_known_failed = 0
 
     log.info(f"  📧 Scanning recent mail in {mailbox} since {since} across from/to/cc/bcc...")
 
@@ -1544,10 +1792,23 @@ async def _fetch_recent_target_emails(
             if not email_involves_targets(msg, domains, specific_emails):
                 continue
 
-            mime = await graph.get_message_mime(mailbox, graph_id)
+            if tracker is not None and tracker.should_skip(mailbox, graph_id):
+                skipped_known_failed += 1
+                continue
+
+            mime, mime_error = await graph.get_message_mime(mailbox, graph_id)
             if mime:
                 results.append((msg, mime))
                 matched += 1
+            else:
+                if tracker is not None:
+                    tracker.record(
+                        mailbox, graph_id,
+                        subject=msg.get("subject"),
+                        http_status=(mime_error or {}).get("status"),
+                        error=(mime_error or {}).get("message") or "Graph /$value returned no bytes",
+                        permanent=bool(mime_error and mime_error.get("permanent")),
+                    )
 
             if matched % 50 == 0 and matched > 0:
                 await asyncio.sleep(1)
@@ -1563,6 +1824,7 @@ async def _fetch_recent_target_emails(
         f"    ✓ mailbox scan complete: {matched} new matching emails fetched"
         f" from {scanned} recent messages"
         + (f", {skipped_existing} already in DB" if skipped_existing else "")
+        + (f", {skipped_known_failed} skipped (known MIME failures)" if skipped_known_failed else "")
     )
 
     return results
@@ -1624,7 +1886,9 @@ async def fetch_target_emails(
         page_count = 0
         fetched_this_target = 0
         skipped_existing = 0
+        skipped_known_failed = 0
         next_link = None
+        tracker = _mime_tracker()
 
         while True:
             if next_link:
@@ -1670,11 +1934,25 @@ async def fetch_target_emails(
                     if recv_date and recv_date < since:
                         continue
 
+                # Skip IDs that have already failed MIME fetch enough times
+                if tracker is not None and tracker.should_skip(mailbox, graph_id):
+                    skipped_known_failed += 1
+                    continue
+
                 # Download MIME content
-                mime = await graph.get_message_mime(mailbox, graph_id)
+                mime, mime_error = await graph.get_message_mime(mailbox, graph_id)
                 if mime:
                     results.append((msg, mime))
                     fetched_this_target += 1
+                else:
+                    if tracker is not None:
+                        tracker.record(
+                            mailbox, graph_id,
+                            subject=msg.get("subject"),
+                            http_status=(mime_error or {}).get("status"),
+                            error=(mime_error or {}).get("message") or "Graph /$value returned no bytes",
+                            permanent=bool(mime_error and mime_error.get("permanent")),
+                        )
 
                 # Brief throttle to avoid hitting rate limits
                 if fetched_this_target % 50 == 0 and fetched_this_target > 0:
@@ -1692,6 +1970,7 @@ async def fetch_target_emails(
         log.info(
             f"    ✓ {target_value}: {fetched_this_target} new emails fetched"
             + (f", {skipped_existing} already in DB" if skipped_existing else "")
+            + (f", {skipped_known_failed} skipped (known MIME failures)" if skipped_known_failed else "")
         )
 
     return results
@@ -1918,6 +2197,11 @@ async def main(
     log.info("Connecting to PostgreSQL...")
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=5)
 
+    # Load known-bad MIME graph IDs so we don't retry them forever.
+    global _ACTIVE_MIME_TRACKER
+    _ACTIVE_MIME_TRACKER = MimeFailureTracker()
+    await _ACTIVE_MIME_TRACKER.load(pool)
+
     # Read sync config from database (if management tables exist)
     db_mailboxes = []
     db_rules = []
@@ -1992,7 +2276,7 @@ async def main(
 
     if audit_config:
         log.info("Configuration audit complete — not contacting Graph API or ingesting emails.")
-        await pool.close()
+        await _finalize_sync_pool(pool)
         return 0
 
     # Get existing message IDs for dedup
@@ -2009,7 +2293,7 @@ async def main(
     if not await graph.authenticate():
         log.error("Cannot continue without Graph API authentication")
         _record_run_issue("error", "Email sync aborted", "Graph API authentication failed before mailbox scan.")
-        await pool.close()
+        await _finalize_sync_pool(pool)
         return
 
     # Test access to each mailbox
@@ -2021,7 +2305,7 @@ async def main(
             log.error(f"✗ Cannot access mailbox: {mb}")
             _record_run_issue("error", "Mailbox access failed", mb)
             await graph.close()
-            await pool.close()
+            await _finalize_sync_pool(pool)
             return
 
     # Fetch emails from all mailboxes
@@ -2059,7 +2343,7 @@ async def main(
         if len(all_emails) > 20:
             log.info(f"  ... and {len(all_emails) - 20} more")
         await graph.close()
-        await pool.close()
+        await _finalize_sync_pool(pool)
         return
 
     if not all_emails:
@@ -2086,7 +2370,7 @@ async def main(
             log.error(f"AUDIT FAILURE - mailbox timestamp update: {e}")
             _record_run_issue("warning", "Audit mailbox timestamp update failed", str(e))
         await graph.close()
-        await pool.close()
+        await _finalize_sync_pool(pool)
         return
 
     # Record sync run in database
@@ -2229,7 +2513,7 @@ async def main(
 
     await embedder.close()
     await graph.close()
-    await pool.close()
+    await _finalize_sync_pool(pool)
 
 
 # ============================================================
@@ -2283,9 +2567,10 @@ async def _load_backfill_mime(
             return None, f"Cannot find message in Graph API: {subject[:50]}"
 
         graph_id = search_result["value"][0]["id"]
-        mime_data = await graph.get_message_mime(mb, graph_id)
+        mime_data, mime_err = await graph.get_message_mime(mb, graph_id)
         if not mime_data:
-            return None, f"MIME download failed: {subject[:50]}"
+            err_detail = (mime_err or {}).get("message", "unknown") if mime_err else "empty response"
+            return None, f"MIME download failed ({err_detail}): {subject[:50]}"
         return mime_data, None
 
     local_path = Path(source_path)
@@ -2341,7 +2626,7 @@ async def backfill_attachments(
 
     if not rows:
         log.info("No emails need attachment backfill — all caught up.")
-        await pool.close()
+        await _finalize_sync_pool(pool)
         return
 
     total = len(rows)
@@ -2357,7 +2642,7 @@ async def backfill_attachments(
         if not await graph.authenticate():
             log.error("Cannot continue without Graph API authentication")
             _record_run_issue("error", "Attachment backfill aborted", "Graph API authentication failed before MIME backfill.")
-            await pool.close()
+            await _finalize_sync_pool(pool)
             return
 
     embedder = EmbeddingClient()
@@ -2467,7 +2752,7 @@ async def backfill_attachments(
     await embedder.close()
     if graph:
         await graph.close()
-    await pool.close()
+    await _finalize_sync_pool(pool)
 
 
 if __name__ == "__main__":

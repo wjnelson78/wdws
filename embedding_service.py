@@ -1,18 +1,20 @@
 """
-Athena Cognitive Engine — Local Embedding Service (BGE-M3)
-==========================================================
-Replaces OpenAI text-embedding-3-large with local BGE-M3 model.
+Athena Cognitive Engine — Embedding Service (BGE-M3)
+====================================================
+Produces 1024-dim dense vectors via BGE-M3. Two inference paths:
 
-BGE-M3 produces 1024-dimensional dense vectors on CPU with no API dependency.
-Used by all ingest pipelines, search endpoints, and agents.
+1. HuggingFace Inference Endpoint (GPU, TEI) — primary when HF_ENDPOINT_URL
+   + HF_API_TOKEN are set. ~10-20x faster than CPU for bulk work.
+2. Local sentence-transformers on CPU — always available as fallback for
+   cold starts, network blips, or HF outages.
+
+Both paths return the same 1024-dim unit-normalized vectors, so vectors
+from either path are interchangeable in pgvector search.
 
 Usage:
-    from embedding_service import get_embedder, embed_texts, embed_query
+    from embedding_service import embed_texts, embed_query
 
-    # Single query (for search)
     vector = await embed_query("employment discrimination")
-
-    # Batch (for ingestion)
     vectors = await embed_texts(["chunk 1 text", "chunk 2 text", ...])
 """
 import asyncio
@@ -21,6 +23,12 @@ import os
 import time
 from typing import Optional
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv("/opt/wdws/.env")
+except ImportError:
+    pass
+
 log = logging.getLogger("athena.embeddings")
 
 # ── Configuration ────────────────────────────────────────────
@@ -28,6 +36,19 @@ EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 EMBEDDING_DIMENSIONS = 1024   # BGE-M3 output dimensions
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
 EMBEDDING_MAX_LENGTH = int(os.getenv("EMBEDDING_MAX_SEQ_LENGTH", "8192"))
+
+# HuggingFace Inference Endpoint (optional — falls back to local CPU if unset)
+HF_ENDPOINT_URL = os.getenv("HF_ENDPOINT_URL", "").rstrip("/")
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
+HF_TIMEOUT = float(os.getenv("HF_EMBEDDING_TIMEOUT", "90"))  # long enough for cold-start wake
+HF_BATCH_SIZE = int(os.getenv("HF_EMBEDDING_BATCH_SIZE", "32"))  # TEI default max_client_batch_size
+HF_ENABLED = bool(HF_ENDPOINT_URL and HF_API_TOKEN)
+
+if HF_ENABLED:
+    log.info("HF Inference Endpoint enabled (GPU path primary, CPU fallback): %s",
+             HF_ENDPOINT_URL)
+else:
+    log.info("HF Inference Endpoint disabled (CPU-only) — set HF_ENDPOINT_URL + HF_API_TOKEN to enable")
 
 # Legacy compat — these are used by search endpoints
 EMBEDDING_MODEL = EMBEDDING_MODEL_NAME
@@ -77,63 +98,180 @@ def _vec_literal(vec: list[float]) -> str:
     return "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
 
 
-# ── Sync Embedding Functions ─────────────────────────────────
+def _truncate(texts: list[str]) -> list[str]:
+    """Truncate texts to max sequence length (char-approx, not tokens)."""
+    limit = EMBEDDING_MAX_LENGTH * 4
+    return [t[:limit] if t else "" for t in texts]
+
+
+# ── HuggingFace Inference Endpoint (GPU path) ────────────────
+
+_hf_sync_client = None
+_hf_async_client = None
+
+
+def _get_hf_sync_client():
+    global _hf_sync_client
+    if _hf_sync_client is None:
+        import httpx
+        _hf_sync_client = httpx.Client(
+            timeout=HF_TIMEOUT,
+            headers={
+                "Authorization": f"Bearer {HF_API_TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+    return _hf_sync_client
+
+
+def _get_hf_async_client():
+    global _hf_async_client
+    if _hf_async_client is None:
+        import httpx
+        _hf_async_client = httpx.AsyncClient(
+            timeout=HF_TIMEOUT,
+            headers={
+                "Authorization": f"Bearer {HF_API_TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+    return _hf_async_client
+
+
+def _embed_hf_sync(texts: list[str]) -> list[list[float]]:
+    """Call HF Inference Endpoint /embed. Caller handles batching."""
+    client = _get_hf_sync_client()
+    r = client.post(
+        f"{HF_ENDPOINT_URL}/embed",
+        json={"inputs": _truncate(texts)},
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+async def _embed_hf_async(texts: list[str]) -> list[list[float]]:
+    """Async variant of _embed_hf_sync."""
+    client = _get_hf_async_client()
+    r = await client.post(
+        f"{HF_ENDPOINT_URL}/embed",
+        json={"inputs": _truncate(texts)},
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# ── Local CPU path (fallback) ────────────────────────────────
+
+def _embed_cpu_sync(texts: list[str]) -> list[list[float]]:
+    """Embed via local sentence-transformers on CPU. Caller handles batching."""
+    model = _load_model()
+    embeddings = model.encode(
+        _truncate(texts),
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
+    return embeddings.tolist()
+
+
+# ── Sync Public API ──────────────────────────────────────────
 
 def embed_texts_sync(texts: list[str], batch_size: int = None) -> list[list[float]]:
-    """Embed a list of texts synchronously. Returns list of 1024-dim vectors.
+    """Embed a list of texts synchronously. Returns 1024-dim vectors.
 
-    Handles batching internally for memory efficiency on CPU.
+    Tries HF Inference Endpoint first (if configured), falls back to local CPU
+    per-batch on any HF failure. Batch size differs between paths because GPU
+    handles larger batches efficiently while CPU prefers smaller.
     """
     if not texts:
         return []
 
-    model = _load_model()
-    bs = batch_size or EMBEDDING_BATCH_SIZE
+    bs = batch_size or (HF_BATCH_SIZE if HF_ENABLED else EMBEDDING_BATCH_SIZE)
+    all_embeddings: list[list[float]] = []
 
-    all_embeddings = []
     for i in range(0, len(texts), bs):
         batch = texts[i:i + bs]
-        # Truncate long texts to max sequence length (chars, not tokens)
-        batch = [t[:EMBEDDING_MAX_LENGTH * 4] if t else "" for t in batch]
-        embeddings = model.encode(
-            batch,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-        all_embeddings.extend(embeddings.tolist())
+        vecs = None
+
+        if HF_ENABLED:
+            try:
+                vecs = _embed_hf_sync(batch)
+            except Exception as e:
+                log.warning(
+                    "HF endpoint failed for batch %d (%s: %s) — falling back to local CPU",
+                    i // bs, type(e).__name__, e,
+                )
+
+        if vecs is None:
+            vecs = _embed_cpu_sync(batch)
+
+        all_embeddings.extend(vecs)
 
     return all_embeddings
 
 
 def embed_query_sync(text: str) -> list[float]:
     """Embed a single query text synchronously. Returns 1024-dim vector."""
-    model = _load_model()
-    truncated = text[:EMBEDDING_MAX_LENGTH * 4] if text else ""
-    embedding = model.encode(
-        [truncated],
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    return embedding[0].tolist()
+    if HF_ENABLED:
+        try:
+            return _embed_hf_sync([text])[0]
+        except Exception as e:
+            log.warning(
+                "HF endpoint failed for query (%s: %s) — falling back to local CPU",
+                type(e).__name__, e,
+            )
+    return _embed_cpu_sync([text])[0]
 
 
-# ── Async Embedding Functions ────────────────────────────────
+# ── Async Public API ─────────────────────────────────────────
 
 async def embed_texts(texts: list[str], batch_size: int = None) -> list[list[float]]:
-    """Embed a list of texts asynchronously (runs model in thread pool).
+    """Embed a list of texts asynchronously. Returns 1024-dim vectors.
 
-    Returns list of 1024-dimensional normalized vectors.
+    Uses true async HTTP for HF path (doesn't block event loop). CPU fallback
+    runs in the default thread pool executor.
     """
+    if not texts:
+        return []
+
+    bs = batch_size or (HF_BATCH_SIZE if HF_ENABLED else EMBEDDING_BATCH_SIZE)
+    all_embeddings: list[list[float]] = []
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, embed_texts_sync, texts, batch_size
-    )
+
+    for i in range(0, len(texts), bs):
+        batch = texts[i:i + bs]
+        vecs = None
+
+        if HF_ENABLED:
+            try:
+                vecs = await _embed_hf_async(batch)
+            except Exception as e:
+                log.warning(
+                    "HF endpoint failed for async batch %d (%s: %s) — falling back to local CPU",
+                    i // bs, type(e).__name__, e,
+                )
+
+        if vecs is None:
+            vecs = await loop.run_in_executor(None, _embed_cpu_sync, batch)
+
+        all_embeddings.extend(vecs)
+
+    return all_embeddings
 
 
 async def embed_query(text: str) -> list[float]:
     """Embed a single query text asynchronously. Returns 1024-dim vector."""
+    if HF_ENABLED:
+        try:
+            vecs = await _embed_hf_async([text])
+            return vecs[0]
+        except Exception as e:
+            log.warning(
+                "HF endpoint failed for async query (%s: %s) — falling back to local CPU",
+                type(e).__name__, e,
+            )
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, embed_query_sync, text)
+    vecs = await loop.run_in_executor(None, _embed_cpu_sync, [text])
+    return vecs[0]
 
 
 # ── Batch Embedding with Progress ────────────────────────────
@@ -173,12 +311,13 @@ async def embed_texts_with_progress(
 # ── CLI Test ─────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    print("BGE-M3 Embedding Service — Quick Test")
-    print("=" * 50)
-
-    model = _load_model()
+    print("BGE-M3 Embedding Service — Path Comparison")
+    print("=" * 60)
+    print(f"HF_ENABLED: {HF_ENABLED}")
+    if HF_ENABLED:
+        print(f"HF endpoint: {HF_ENDPOINT_URL}")
 
     test_texts = [
         "Employment discrimination claim under WLAD RCW 49.60",
@@ -188,23 +327,30 @@ if __name__ == "__main__":
         "Insurance bad faith denial of UIM coverage",
     ]
 
-    print(f"\nEmbedding {len(test_texts)} texts...")
+    # Path 1: public API (HF if enabled, else CPU)
+    print(f"\n── Public API (HF if enabled) — {len(test_texts)} texts ──")
     t0 = time.time()
-    vecs = embed_texts_sync(test_texts)
-    elapsed = time.time() - t0
+    vecs_hf = embed_texts_sync(test_texts)
+    t_hf = time.time() - t0
+    print(f"  Time: {t_hf:.2f}s ({t_hf/len(test_texts)*1000:.0f}ms per text)")
+    print(f"  Dims: {len(vecs_hf[0])}  norm: {sum(x*x for x in vecs_hf[0]):.4f}")
 
-    print(f"Time: {elapsed:.2f}s ({elapsed/len(test_texts)*1000:.0f}ms per text)")
-    print(f"Dimensions: {len(vecs[0])}")
+    # Path 2: CPU-only for comparison
+    print(f"\n── Local CPU (fallback path) — {len(test_texts)} texts ──")
+    t0 = time.time()
+    vecs_cpu = _embed_cpu_sync(test_texts)
+    t_cpu = time.time() - t0
+    print(f"  Time: {t_cpu:.2f}s ({t_cpu/len(test_texts)*1000:.0f}ms per text)")
+    print(f"  Dims: {len(vecs_cpu[0])}  norm: {sum(x*x for x in vecs_cpu[0]):.4f}")
 
-    # Similarity test
+    # Agreement check — vectors should be nearly identical (same model, same inputs)
     import numpy as np
-    vecs_np = np.array(vecs)
-    sims = vecs_np @ vecs_np.T
+    a = np.array(vecs_hf)
+    b = np.array(vecs_cpu)
+    per_text_cos = (a * b).sum(axis=1) / (np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1))
+    print(f"\n── Agreement (cosine sim between HF and CPU vectors per text) ──")
+    for i, s in enumerate(per_text_cos):
+        print(f"  [{i}] {s:.6f}  {test_texts[i][:50]}")
 
-    print(f"\nSimilarity matrix (cosine):")
-    for i, t in enumerate(test_texts):
-        print(f"  [{i}] {t[:50]}...")
-    print()
-    for i in range(len(test_texts)):
-        row = " ".join(f"{sims[i][j]:.2f}" for j in range(len(test_texts)))
-        print(f"  [{i}] {row}")
+    if HF_ENABLED and t_cpu > 0:
+        print(f"\nSpeedup (CPU / public API): {t_cpu / t_hf:.1f}x")

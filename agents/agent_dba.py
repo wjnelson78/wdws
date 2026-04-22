@@ -162,19 +162,18 @@ COORDINATION:
             self.log.error("Pool health check FAIL: %s", str(pool_err)[:100])
             # Continue anyway — the main logic will handle it
 
+        # ── 1. Connection Pool Health ────────────────────────
+        current_section = "connection-pool"
+        connections = []
         try:
-            # ── 1. Connection Pool Health ────────────────────────
-            current_section = "connection-pool"
-            connections = []
-            try:
-                # Use simpler query without current_database() to avoid pool initialization issues
-                connections = await ctx.query("""
-                SELECT state, COUNT(*) as count,
-                       MAX(EXTRACT(EPOCH FROM now() - state_change)) as max_age_secs
-                FROM pg_stat_activity
-                GROUP BY state
-                ORDER BY count DESC
-                """.strip())
+            # Use simpler query without current_database() to avoid pool initialization issues
+            connections = await ctx.query("""
+            SELECT state, COUNT(*) as count,
+                   MAX(EXTRACT(EPOCH FROM now() - state_change)) as max_age_secs
+            FROM pg_stat_activity
+            GROUP BY state
+            ORDER BY count DESC
+            """.strip())
         except Exception as e:
             try:
                 await self._safe_finding(ctx,"warning", "connection-query-failed",

@@ -120,6 +120,10 @@ TRANSFER_SESSION_FILE_LIMIT = int(os.getenv("TRANSFER_SESSION_FILE_LIMIT", str(1
 TRANSFER_UPLOAD_SESSION_TTL_SECONDS = int(os.getenv("TRANSFER_UPLOAD_SESSION_TTL_SECONDS", "3600"))
 TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS = int(os.getenv("TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS", "900"))
 TRANSFER_UPLOAD_MAX_CHUNK_SIZE = int(os.getenv("TRANSFER_UPLOAD_MAX_CHUNK_SIZE", str(4 * 1024 * 1024)))
+SOFFICE_BIN = os.getenv("SOFFICE_BIN", "/usr/bin/soffice")
+DOCX_CONVERT_TIMEOUT_SECONDS = int(os.getenv("DOCX_CONVERT_TIMEOUT_SECONDS", "180"))
+CONVERTED_DIR = Path(os.getenv("CONVERTED_DIR", str(Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop")) / "_converted")))
+CONVERTED_DIR.mkdir(parents=True, exist_ok=True)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 OCR_DPI = 150
@@ -1820,7 +1824,7 @@ INVESTIGATION METHODOLOGY
 ═══════════════════════════════════════════════════════════════════════════════════════════
 1. **START EVERY SESSION**: Call get_agent_context('athena') to load your memories and context
 2. **DOCUMENT EVERYTHING**: Use create_note() to record findings, questions, and tasks
-3. **PRESERVE DELIVERABLES**: Use create_document() or upload_document() whenever you create a substantive artifact William may want searchable later — memos, reports, drafts, code notes, research summaries, or supporting files
+3. **PRESERVE DELIVERABLES**: Use create_document() or create_document_upload_session() whenever you create a substantive artifact William may want searchable later — memos, reports, drafts, code notes, research summaries, or supporting files
 4. **WORK ITERATIVELY**: Break complex analysis into steps, documenting progress
 5. **USE BULK TOOLS**: Prefer get_case_report() and get_all_cases_summary() over multiple queries
 6. **TRACK INVESTIGATIONS**: Use get_investigation_summary() to see status and open items
@@ -1846,7 +1850,7 @@ During Investigation:
   3. get_case_report(case_number) → Get full case details
   4. rag_query/semantic_search → Find relevant documents
   5. create_note(..., note_type='finding') → Document what you discover
-    6. create_document(...) / upload_document(...) → Preserve substantial work product in Athena when it should remain searchable
+    6. create_document(...) / create_document_upload_session(...) → Preserve substantial work product in Athena when it should remain searchable
     7. create_note(..., note_type='task') → Track follow-up items
 
 Session End:
@@ -1884,6 +1888,25 @@ Recommended retrieval workflow:
      3. Prefer `create_document_download_session` and fetch the returned `download_url`.
      4. If the client cannot follow URLs, call `download_original_document` and repeat with
          `next_offset` until `is_last_chunk` is true.
+
+═══════════════════════════════════════════════════════════════════════════════════════════
+DOCX → PDF CONVERSION
+═══════════════════════════════════════════════════════════════════════════════════════════
+Athena can render any DOCX/DOC/ODT/RTF document into a PDF for viewing or downloading.
+Two entry points — pick based on how the bytes arrive:
+
+• `create_document_upload_session(..., auto_convert_to_pdf=True)` — for uploading new
+    DOCX content. Stream the raw DOCX bytes to the returned `upload_url` with PUT +
+    Content-Range; once the final chunk completes, the server automatically converts
+    the file and the completion payload includes `pdf_document_id`, `pdf_download_url`,
+    and `pdf_view_url`.
+• `convert_docx_to_pdf(document_id)` — convert a DOCX that is already stored in Athena.
+
+After conversion, the PDF is a first-class document in Athena: it is searchable,
+tagged with a `converted_from` relationship back to the DOCX source, and can be
+fetched later through any standard download path (`download_url` returned by
+`create_document_download_session`, inline view via `disposition='inline'`, or base64
+chunks via `download_original_document`).
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 CORE PRINCIPLES
@@ -1947,6 +1970,103 @@ def _build_transfer_url(direction: str, token: str) -> str:
     return f"{BASE_URL.rstrip('/')}/transfer/{direction}/{token}"
 
 
+_BACKGROUND_UPLOAD_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_upload_finalizer(coro) -> None:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_UPLOAD_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_UPLOAD_TASKS.discard)
+
+
+async def _finalize_upload_session(
+    session_id: uuid.UUID,
+    final_path: Path,
+    filename: str,
+    domain: str,
+    title: Optional[str],
+    document_type: Optional[str],
+    description: Optional[str],
+    auto_convert_to_pdf: bool,
+) -> None:
+    """Background ingestion for a completed upload session.
+
+    Runs text extraction, chunking, embedding, DB inserts, and optional DOCX→PDF
+    conversion after the final chunk has been written to disk. Updates the session
+    row to `completed` (with `document_id`) on success or `failed` on error so
+    clients polling the status URL can observe the transition.
+    """
+    p = await get_pool()
+    try:
+        ingest_result = await _ingest_saved_upload(
+            final_path,
+            filename,
+            domain,
+            title,
+            document_type,
+            description,
+            "mcp-upload-session",
+        )
+    except Exception as exc:
+        log.error("Background ingest failed for session %s: %s", session_id, exc)
+        try:
+            await p.execute(
+                """
+                UPDATE ops.file_transfer_sessions
+                SET status = 'failed',
+                    updated_at = now(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+                WHERE session_id = $1
+                """,
+                session_id,
+                json.dumps({"error": f"Upload finished but ingest failed: {exc}"}),
+            )
+        except Exception as db_err:
+            log.error("Failed to mark session %s as failed: %s", session_id, db_err)
+        return
+
+    completion_meta: dict[str, Any] = {"ingest_result": ingest_result}
+
+    if auto_convert_to_pdf:
+        upload_ext = Path(filename).suffix.lower()
+        if upload_ext in (".docx", ".doc", ".odt", ".rtf"):
+            try:
+                conversion = await _run_docx_to_pdf_pipeline(ingest_result["document_id"])
+                completion_meta["pdf_conversion"] = {
+                    "pdf_document_id": conversion["pdf_document_id"],
+                    "pdf_filename": conversion["pdf_filename"],
+                    "pdf_size_bytes": conversion["pdf_size_bytes"],
+                    "download_url": conversion["download_url"],
+                    "view_url": conversion["view_url"],
+                }
+            except Exception as conv_err:
+                log.error("Auto DOCX→PDF conversion failed: %s", conv_err)
+                completion_meta["pdf_conversion_error"] = str(conv_err)
+        else:
+            completion_meta["pdf_conversion_error"] = (
+                f"auto_convert_to_pdf skipped — unsupported extension {upload_ext}"
+            )
+
+    try:
+        await p.execute(
+            """
+            UPDATE ops.file_transfer_sessions
+            SET status = 'completed',
+                next_offset = total_size,
+                document_id = $2::uuid,
+                completed_at = now(),
+                updated_at = now(),
+                metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+            WHERE session_id = $1
+            """,
+            session_id,
+            uuid.UUID(ingest_result["document_id"]),
+            json.dumps(completion_meta),
+        )
+    except Exception as db_err:
+        log.error("Failed to mark session %s as completed: %s", session_id, db_err)
+
+
 def _upload_session_status_payload(
     row: asyncpg.Record,
     token: str,
@@ -1981,6 +2101,19 @@ def _upload_session_status_payload(
         payload["document_id"] = str(row["document_id"])
     if metadata.get("ingest_result"):
         payload["ingest_result"] = metadata["ingest_result"]
+    if metadata.get("pdf_conversion"):
+        pdf_info = metadata["pdf_conversion"]
+        payload["pdf_conversion"] = pdf_info
+        if pdf_info.get("pdf_document_id"):
+            payload["pdf_document_id"] = pdf_info["pdf_document_id"]
+        if pdf_info.get("download_url"):
+            payload["pdf_download_url"] = pdf_info["download_url"]
+        if pdf_info.get("view_url"):
+            payload["pdf_view_url"] = pdf_info["view_url"]
+    if metadata.get("pdf_conversion_error"):
+        payload["pdf_conversion_error"] = metadata["pdf_conversion_error"]
+    if metadata.get("auto_convert_to_pdf") is not None:
+        payload["auto_convert_to_pdf"] = bool(metadata["auto_convert_to_pdf"])
     if metadata.get("error"):
         payload["error"] = metadata["error"]
     return payload
@@ -2014,7 +2147,7 @@ async def transfer_upload_session(request: Request) -> Response:
                 )
                 if not row or row["direction"] != "upload":
                     return JSONResponse({"error": "Upload session not found"}, status_code=404)
-                if row["status"] == "completed":
+                if row["status"] in {"completed", "ingesting"}:
                     return JSONResponse(_upload_session_status_payload(row, token), status_code=409)
                 metadata = _json_object(row["metadata"])
                 metadata["cancelled_at"] = datetime.now(timezone.utc).isoformat()
@@ -2039,7 +2172,11 @@ async def transfer_upload_session(request: Request) -> Response:
         )
         if not row or row["direction"] != "upload":
             return JSONResponse({"error": "Upload session not found"}, status_code=404)
-        if row["status"] != "completed" and row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
+        if (
+            row["status"] not in {"completed", "ingesting"}
+            and row["expires_at"]
+            and row["expires_at"] <= datetime.now(timezone.utc)
+        ):
             metadata = _json_object(row["metadata"])
             metadata["error"] = metadata.get("error") or "Upload session expired"
             await p.execute(
@@ -2099,7 +2236,7 @@ async def transfer_upload_session(request: Request) -> Response:
             if not row or row["direction"] != "upload":
                 return JSONResponse({"error": "Upload session not found"}, status_code=404)
 
-            if row["status"] in {"completed", "cancelled", "failed", "expired"}:
+            if row["status"] in {"completed", "ingesting", "cancelled", "failed", "expired"}:
                 return JSONResponse(_upload_session_status_payload(row, token), status_code=409)
 
             if row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
@@ -2195,49 +2332,48 @@ async def transfer_upload_session(request: Request) -> Response:
     final_path = _build_upload_save_path(upload_domain, upload_filename)
     await asyncio.to_thread(shutil.move, str(temp_path), str(final_path))
 
-    try:
-        ingest_result = await _ingest_saved_upload(
+    # All bytes are on disk and verified. Flip the session to `ingesting` and
+    # hand ingestion off to a background task so the PUT response returns well
+    # within Cloudflare's 100s idle timeout. Clients poll GET the status URL
+    # until status transitions to `completed` (with document_id) or `failed`.
+    meta_row = await p.fetchrow(
+        "SELECT metadata FROM ops.file_transfer_sessions WHERE session_id = $1",
+        session_id,
+    )
+    session_metadata = _json_object(meta_row["metadata"]) if meta_row else {}
+    auto_convert_flag = bool(session_metadata.get("auto_convert_to_pdf"))
+
+    await p.execute(
+        """
+        UPDATE ops.file_transfer_sessions
+        SET status = 'ingesting',
+            next_offset = total_size,
+            updated_at = now()
+        WHERE session_id = $1
+        """,
+        session_id,
+    )
+
+    _spawn_upload_finalizer(
+        _finalize_upload_session(
+            session_id,
             final_path,
             upload_filename,
             upload_domain,
             upload_title,
             upload_document_type,
             upload_description,
-            "mcp-upload-session",
+            auto_convert_flag,
         )
-    except Exception as exc:
-        await p.execute(
-            """
-            UPDATE ops.file_transfer_sessions
-            SET status = 'failed', updated_at = now(), metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
-            WHERE session_id = $1
-            """,
-            session_id,
-            json.dumps({"error": f"Upload finished but ingest failed: {exc}"}),
-        )
-        row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
-        return JSONResponse(_upload_session_status_payload(row, token), status_code=500)
-
-    await p.execute(
-        """
-        UPDATE ops.file_transfer_sessions
-        SET status = 'completed',
-            next_offset = total_size,
-            document_id = $2::uuid,
-            completed_at = now(),
-            updated_at = now(),
-            metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
-        WHERE session_id = $1
-        """,
-        session_id,
-        uuid.UUID(ingest_result["document_id"]),
-        json.dumps({"ingest_result": ingest_result}),
     )
-    row = await p.fetchrow("SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1", token_hash)
+
+    row = await p.fetchrow(
+        "SELECT * FROM ops.file_transfer_sessions WHERE token_hash = $1",
+        token_hash,
+    )
     return JSONResponse(
         _upload_session_status_payload(row, token),
-        status_code=201,
-        headers={"X-Document-Id": ingest_result["document_id"]},
+        status_code=202,
     )
 
 
@@ -3422,7 +3558,7 @@ async def send_mail_message(
 ) -> str:
     """Create, attach, and send a new email from Athena's mailbox via Graph.
 
-    To attach files Athena creates, pass document IDs returned by create_document or upload_document.
+    To attach files Athena creates, pass document IDs returned by create_document or create_document_upload_session.
 
     Args:
         to_recipients: Comma-separated recipient email addresses
@@ -3696,7 +3832,7 @@ async def create_document(
     USE THIS when Claude creates a durable artifact that should be preserved in Athena —
     analyses, summaries, memos, reports, coding notes, research digests, or other work product.
     The content is saved as a file, chunked, embedded, and made searchable.
-    Unlike upload_document (which needs base64 binary), this accepts plain text directly.
+    For binary files (DOCX, PDF, images, XLSX), use create_document_upload_session instead.
 
     Args:
         title: Document title (e.g. "Nelson v Starbucks Case Summary")
@@ -3854,6 +3990,58 @@ def _extract_docx_text_upload(docx_path: Path) -> str:
                 return "\n".join("".join(r.text or "" for r in p.findall(".//w:t", ns)) for p in root.findall(".//w:p", ns) if "".join(r.text or "" for r in p.findall(".//w:t", ns)))
     except Exception:
         return ""
+
+def _convert_docx_to_pdf_sync(docx_path: Path, out_dir: Optional[Path] = None) -> Path:
+    """Convert a DOCX/DOC file to PDF using headless LibreOffice.
+
+    Raises RuntimeError on failure. Returns the path to the generated PDF.
+    """
+    ext = docx_path.suffix.lower()
+    if ext not in (".docx", ".doc", ".odt", ".rtf"):
+        raise RuntimeError(f"Unsupported source extension for PDF conversion: {ext}")
+    if not docx_path.exists():
+        raise RuntimeError(f"Source file not found: {docx_path}")
+
+    output_dir = Path(out_dir) if out_dir else CONVERTED_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use an isolated user profile per invocation so concurrent conversions don't collide.
+    profile_dir = output_dir / f"_profile_{uuid.uuid4().hex}"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [
+                SOFFICE_BIN,
+                f"-env:UserInstallation=file://{profile_dir}",
+                "--headless",
+                "--nologo",
+                "--nofirststartwizard",
+                "--norestore",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(output_dir),
+                str(docx_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=DOCX_CONVERT_TIMEOUT_SECONDS,
+        )
+    finally:
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+    expected_pdf = output_dir / f"{docx_path.stem}.pdf"
+    if proc.returncode != 0 or not expected_pdf.exists():
+        stderr = (proc.stderr or "").strip()[:500]
+        stdout = (proc.stdout or "").strip()[:500]
+        raise RuntimeError(
+            f"LibreOffice conversion failed (rc={proc.returncode}): {stderr or stdout or 'no output'}"
+        )
+    # Give the PDF a collision-safe stable name inside output_dir.
+    final_pdf = output_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{docx_path.stem}.pdf"
+    shutil.move(str(expected_pdf), str(final_pdf))
+    return final_pdf
+
 
 def _extract_text_for_upload(file_path: Path) -> str:
     ext = file_path.suffix.lower()
@@ -4171,7 +4359,7 @@ async def _normalize_document_domain(domain: str) -> str:
 async def list_document_domains() -> str:
     """List the currently available Athena document domains and how to use them.
 
-    Use this when choosing a domain for create_document, upload_document, or create_note.
+    Use this when choosing a domain for create_document, create_document_upload_session, or create_note.
     The results come from Athena's domain registry when available, with safe defaults if the
     registry is unavailable.
     """
@@ -4181,7 +4369,7 @@ async def list_document_domains() -> str:
             "default_domain": DEFAULT_DOCUMENT_DOMAIN,
             "count": len(catalog),
             "domains": catalog,
-            "guidance": "Use create_document or upload_document to preserve substantial Claude-created artifacts in Athena.",
+            "guidance": "Use create_document or create_document_upload_session to preserve substantial Claude-created artifacts in Athena.",
         })
     except Exception as e:
         log.error("list_document_domains error: %s", e)
@@ -4200,6 +4388,7 @@ async def create_document_upload_session(
     description: Optional[str] = None,
     sha256: Optional[str] = None,
     expires_in_seconds: Optional[int] = None,
+    auto_convert_to_pdf: bool = False,
 ) -> str:
     """Create a Graph-style raw HTTP upload session for a document.
 
@@ -4218,6 +4407,9 @@ async def create_document_upload_session(
         description: Optional notes stored with the document.
         sha256: Optional expected SHA-256 hex digest used to verify the completed upload.
         expires_in_seconds: Optional TTL for the upload session.
+        auto_convert_to_pdf: If True and the uploaded file is DOCX/DOC/ODT/RTF, the
+            server renders a PDF once the upload finishes and exposes `pdf_document_id`,
+            `pdf_download_url`, and `pdf_view_url` in the final completion payload.
     """
     try:
         _require_scope("write")
@@ -4245,10 +4437,21 @@ async def create_document_upload_session(
         temp_path.touch(exist_ok=True)
 
         guessed_content_type = content_type or _guess_mime_type(normalized_filename)
+        auto_convert_flag = bool(auto_convert_to_pdf)
+        if auto_convert_flag:
+            upload_ext = Path(normalized_filename).suffix.lower()
+            if upload_ext not in (".docx", ".doc", ".odt", ".rtf"):
+                return json.dumps({
+                    "error": (
+                        f"auto_convert_to_pdf requires a DOCX/DOC/ODT/RTF filename "
+                        f"(got '{upload_ext}')"
+                    ),
+                })
         initial_metadata = {
             "transport": "raw-http",
             "created_via": "create_document_upload_session",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "auto_convert_to_pdf": auto_convert_flag,
         }
 
         p = await get_pool()
@@ -4294,11 +4497,74 @@ async def create_document_upload_session(
             "next_expected_ranges": ["0-"],
             "nextExpectedRanges": ["0-"],
             "sha256": normalized_sha256,
+            "auto_convert_to_pdf": auto_convert_flag,
             "note": "Upload raw bytes with PUT + Content-Range. GET the same URL for status; DELETE cancels the session.",
         })
     except Exception as e:
         log.error("create_document_upload_session error: %s", e)
         return json.dumps({"error": str(e)})
+
+
+async def _create_download_session_row(
+    document_id: str,
+    disposition: str = "attachment",
+    expires_in_seconds: Optional[int] = None,
+) -> dict[str, Any]:
+    """Allocate a raw HTTP download session for a document and return its URL payload."""
+    await _ensure_transfer_schema()
+    normalized_disposition = _normalize_download_disposition(disposition)
+    ttl = max(60, min(int(expires_in_seconds or TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS), 86400))
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+    descriptor = await _resolve_original_document_download(document_id)
+
+    session_id = uuid.uuid4()
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    metadata = {
+        "transport": "raw-http",
+        "source_kind": descriptor.get("source_kind"),
+        "original_available": descriptor.get("original_available", False),
+        "sha256": descriptor.get("sha256"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    p = await get_pool()
+    await p.execute(
+        """
+        INSERT INTO ops.file_transfer_sessions
+            (session_id, direction, token_hash, status, client_id, filename,
+             content_type, disposition, total_size, document_id, metadata, expires_at)
+        VALUES ($1, 'download', $2, 'ready', $3, $4,
+                $5, $6, $7, $8::uuid, $9::jsonb, $10)
+        """,
+        session_id,
+        token_hash,
+        _current_client_id(),
+        descriptor["filename"],
+        descriptor["mime_type"],
+        normalized_disposition,
+        int(descriptor["total_size"]),
+        document_id,
+        json.dumps(metadata),
+        expires_at,
+    )
+
+    return {
+        "session_id": str(session_id),
+        "document_id": document_id,
+        "filename": descriptor["filename"],
+        "mime_type": descriptor["mime_type"],
+        "total_size": int(descriptor["total_size"]),
+        "sha256": descriptor["sha256"],
+        "disposition": normalized_disposition,
+        "download_url": _build_transfer_url("download", token),
+        "method": "GET",
+        "supports_range": True,
+        "expires_at": expires_at.isoformat(),
+        "expirationDateTime": expires_at.isoformat(),
+        "original_available": descriptor.get("original_available", False),
+        "source_kind": descriptor.get("source_kind", "unknown"),
+    }
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -4319,117 +4585,116 @@ async def create_document_download_session(
         expires_in_seconds: Optional TTL for the download session.
     """
     try:
-        await _ensure_transfer_schema()
-        normalized_disposition = _normalize_download_disposition(disposition)
-        ttl = max(60, min(int(expires_in_seconds or TRANSFER_DOWNLOAD_SESSION_TTL_SECONDS), 86400))
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
-        descriptor = await _resolve_original_document_download(document_id)
-
-        session_id = uuid.uuid4()
-        token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        metadata = {
-            "transport": "raw-http",
-            "source_kind": descriptor.get("source_kind"),
-            "original_available": descriptor.get("original_available", False),
-            "sha256": descriptor.get("sha256"),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        p = await get_pool()
-        await p.execute(
-            """
-            INSERT INTO ops.file_transfer_sessions
-                (session_id, direction, token_hash, status, client_id, filename,
-                 content_type, disposition, total_size, document_id, metadata, expires_at)
-            VALUES ($1, 'download', $2, 'ready', $3, $4,
-                    $5, $6, $7, $8::uuid, $9::jsonb, $10)
-            """,
-            session_id,
-            token_hash,
-            _current_client_id(),
-            descriptor["filename"],
-            descriptor["mime_type"],
-            normalized_disposition,
-            int(descriptor["total_size"]),
-            document_id,
-            json.dumps(metadata),
-            expires_at,
-        )
-
-        return json.dumps({
-            "session_id": str(session_id),
-            "document_id": document_id,
-            "filename": descriptor["filename"],
-            "mime_type": descriptor["mime_type"],
-            "total_size": int(descriptor["total_size"]),
-            "sha256": descriptor["sha256"],
-            "disposition": normalized_disposition,
-            "download_url": _build_transfer_url("download", token),
-            "method": "GET",
-            "supports_range": True,
-            "expires_at": expires_at.isoformat(),
-            "expirationDateTime": expires_at.isoformat(),
-            "original_available": descriptor.get("original_available", False),
-            "source_kind": descriptor.get("source_kind", "unknown"),
-        })
+        payload = await _create_download_session_row(document_id, disposition, expires_in_seconds)
+        return json.dumps(payload)
     except Exception as e:
         log.error("create_document_download_session error: %s", e)
         return json.dumps({"error": str(e)})
 
 
+async def _run_docx_to_pdf_pipeline(source_docx_doc_id: str) -> dict[str, Any]:
+    """Convert an already-ingested DOCX document to PDF.
+
+    Produces a new `core.documents` row for the PDF, links it to the source via a
+    `converted_from` relationship, and returns download/view URL payloads.
+    """
+    p = await get_pool()
+    doc = await p.fetchrow(
+        "SELECT id, domain, source_path, filename, title, document_type, metadata "
+        "FROM core.documents WHERE id = $1::uuid",
+        source_docx_doc_id,
+    )
+    if not doc:
+        raise RuntimeError(f"Document not found: {source_docx_doc_id}")
+
+    filename = (doc["filename"] or "").strip()
+    src_path_str = (doc["source_path"] or "").strip()
+    if src_path_str.startswith("file://"):
+        src_path_str = src_path_str[7:]
+    source_file = Path(src_path_str) if src_path_str else None
+
+    if not source_file or not source_file.exists():
+        raise RuntimeError(
+            f"Source DOCX file is not available on disk for document {source_docx_doc_id}"
+        )
+
+    ext = source_file.suffix.lower() or Path(filename).suffix.lower()
+    if ext not in (".docx", ".doc", ".odt", ".rtf"):
+        raise RuntimeError(
+            f"Document {source_docx_doc_id} is not a DOCX/DOC/ODT/RTF source (ext={ext})"
+        )
+
+    pdf_path = await asyncio.to_thread(_convert_docx_to_pdf_sync, source_file, CONVERTED_DIR)
+
+    pdf_filename = f"{Path(filename).stem or 'document'}.pdf"
+    pdf_title = (doc["title"] or Path(filename).stem.replace("_", " ").replace("-", " ")) + " (PDF)"
+    pdf_domain = doc["domain"] or DEFAULT_DOCUMENT_DOMAIN
+    pdf_description = f"PDF rendered from DOCX source document {source_docx_doc_id}"
+
+    ingest_result = await _ingest_saved_upload(
+        pdf_path,
+        pdf_filename,
+        pdf_domain,
+        pdf_title,
+        "document",
+        pdf_description,
+        "docx-to-pdf-conversion",
+    )
+    pdf_document_id = ingest_result["document_id"]
+
+    try:
+        await p.execute(
+            """
+            INSERT INTO core.document_relationships
+                (source_document_id, target_document_id, relationship_type, confidence)
+            VALUES ($1::uuid, $2::uuid, 'converted_from', 1.0)
+            ON CONFLICT (source_document_id, target_document_id, relationship_type) DO NOTHING
+            """,
+            pdf_document_id,
+            source_docx_doc_id,
+        )
+    except Exception as rel_err:
+        log.warning("Failed to record converted_from relationship: %s", rel_err)
+
+    download_payload = await _create_download_session_row(pdf_document_id, "attachment")
+    view_payload = await _create_download_session_row(pdf_document_id, "inline")
+
+    return {
+        "source_document_id": source_docx_doc_id,
+        "pdf_document_id": pdf_document_id,
+        "pdf_filename": pdf_filename,
+        "pdf_title": pdf_title,
+        "pdf_size_bytes": pdf_path.stat().st_size,
+        "pdf_local_path": str(pdf_path),
+        "ingest_result": ingest_result,
+        "download_url": download_payload["download_url"],
+        "view_url": view_payload["download_url"],
+        "download_session": download_payload,
+        "view_session": view_payload,
+    }
+
+
 @mcp.tool(annotations=WRITE_OP)
 @logged_tool
-async def upload_document(
-    filename: str,
-    file_data_base64: str,
-    domain: str = DEFAULT_DOCUMENT_DOMAIN,
-    title: Optional[str] = None,
-    document_type: Optional[str] = None,
-    description: Optional[str] = None,
-) -> str:
-    """Upload a document to Athena Cognitive Engine for storage and ingestion.
+async def convert_docx_to_pdf(document_id: str) -> str:
+    """Convert an ingested DOCX/DOC document into a PDF and make it viewable/downloadable.
 
-    Use this to save documents created by Claude Desktop (DOCX, PDF, MD, TXT,
-    images, XLSX) into the knowledge base. The original file is preserved on disk
-    and the content is extracted, chunked, embedded, and indexed for semantic search.
+    The source document must already be stored in Athena (see `create_document_upload_session`)
+    and must point to a DOCX/DOC/ODT/RTF file on disk.
+    The rendered PDF is ingested as a new document and linked back to its source via a
+    `converted_from` relationship. The response includes a `download_url`
+    (Content-Disposition: attachment) and a `view_url` (inline) — both follow the
+    standard raw HTTP download session flow.
 
     Args:
-        filename: Original filename with extension (e.g. "report.docx", "analysis.pdf")
-        file_data_base64: The file content encoded as base64
-        domain: Classification domain (default "general"). Call list_document_domains() if you're unsure which domain to use.
-        title: Human-readable title (auto-derived from filename if omitted)
-        document_type: Document type — "document", "report", "letter", "memo", etc.
-        description: Optional description or notes about the document
+        document_id: UUID of the DOCX-family document to convert.
     """
     try:
-        domain = await _normalize_document_domain(domain)
-        try:
-            file_bytes = base64.b64decode(file_data_base64)
-        except Exception:
-            return json.dumps({"error": "Invalid base64 data"})
-
-        if len(file_bytes) < 10:
-            return json.dumps({"error": "File is too small or empty"})
-        if len(file_bytes) > TRANSFER_SESSION_FILE_LIMIT:
-            return json.dumps({"error": f"File exceeds {TRANSFER_SESSION_FILE_LIMIT} byte limit"})
-
-        save_path = _build_upload_save_path(domain, filename)
-        save_path.write_bytes(file_bytes)
-        log.info("Saved uploaded file: %s (%d bytes)", save_path, len(file_bytes))
-
-        result = await _ingest_saved_upload(
-            save_path,
-            filename,
-            domain,
-            title,
-            document_type,
-            description,
-            "claude-desktop-upload",
-        )
+        _require_scope("write")
+        result = await _run_docx_to_pdf_pipeline(document_id)
         return json.dumps(result)
     except Exception as e:
-        log.error("upload_document error: %s", e)
+        log.error("convert_docx_to_pdf error: %s", e)
         return json.dumps({"error": str(e)})
 
 

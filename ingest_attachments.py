@@ -305,6 +305,98 @@ def extract_attachments_from_eml(eml_path: Path) -> List[Tuple[str, str, bytes]]
 # OCR worker (top-level for multiprocessing pickle)
 # ============================================================
 
+RPMSG_MAGIC = bytes.fromhex("76e80460c411e386a00f000000100000")
+
+
+def _is_rpmsg(file_path: Path, content_type: str) -> bool:
+    """Detect Microsoft RMS-protected email wrappers (.rpmsg / message_v2.rpmsg)."""
+    if content_type == "application/x-microsoft-rpmsg-message":
+        return True
+    if file_path.suffix.lower() == ".rpmsg":
+        return True
+    try:
+        if file_path.stat().st_size >= 16:
+            with open(file_path, "rb") as fh:
+                return fh.read(16) == RPMSG_MAGIC
+    except Exception:
+        pass
+    return False
+
+
+def _extract_rpmsg_text(file_path: Path) -> Tuple[str, str]:
+    """Decrypt a .rpmsg via MIP SDK and return (concatenated_text, method).
+
+    The decrypted body + any inner attachments (AIP-protected PDFs get
+    transparently double-decrypted by purview_decrypt's GetDecryptedTemporaryFileAsync
+    path) are concatenated into one text blob suitable for chunk+embed.
+    See PURVIEW_DECRYPT.md for architecture details.
+    """
+    try:
+        import sys as _sys
+        _sys.path.insert(0, "/opt/wdws")
+        from purview_decrypt import decrypt_rpmsg
+    except Exception as e:
+        return "", f"error: rpmsg_import_failed: {e}"
+
+    # Write decrypted artifacts next to the .rpmsg
+    body_out = file_path.with_suffix("").with_name(file_path.stem + ".decrypted.html")
+    result = decrypt_rpmsg(str(file_path), str(body_out), timeout=120)
+    status = result.get("status")
+    if status == "auth_required":
+        return "", f"rpmsg_auth_required:{result.get('required_tenant','?')}"
+    if status == "no_permissions":
+        return "", f"rpmsg_no_permissions:pl_owner={result.get('plOwner','?')}"
+    if status != "ok":
+        return "", f"rpmsg_{status}:{result.get('error','')[:120]}"
+
+    # Strip HTML body → text
+    parts: List[str] = []
+    parts.append(f"[RMS-protected email; pl_owner={result.get('plOwner')}; bodyType={result.get('bodyType')}]")
+    try:
+        body_raw = body_out.read_text(errors="replace")
+        body_stripped = re.sub(r"<style.*?</style>", "", body_raw, flags=re.DOTALL | re.I)
+        body_stripped = re.sub(r"<script.*?</script>", "", body_stripped, flags=re.DOTALL | re.I)
+        body_stripped = re.sub(r"<[^>]+>", " ", body_stripped)
+        import html as _html
+        body_stripped = _html.unescape(body_stripped)
+        body_stripped = re.sub(r"\s+", " ", body_stripped).strip()
+        parts.append(body_stripped)
+    except Exception as e:
+        parts.append(f"[body extract error: {e}]")
+
+    # Inner attachments — purview_decrypt already wrote them as .attNN_* siblings
+    for att_meta in result.get("attachments", []):
+        att_path = Path(att_meta["output"])
+        if not att_path.exists():
+            continue
+        ext = att_path.suffix.lower()
+        att_text = ""
+        try:
+            if ext == ".pdf":
+                # purview_decrypt's File API wrote decrypted PDF bytes on write.
+                # In practice, inner PDFs are often AIP-protected themselves,
+                # leaving only a "This is a protected document" cover page.
+                # The fix: run a second decrypt pass via purview-decrypt on the PDF.
+                dec = att_path.with_suffix(".inner_dec.pdf")
+                inner = decrypt_rpmsg(str(att_path), str(dec), timeout=120)
+                pdf_to_read = dec if (inner.get("status") == "ok" and dec.exists()) else att_path
+                att_text = extract_pdf_text(pdf_to_read)
+            elif ext in (".png", ".jpg", ".jpeg", ".gif"):
+                # Skip tiny inline signatures/logos
+                if att_path.stat().st_size >= 30_000:
+                    att_text = extract_image_text(att_path)
+            elif ext in (".docx",):
+                att_text = extract_docx_text(att_path)
+            elif ext == ".txt":
+                att_text = att_path.read_text(errors="ignore")
+        except Exception as e:
+            att_text = f"[attachment extract error: {e}]"
+        if att_text:
+            parts.append(f"\n[attachment: {att_meta.get('name')}]\n{att_text}")
+
+    return "\n\n".join(parts), "rpmsg_decrypt"
+
+
 def _ocr_attachment_worker(args: Tuple[str, str, str]) -> Tuple[str, str, str]:
     """Worker: OCR a single attachment file.
     Args: (attachment_db_id, file_path, content_type)
@@ -315,7 +407,9 @@ def _ocr_attachment_worker(args: Tuple[str, str, str]) -> Tuple[str, str, str]:
     start = time.time()
 
     try:
-        if content_type == "application/pdf":
+        if _is_rpmsg(file_path, content_type):
+            text, method = _extract_rpmsg_text(file_path)
+        elif content_type == "application/pdf":
             text = extract_pdf_text(file_path)
             method = "ocr_pdf_150dpi"
         elif content_type.startswith("image/"):
