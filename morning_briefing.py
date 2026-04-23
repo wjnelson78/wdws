@@ -23,6 +23,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 _env_file = Path("/opt/wdws/.env")
 if _env_file.exists():
@@ -253,20 +254,180 @@ def format_briefing(events, deadlines, tasks, emails, cases) -> str:
     return "\n".join(lines)
 
 
+async def get_sprint_a_task4_progress(pool: asyncpg.Pool) -> Optional[dict]:
+    """Task 4 progress block per §10 rule 8 (Sprint A edition).
+
+    Returns None if Task 4 is not yet active (no staging-table rows).
+    Otherwise returns a dict the format_briefing can render into a block
+    with per-domain counts, confidence-bucket distribution (last 24h),
+    review queue depth, failed classifications, heightened-category hits,
+    throughput stats, and transparent ETA math.
+    """
+    async with pool.acquire() as conn:
+        # Is Task 4 active?
+        total_staged = await conn.fetchval(
+            "SELECT COUNT(*) FROM core.documents_backfill_staging")
+        if not total_staged:
+            return None
+
+        # Per-domain total corpus + classified counts
+        per_domain = {}
+        for domain in ('legal', 'medical'):
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM core.documents WHERE domain = $1", domain)
+            if domain == 'legal':
+                classified = await conn.fetchval(
+                    "SELECT COUNT(*) FROM core.documents "
+                    " WHERE domain = $1 AND privilege IS NOT NULL", domain)
+            else:
+                classified = await conn.fetchval(
+                    "SELECT COUNT(*) FROM core.documents "
+                    " WHERE domain = $1 AND phi_status IS NOT NULL", domain)
+            per_domain[domain] = {'total': total, 'classified': classified}
+
+        # Confidence bucket distribution, last 24h
+        buckets_legal = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE confidence >= 0.9) AS high,
+                COUNT(*) FILTER (WHERE confidence >= 0.7 AND confidence < 0.9) AS medium,
+                COUNT(*) FILTER (WHERE confidence < 0.7) AS low
+              FROM core.documents_backfill_staging
+             WHERE domain = 'legal'
+               AND created_at >= now() - interval '24 hours'
+               AND classifier_version = 'agent_athena_v1'
+        """)
+        buckets_medical = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE confidence >= 0.9) AS high,
+                COUNT(*) FILTER (WHERE confidence >= 0.7 AND confidence < 0.9) AS medium,
+                COUNT(*) FILTER (WHERE confidence < 0.7) AS low
+              FROM core.documents_backfill_staging
+             WHERE domain = 'medical'
+               AND created_at >= now() - interval '24 hours'
+               AND classifier_version = 'agent_athena_v1'
+        """)
+
+        # Review queue depth
+        review_depth = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE decision_type = 'sprint_a_t4_classification_review'
+                                  AND approved IS NULL) AS classification_review,
+                COUNT(*) FILTER (WHERE decision_type = 'sprint_a_t4_heightened_review'
+                                  AND approved IS NULL) AS heightened_review
+              FROM ops.pending_approvals
+        """)
+
+        # Heightened-category hits, last 24h
+        heightened = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE 'psychotherapy_notes' = ANY(proposed_phi_categories)) AS psychotherapy,
+                COUNT(*) FILTER (WHERE 'sud_42_cfr_part_2' = ANY(proposed_phi_categories)) AS part2,
+                COUNT(*) FILTER (WHERE 'mental_health' = ANY(proposed_phi_categories)) AS mental_health,
+                COUNT(*) FILTER (WHERE 'genetic_gina' = ANY(proposed_phi_categories)) AS genetic,
+                COUNT(*) FILTER (WHERE 'hiv_aids' = ANY(proposed_phi_categories)) AS hiv
+              FROM core.documents_backfill_staging
+             WHERE created_at >= now() - interval '24 hours'
+        """)
+
+        # Failed classifications, last 24h
+        failed_24h = await conn.fetchval("""
+            SELECT COUNT(*) FROM core.documents_backfill_staging
+             WHERE status = 'rejected'
+               AND created_at >= now() - interval '24 hours'
+        """)
+
+        # Throughput: docs/hr averages last 24h, split by business hours
+        throughput = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE classifier_version = 'agent_athena_v1')::float
+                    / GREATEST(EXTRACT(EPOCH FROM (now() - MIN(created_at))) / 3600.0, 1.0) AS avg_24h,
+                COUNT(*) FILTER (WHERE classifier_version = 'agent_athena_v1'
+                                  AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/Los_Angeles') BETWEEN 9 AND 18)::float
+                    / GREATEST(10.0, 1.0) AS business_hours_avg
+              FROM core.documents_backfill_staging
+             WHERE created_at >= now() - interval '24 hours'
+        """)
+
+        # ETA at current 24h rate
+        total_to_classify = sum(
+            per_domain[d]['total'] - per_domain[d]['classified']
+            for d in ('legal', 'medical')
+        )
+        avg_24h = float(throughput['avg_24h'] or 0)
+        eta_days = total_to_classify / (avg_24h * 24) if avg_24h > 0 else None
+
+        # T4_SAMPLE_REVIEW status
+        t4_sample = await conn.fetchrow("""
+            SELECT approved, approved_at FROM ops.pending_approvals
+             WHERE decision_type = 'sprint_a_t4_sample_review'
+             ORDER BY created_at DESC LIMIT 1
+        """)
+
+        return {
+            'per_domain': per_domain,
+            'buckets_legal': dict(buckets_legal),
+            'buckets_medical': dict(buckets_medical),
+            'review_queue': dict(review_depth),
+            'heightened_24h': dict(heightened),
+            'failed_24h': failed_24h,
+            'throughput_avg_24h': avg_24h,
+            'throughput_business_hours_avg': float(throughput['business_hours_avg'] or 0),
+            'eta_days': eta_days,
+            'total_remaining': total_to_classify,
+            't4_sample_review': (
+                'cleared' if (t4_sample and t4_sample['approved'])
+                else ('pending' if t4_sample else 'not yet created')
+            ),
+        }
+
+
+def format_task4_block(progress: dict) -> list[str]:
+    """Render a 10-line Task 4 progress block for the brief."""
+    d = progress
+    lines = ["━━━ SPRINT A TASK 4 PROGRESS ━━━"]
+    for domain in ('legal', 'medical'):
+        pd = d['per_domain'][domain]
+        pct = 100.0 * pd['classified'] / pd['total'] if pd['total'] else 0
+        lines.append(f"  {domain}: {pd['classified']}/{pd['total']} ({pct:.1f}%)")
+    bl = d['buckets_legal']; bm = d['buckets_medical']
+    lines.append(f"  confidence buckets (24h) — legal: high={bl['high']} med={bl['medium']} low={bl['low']}; "
+                 f"medical: high={bm['high']} med={bm['medium']} low={bm['low']}")
+    q = d['review_queue']
+    lines.append(f"  review queues: classification={q['classification_review']}, heightened={q['heightened_review']}")
+    h = d['heightened_24h']
+    if any(h.values()):
+        lines.append(f"  heightened categories hit (24h): "
+                     f"psych={h['psychotherapy']}, part2={h['part2']}, "
+                     f"mental={h['mental_health']}, genetic={h['genetic']}, hiv={h['hiv']}")
+    lines.append(f"  failed classifications (24h): {d['failed_24h']}")
+    lines.append(f"  throughput avg: {d['throughput_avg_24h']:.1f}/hr (business-hours avg {d['throughput_business_hours_avg']:.1f}/hr)")
+    if d['eta_days'] is not None:
+        lines.append(f"  ETA to 100% classified: {d['eta_days']:.1f} days "
+                     f"at current {d['throughput_avg_24h']:.0f}/hr extrapolated to 24h")
+    else:
+        lines.append(f"  ETA: n/a (no throughput in last 24h)")
+    lines.append(f"  T4_SAMPLE_REVIEW: {d['t4_sample_review']}")
+    lines.append("")
+    return lines
+
+
 async def generate_and_send(preview: bool = False):
     """Generate and optionally send the morning briefing."""
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=3)
 
     try:
-        events, deadlines, tasks, emails, cases = await asyncio.gather(
+        events, deadlines, tasks, emails, cases, task4 = await asyncio.gather(
             get_todays_events(pool),
             get_upcoming_deadlines(pool),
             get_pending_tasks(pool),
             get_recent_important_emails(pool),
             get_case_summary(pool),
+            get_sprint_a_task4_progress(pool),
         )
 
         briefing = format_briefing(events, deadlines, tasks, emails, cases)
+        if task4 is not None:
+            briefing = briefing + "\n" + "\n".join(format_task4_block(task4))
 
         if preview:
             print(briefing)
