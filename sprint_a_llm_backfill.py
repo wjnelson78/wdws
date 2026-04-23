@@ -534,7 +534,8 @@ async def count_pending_this_classifier(
     """, domain, CLASSIFIER_VERSION)
 
 
-async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> None:
+async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
+                     domain_filter: Optional[str] = None) -> None:
     anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
     if not anthropic_key:
         sys.exit("ANTHROPIC_API_KEY env var required")
@@ -568,9 +569,15 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> 
                       'medical': initial_staged['medical']}
         failed = {'legal': 0, 'medical': 0}
 
+        # --domain filter (per Will 2026-04-23): restrict worker to one domain
+        # so legal bulk can run without picking up medical docs during the v2
+        # reclassification + mini-validation gate window.
+        domains_to_process = ([domain_filter] if domain_filter
+                              else ['legal', 'medical'])
+        print(f"processing domains: {domains_to_process}")
+
         while True:
-            # Alternate domains so we progress on both in parallel
-            for domain in ('legal', 'medical'):
+            for domain in domains_to_process:
                 if mode == 'sample_batch' and classified[domain] >= sample_size_per_domain:
                     continue
                 doc = await fetch_next_document(conn, domain)
@@ -621,18 +628,19 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> 
             # Sample-batch halt condition
             if mode == 'sample_batch' and all(
                 classified[d] >= sample_size_per_domain
-                for d in ('legal', 'medical')
+                for d in domains_to_process
             ):
                 print(f"\nsample batch complete: "
-                      f"legal={classified['legal']}, medical={classified['medical']}, "
-                      f"failed legal={failed['legal']}, failed medical={failed['medical']}")
+                      + ", ".join(f"{d}={classified[d]}" for d in domains_to_process)
+                      + ", "
+                      + ", ".join(f"failed_{d}={failed[d]}" for d in domains_to_process))
                 await create_t4_sample_review(conn, batch_id, classified, failed)
                 return
 
             # Worker mode: keep going until interrupted or no more work
             if mode == 'worker' and all(
                 await fetch_next_document(conn, d) is None
-                for d in ('legal', 'medical')
+                for d in domains_to_process
             ):
                 print("no more work; exiting worker loop")
                 return
@@ -859,11 +867,13 @@ def main() -> None:
                         required=True)
     parser.add_argument("--sample-size", type=int, default=100,
                         help="per-domain sample size for sample_batch mode (default 100)")
+    parser.add_argument("--domain", choices=['legal', 'medical'], default=None,
+                        help="Restrict worker to one domain (default: both alternating)")
     args = parser.parse_args()
     dsn = args.dsn or os.environ["DATABASE_URL"]
 
     if args.mode in ('worker', 'sample_batch'):
-        asyncio.run(run_worker(dsn, args.mode, args.sample_size))
+        asyncio.run(run_worker(dsn, args.mode, args.sample_size, args.domain))
     elif args.mode == 'promote':
         asyncio.run(run_promote(dsn))
 
