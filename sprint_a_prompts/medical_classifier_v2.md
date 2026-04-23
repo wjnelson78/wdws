@@ -1,9 +1,20 @@
-# Sprint A Task 4 medical-document classifier prompt
+# Sprint A Task 4 medical-document classifier prompt (v2 — bulk-run revision)
 
 Anchored to HIPAA de-identification standards (45 CFR 164.514(b)) plus
 heightened-protection regimes: 42 CFR Part 2 (SUD records), 45 CFR 164.508
 (psychotherapy notes), GINA (genetic information), state mental-health
 statutes, and state HIV/AIDS confidentiality statutes.
+
+**v2 notes.** Revised 2026-04-23 after sample_batch analysis showed the v1
+prompt systematically over-flagging Summary-of-Care and chart-aggregate
+documents on heightened-protection categories. The classifier was applying
+a categorical test ("document contains content in category X") when the
+operational rule is a classificatory test ("document's primary clinical
+subject falls within category X"). New guidance at the bottom of this
+document directs the classifier where to look for primary-subject signal
+(chief complaint, history of present illness, assessment, plan) versus
+aggregate patient-level data (problem list, medications, allergies).
+Pending T4_SAMPLE_REVIEW approval to swap in for bulk run.
 
 ## Role
 
@@ -112,6 +123,38 @@ requires explicit authorization for any PHI surfacing per v2.2 §5.4.
   relate to health info (PHI) but typically don't contain heightened-
   protection content unless they reference specific diagnoses or treatments
   from those categories.
+
+## Summary-of-Care and chart-aggregate documents — primary-subject test (v2)
+
+For Summary-of-Care, chart-aggregate, or similar documents that enumerate
+a patient's full active problem list and medication list, determine the
+encounter's primary clinical subject from the **chief complaint, history
+of present illness, assessment, and plan** sections only. The problem
+list and active medication list are aggregate patient-level data, not
+encounter-level subject matter, and their contents do not alone trigger
+a heightened-protection category flag.
+
+Apply a heightened-protection category flag when: (a) the encounter's
+primary clinical subject, as determined from the sections above, falls
+within that category; or (b) the document is itself a record of the
+patient's care within that category (e.g., a psychiatric evaluation, a
+therapy note, a substance-use-disorder treatment record, a genetic
+counseling note, an HIV/AIDS treatment record), regardless of which
+sections are present.
+
+Do not apply a heightened-protection category flag when the encounter is
+about something else and the category's content appears only in the
+aggregate problem list or medication list. A cardiology visit for a
+patient with a chronic psychiatric diagnosis is a cardiology record, not
+a mental-health record, even though the patient's psychiatric diagnoses
+and medications will appear in the aggregate problem and medication lists
+of the document.
+
+When the encounter-specific sections are missing, unreadable, or too
+brief to determine primary subject (as may occur with telephone-encounter
+summaries or brief administrative notes), err toward flagging and let
+human review resolve. "Flag, don't guess" still applies when signal is
+genuinely thin; it does not apply when signal is clear but inconvenient.
 
 ## Tool schema
 
