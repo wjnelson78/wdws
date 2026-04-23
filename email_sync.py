@@ -86,6 +86,18 @@ from embedding_service import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
 )
 from contextual_retrieval import generate_context_sync, enrich_chunks
+from email_chunker import (
+    EmailAwareChunker,
+    ChunkResult,
+    PartType,
+    TextChunker,  # back-compat alias; EmailAwareChunker is the real class
+)
+from ingestion_pipeline import (
+    DocumentSpec,
+    Attachment as PipelineAttachment,
+    ingest as pipeline_ingest,
+)
+import blob_storage
 from agents.email_util import (
     build_notification_html as build_alert_notification_html,
     send_email as send_alert_email,
@@ -200,6 +212,40 @@ _SKIP_CONTENT_TYPES = {
 _MIN_ATTACHMENT_SIZE = 512   # bytes
 
 
+def _try_pdftotext_native(data: bytes) -> Optional[str]:
+    """Fast-path extraction for native-text PDFs via pdftotext.
+
+    Most court filings, letters, and reports are digital PDFs with a real
+    text layer — pdftotext reads that layer in <1s with zero OCR cost and
+    perfect fidelity. This helper returns the extracted text if it looks
+    substantial, else None so the caller falls through to remote OCR.
+
+    Heuristics for "substantial":
+      - At least 200 characters returned
+      - Average word length ≤ 40 chars (scanned-PDF garbage tends to come
+        back as long unbroken runs with no whitespace)
+    """
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-layout", "-", "-"],
+            input=data,
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    text = result.stdout.decode("utf-8", errors="ignore")
+    if len(text) < 200:
+        return None
+    spaces = text.count(" ") + text.count("\n")
+    non_ws = len(text) - spaces
+    if spaces == 0 or non_ws / max(spaces, 1) > 40:
+        return None
+    return text
+
+
 def _extract_pdf_text(pdf_path: Path) -> str:
     """Extract text from PDF using OCR — page-by-page."""
     try:
@@ -282,25 +328,270 @@ def _extract_docx_text(docx_path: Path) -> str:
         return ""
 
 
+_OCR_ENDPOINT_URL = os.getenv("OCR_ENDPOINT_URL", "").rstrip("/")
+_OCR_ENDPOINT_TOKEN = os.getenv("OCR_ENDPOINT_TOKEN", "")
+_OCR_ENDPOINT_TIMEOUT = float(os.getenv("OCR_ENDPOINT_TIMEOUT", "28800"))  # 8h
+
+# Images under this size are almost certainly email signature / tracking
+# pixels / Outlook auto-embedded decorations (image001.png, logo.png, etc.).
+# Routing them to Falcon burns ~10s per image for 0-1 chars of noise.
+# Keep them on the cheap local tesseract path instead.
+_MIN_IMAGE_FOR_REMOTE_OCR = int(os.getenv("OCR_IMAGE_MIN_REMOTE", "30000"))  # 30 KB
+
+# Filename patterns that are Outlook-auto-embedded junk regardless of size
+_NOISE_IMAGE_PATTERNS = re.compile(
+    r"^(image|thumbnail|tracker|spacer|pixel|logo|sig|signature)"
+    r"[-_]?\d*\.(png|gif|jpg|jpeg|bmp)$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_noise_image(filename: str, size: int, content_type: str) -> bool:
+    """Is this attachment a likely email-signature / decoration / tracking
+    pixel that we should not waste Falcon cycles on?"""
+    ct = (content_type or "").lower()
+    if not ct.startswith("image/"):
+        return False
+    if size < _MIN_IMAGE_FOR_REMOTE_OCR:
+        return True
+    if _NOISE_IMAGE_PATTERNS.match((filename or "").strip()):
+        return True
+    return False
+
+
+# Health-check interval used during long OCRs. If Falcon hasn't touched
+# a page in this many seconds, treat as stuck and give up.
+_OCR_STUCK_THRESHOLD_SEC = float(os.getenv("OCR_STUCK_THRESHOLD_SEC", "300"))
+
+
+def _ocr_is_stuck() -> bool:
+    """Query /activity; return True if ANY current job looks stalled.
+
+    Stuck heuristic: the job's last update is older than
+    _OCR_STUCK_THRESHOLD_SEC AND older than 3× its last_page_took_sec.
+    A first-page compile that takes a few minutes isn't stuck — it's slow.
+    A job sitting for 5+ min with no page advance IS.
+    """
+    if not (_OCR_ENDPOINT_URL and _OCR_ENDPOINT_TOKEN):
+        return False
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get(
+                f"{_OCR_ENDPOINT_URL}/activity",
+                headers={"Authorization": f"Bearer {_OCR_ENDPOINT_TOKEN}"},
+            )
+        if r.status_code != 200:
+            return False
+        for j in r.json().get("jobs", []):
+            stale = j.get("last_update_sec_ago", 0)
+            last_page = j.get("last_page_took_sec") or 0
+            # Stuck if no progress for _OCR_STUCK_THRESHOLD_SEC AND that's
+            # noticeably longer than a typical page on this hardware.
+            if stale > _OCR_STUCK_THRESHOLD_SEC and stale > max(last_page, 30) * 3:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+_SONNET_OCR_MODEL = "claude-sonnet-4-6"
+_SONNET_OCR_ENABLED = os.getenv("SONNET_OCR_ENABLED", "1") != "0"
+_SONNET_OCR_DPI = int(os.getenv("SONNET_OCR_DPI", "200"))
+_SONNET_OCR_MAX_PAGES = int(os.getenv("SONNET_OCR_MAX_PAGES", "200"))
+_SONNET_OCR_PROMPT = (
+    "Transcribe all text from this page verbatim. Preserve line breaks, "
+    "paragraphs, bullet structure, and table layout. Do not summarize, "
+    "interpret, or add commentary. Output only the raw text as it appears "
+    "on the page. If the page is truly blank, output exactly: [BLANK PAGE]"
+)
+
+
+def _ocr_via_sonnet(
+    filename: str, content_type: str, data: bytes,
+) -> Optional[Tuple[str, str]]:
+    """Send a PDF or image to Claude Sonnet for OCR.
+
+    Returns (text, method) on success, None on any failure (caller falls back
+    to Falcon remote). Intended as the primary OCR path for new ingests when
+    pdftotext fails to extract substantive native text.
+    """
+    if not _SONNET_OCR_ENABLED:
+        return None
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        import base64 as _b64
+        import io as _io
+        from anthropic import Anthropic
+    except ImportError:
+        return None
+
+    suffix = Path(filename).suffix.lower() if filename else ""
+    ct = (content_type or "").lower()
+    is_pdf = ct == "application/pdf" or suffix == ".pdf"
+    is_image = ct.startswith("image/") or suffix in (
+        ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif",
+    )
+    if not (is_pdf or is_image):
+        return None
+
+    try:
+        from PIL import Image  # noqa: F401
+        if is_pdf:
+            from pdf2image import convert_from_bytes
+            images = convert_from_bytes(data, dpi=_SONNET_OCR_DPI, fmt="png")
+            if len(images) > _SONNET_OCR_MAX_PAGES:
+                log.warning("Sonnet OCR: skipping %s (%d pages exceeds cap %d)",
+                            filename, len(images), _SONNET_OCR_MAX_PAGES)
+                return None
+        else:
+            from PIL import Image as _PIL
+            img = _PIL.open(_io.BytesIO(data))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            images = [img]
+    except Exception as e:
+        log.warning("Sonnet OCR render-failed for %s: %s", filename, str(e)[:100])
+        return None
+
+    try:
+        client = Anthropic(api_key=api_key)
+        parts: list[str] = []
+        for img in images:
+            buf = _io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            b64 = _b64.standard_b64encode(buf.getvalue()).decode("ascii")
+            msg = client.messages.create(
+                model=_SONNET_OCR_MODEL,
+                max_tokens=4000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image",
+                         "source": {"type": "base64", "media_type": "image/png",
+                                    "data": b64}},
+                        {"type": "text", "text": _SONNET_OCR_PROMPT},
+                    ],
+                }],
+            )
+            if msg.content:
+                parts.append(msg.content[0].text or "")
+        text = "\n\n".join(p for p in parts if p and p.strip())
+        if not text.strip():
+            return None
+        method = "sonnet_pdf" if is_pdf else "sonnet_image"
+        return text, method
+    except Exception as e:
+        log.warning("Sonnet OCR API-failed for %s: %s", filename, str(e)[:150])
+        return None
+
+
+def _ocr_via_remote_endpoint(
+    filename: str, content_type: str, data: bytes,
+) -> Optional[Tuple[str, str]]:
+    """Try the remote Falcon-OCR service (saturn) for this blob.
+
+    The server side has no timeout — a multi-hundred-page PDF can legitimately
+    take hours on a T4. We give up ONLY when _ocr_is_stuck() reports no page
+    progress, not on a blunt wall-clock cap.
+
+    Returns (text, method) on success, None on failure/not-configured.
+    Caller falls back to local tesseract on None.
+    """
+    if not (_OCR_ENDPOINT_URL and _OCR_ENDPOINT_TOKEN):
+        return None
+    try:
+        with httpx.Client(timeout=_OCR_ENDPOINT_TIMEOUT) as c:
+            resp = c.post(
+                f"{_OCR_ENDPOINT_URL}/ocr",
+                headers={"Authorization": f"Bearer {_OCR_ENDPOINT_TOKEN}"},
+                files={"file": (filename or "upload.bin",
+                                data,
+                                content_type or "application/octet-stream")},
+                data={"mode": "plain"},
+            )
+        if resp.status_code != 200:
+            log.warning("OCR endpoint %s returned %d: %s",
+                        _OCR_ENDPOINT_URL, resp.status_code,
+                        resp.text[:160])
+            return None
+        body = resp.json()
+        text = body.get("text", "") or ""
+        method = body.get("method") or "falcon_remote"
+        pages = body.get("page_count", 0)
+        log.info("OCR via %s: %d pages → %d chars in %.1fs",
+                 _OCR_ENDPOINT_URL, pages, len(text),
+                 body.get("elapsed_sec", -1))
+        return text, method
+    except httpx.ReadTimeout:
+        # Hit the client-side ceiling (default 8h). At this point assume the
+        # server is stuck — check and log for operator.
+        stuck = _ocr_is_stuck()
+        log.warning("OCR endpoint read timeout after %ds (stuck=%s); "
+                    "falling back to local", _OCR_ENDPOINT_TIMEOUT, stuck)
+        return None
+    except Exception as e:
+        log.warning("OCR endpoint call failed (%s): %s; falling back to local",
+                    type(e).__name__, e)
+        return None
+
+
 def extract_text_from_binary(filename: str, content_type: str, data: bytes) -> Tuple[str, str]:
     """
     Extract text from a binary attachment.
     Returns (extracted_text, extraction_method).
-    Writes temp file → OCR → returns text → cleans up.
+
+    Priority:
+      1. Remote Falcon-OCR endpoint (if OCR_ENDPOINT_URL set) — for PDFs and
+         images. Falls back to local tesseract on any failure.
+      2. Local extraction (tesseract OCR, python-docx, raw decode).
+
+    The Falcon-OCR path produces markdown-structured output with proper
+    headings, preserved reading order, and better table handling than
+    tesseract. Local path remains as the reliable fallback.
     """
     if not data:
         return "", "empty"
 
     suffix = Path(filename).suffix.lower() if filename else ""
+    ct = (content_type or "").lower()
 
-    # Write to temp file for OCR tools that need a path
+    is_image = ct.startswith("image/") or suffix in (
+        ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif",
+    )
+    is_pdf = ct == "application/pdf" or suffix == ".pdf"
+
+    # Fast-path: try pdftotext on PDFs before any OCR. Digital/native-text
+    # PDFs (most court filings, letters, reports) have an embedded text layer
+    # that pdftotext extracts instantly with perfect fidelity. Only scanned
+    # image-based PDFs fall through to vision OCR.
+    if is_pdf:
+        native = _try_pdftotext_native(data)
+        if native:
+            return native, "pdftotext_native"
+
+    # Vision-OCR fallbacks (scanned PDFs + non-noise images):
+    #   1. Sonnet (primary — highest quality, paid per page)
+    #   2. Falcon remote (backup — free, on saturn T4)
+    #   3. local tesseract (last resort)
+    want_ocr = is_pdf or (is_image and not _looks_like_noise_image(
+        filename, len(data), content_type))
+    if want_ocr:
+        sonnet = _ocr_via_sonnet(filename, content_type, data)
+        if sonnet is not None and sonnet[0].strip():
+            return sonnet
+        remote = _ocr_via_remote_endpoint(filename, content_type, data)
+        if remote is not None and remote[0].strip():
+            return remote
+
+    # Write to temp file for local OCR tools that need a path
     EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r'[^\w\-\.]', '_', filename or "attachment")
     tmp_path = EXTRACT_DIR / f"_tmp_{uuid.uuid4().hex[:8]}_{safe_name}"
     try:
         tmp_path.write_bytes(data)
 
-        ct = (content_type or "").lower()
         if ct == "application/pdf" or suffix == ".pdf":
             text = _extract_pdf_text(tmp_path)
             method = "ocr_pdf_150dpi"
@@ -707,68 +998,11 @@ async def _finalize_sync_pool(pool) -> None:
 
 
 # ============================================================
-# Text chunker
+# Text chunker — imported from email_chunker module.
+# See: TextChunker is a back-compat alias for EmailAwareChunker.
+# Email body ingest should call .split_email_body() to get structure-aware
+# chunking; .split() remains available for generic (non-email) text.
 # ============================================================
-
-class TextChunker:
-    def __init__(self, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.separators = ["\n\n", "\n", ". ", " ", ""]
-
-    def split(self, text: str) -> List[str]:
-        if not text:
-            return []
-        return self._split_text(text, self.separators)
-
-    def _split_text(self, text: str, separators: list) -> list:
-        final_chunks = []
-        separator = separators[-1]
-        new_separators = []
-        for i, sep in enumerate(separators):
-            if sep == "" or sep in text:
-                separator = sep
-                new_separators = separators[i + 1:]
-                break
-        splits = text.split(separator) if separator else list(text)
-        good_splits = []
-        for s in splits:
-            if len(s) < self.chunk_size:
-                good_splits.append(s)
-            else:
-                if good_splits:
-                    merged = self._merge_splits(good_splits, separator)
-                    final_chunks.extend(merged)
-                    good_splits = []
-                if new_separators:
-                    final_chunks.extend(self._split_text(s, new_separators))
-                else:
-                    final_chunks.append(s)
-        if good_splits:
-            merged = self._merge_splits(good_splits, separator)
-            final_chunks.extend(merged)
-        return final_chunks
-
-    def _merge_splits(self, splits: list, separator: str) -> list:
-        docs = []
-        current = []
-        total = 0
-        for s in splits:
-            s_len = len(s)
-            if total + s_len + (len(separator) if current else 0) > self.chunk_size:
-                if current:
-                    docs.append(separator.join(current))
-                    while total > self.chunk_overlap and len(current) > 1:
-                        total -= len(current[0]) + len(separator)
-                        current.pop(0)
-                current = [s]
-                total = s_len
-            else:
-                current.append(s)
-                total += s_len + (len(separator) if len(current) > 1 else 0)
-        if current:
-            docs.append(separator.join(current))
-        return docs
 
 
 # ============================================================
@@ -1278,98 +1512,6 @@ def persist_graph_attachment_copy(
 # Database writer
 # ============================================================
 
-async def write_email_document(pool: asyncpg.Pool, doc: IngestedDocument, embeddings: List[List[float]]):
-    """Write email document + chunks + email metadata to PostgreSQL."""
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # 1. core.documents
-            await conn.execute("""
-                INSERT INTO core.documents
-                    (id, domain, source_path, filename, document_type, title,
-                     content_hash, total_chunks, full_content, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-                ON CONFLICT (id) DO NOTHING
-            """,
-                uuid.UUID(doc.doc_id), doc.domain, doc.source_path,
-                doc.filename, doc.document_type, doc.title,
-                doc.content_hash, len(doc.chunks),
-                doc.full_content[:500000],
-                json.dumps(doc.metadata),
-            )
-
-            # 2. core.document_chunks
-            for chunk, emb in zip(doc.chunks, embeddings):
-                chunk_id = hashlib.md5(
-                    f"{doc.source_path}:{chunk.chunk_index}".encode()
-                ).hexdigest()
-                chunk_meta = dict(chunk.metadata)
-                enriched = chunk_meta.pop("_embedded_content", None)
-                await conn.execute("""
-                    INSERT INTO core.document_chunks
-                        (id, document_id, chunk_index, total_chunks,
-                         content, embedded_content, embedding, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
-                    ON CONFLICT (id) DO NOTHING
-                """,
-                    chunk_id, uuid.UUID(doc.doc_id),
-                    chunk.chunk_index, chunk.total_chunks,
-                    chunk.content, enriched, _vec_literal(emb),
-                    json.dumps(chunk_meta),
-                )
-
-            # 3. Link to legal cases
-            for case_num in doc.case_numbers:
-                row = await conn.fetchrow(
-                    "SELECT id FROM legal.cases WHERE case_number = $1",
-                    case_num,
-                )
-                if row:
-                    await conn.execute("""
-                        INSERT INTO legal.case_documents (case_id, document_id)
-                        VALUES ($1, $2) ON CONFLICT DO NOTHING
-                    """, row["id"], uuid.UUID(doc.doc_id))
-
-            # 4. Email metadata
-            if doc.email_meta:
-                em = doc.email_meta
-                await conn.execute("""
-                    INSERT INTO legal.email_metadata
-                        (document_id, message_id, in_reply_to, thread_id,
-                         sender, recipients, cc, date_sent, direction,
-                         mailbox, has_attachments, subject)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    ON CONFLICT (document_id) DO NOTHING
-                """,
-                    uuid.UUID(doc.doc_id),
-                    em.get("message_id"), em.get("in_reply_to"),
-                    em.get("thread_id"),
-                    em.get("sender"), em.get("recipients"), em.get("cc"),
-                    _parse_email_date(em.get("date_sent", "")),
-                    em.get("direction"), em.get("mailbox"),
-                    em.get("has_attachments", False),
-                    em.get("subject"),
-                )
-
-                # 5. SMS notification — only for inbound, only if the filter
-                #    matches (courts, counsel, medical providers, VIPs, urgency
-                #    keywords, importance=high). Failures must never break the
-                #    ingest transaction, so we swallow errors.
-                if em.get("direction") == "inbound":
-                    try:
-                        from email_notify import queue_email_sms
-                        await queue_email_sms(
-                            pool,
-                            sender=em.get("sender", "") or "",
-                            subject=em.get("subject", "") or "",
-                            received_at=_parse_email_date(em.get("date_sent", "")),
-                            importance=em.get("importance"),
-                            graph_id=em.get("message_id"),
-                            mailbox=em.get("mailbox"),
-                        )
-                    except Exception as sms_e:
-                        log.warning(f"SMS queue failed for {em.get('sender','?')}: {sms_e}")
-
-
 def _match_existing_attachment_record(
     existing_rows: List[Dict],
     filename: str,
@@ -1464,18 +1606,39 @@ async def process_email_attachments(
         att_source_path = local_attachment_path or f"{email_source_path}/attachment/{fname}"
 
         try:
-            # 1. OCR / extract text (run in thread to avoid blocking event loop)
+            # 1. OCR / extract text (run in thread to avoid blocking event loop).
+            # Binary extraction stays here — it's a source-side concern.
             extracted_text, extraction_method = await asyncio.to_thread(
                 extract_text_from_binary, fname, content_type, data
             )
-            child_doc_id = existing_row.get("child_doc_id") if existing_row else None
-            if not child_doc_id:
-                child_doc_id = uuid.uuid4()
+
+            # Build content for indexing — real extracted text if we got it,
+            # otherwise a searchable placeholder so the filename still surfaces.
+            if not extracted_text or len(extracted_text.strip()) < 20:
+                log.info(f"    📎 {fname} ({file_size:,} bytes) — no extractable text")
+                full_content = (
+                    f"Attachment filename: {fname}\n"
+                    f"Content-Type: {content_type or 'application/octet-stream'}\n"
+                    f"File size: {file_size}\n"
+                    f"Extraction method: {extraction_method}\n"
+                    f"Original binary stored locally for retrieval."
+                )
+            else:
+                full_content = extracted_text
 
             title = f"{fname}"
             if email_subject:
                 title = f"{fname} (from: {email_subject[:80]})"
 
+            # Stamp ocr_version so the Sonnet backfill worker treats this doc
+            # as already up-to-date. Any extraction method in the current tree
+            # (pdftotext_native, sonnet_pdf, sonnet_image, docx_xml, text_direct)
+            # produces primary-quality text; stamping avoids the backfill
+            # re-running on freshly-ingested attachments.
+            _SONNET_V1_METHODS = {
+                "pdftotext_native", "sonnet_pdf", "sonnet_image",
+                "docx_xml", "text_direct",
+            }
             metadata = {
                 "parent_email_doc_id": email_doc_id,
                 "attachment_id": str(att_id),
@@ -1484,201 +1647,71 @@ async def process_email_attachments(
                 "parent_email_source_path": email_source_path,
                 "local_attachment_path": local_attachment_path,
                 "original_filename": fname,
+                "content_type": content_type,
             }
+            if extraction_method in _SONNET_V1_METHODS:
+                metadata["ocr_version"] = "sonnet-v1"
 
-            if not extracted_text or len(extracted_text.strip()) < 20:
-                # Still create a child document so the original binary is retrievable
-                log.info(f"    📎 {fname} ({file_size:,} bytes) — no extractable text")
-                placeholder_text = (
-                    f"Attachment filename: {fname}\n"
-                    f"Content-Type: {content_type or 'application/octet-stream'}\n"
-                    f"File size: {file_size}\n"
-                    f"Extraction method: {extraction_method}\n"
-                    f"Original binary stored locally for retrieval."
-                )
+            # Hand off to the unified pipeline. It handles chunking +
+            # enrichment + embedding + core.documents + core.document_chunks
+            # + legal.case_documents (from auto-extracted case numbers) +
+            # core.document_relationships (parent email → attachment) +
+            # legal.email_attachments (via attachment_meta), all in one txn.
+            # Upload original attachment bytes to MinIO. If this fails (or
+            # isn't configured) we still ingest — the extracted_text and FS
+            # copy remain the source of truth for the row until a future
+            # backfill can re-upload.
+            att_blob = blob_storage.upload_attachment(
+                data,
+                parent_doc_id=email_doc_id,
+                filename=fname,
+                content_type=content_type or "",
+            )
 
-                async with pool.acquire() as conn:
-                    async with conn.transaction():
-                        await conn.execute("""
-                            INSERT INTO core.documents
-                                (id, domain, source_path, filename, document_type,
-                                 title, content_hash, total_chunks, full_content, metadata)
-                            VALUES ($1, 'legal', $2, $3, 'email_attachment', $4,
-                                    $5, 0, $6, $7::jsonb)
-                            ON CONFLICT (id) DO UPDATE
-                            SET source_path = EXCLUDED.source_path,
-                                filename = EXCLUDED.filename,
-                                title = EXCLUDED.title,
-                                full_content = EXCLUDED.full_content,
-                                metadata = EXCLUDED.metadata
-                        """,
-                            child_doc_id,
-                            att_source_path,
-                            fname,
-                            title,
-                            hashlib.sha256(data).hexdigest()[:16],
-                            placeholder_text,
-                            json.dumps(metadata),
-                        )
-
-                        await conn.execute("""
-                            INSERT INTO core.document_relationships
-                                (source_document_id, target_document_id, relationship_type)
-                            VALUES ($1, $2, 'has_attachment')
-                            ON CONFLICT DO NOTHING
-                        """, uuid.UUID(email_doc_id), child_doc_id)
-
-                        if existing_row:
-                            await conn.execute("""
-                                UPDATE legal.email_attachments
-                                SET child_doc_id = $2,
-                                    filename = $3,
-                                    content_type = $4,
-                                    file_size = $5,
-                                    extracted_text = $6,
-                                    extraction_method = $7,
-                                    is_processed = true
-                                WHERE id = $1
-                            """,
-                                att_id, child_doc_id, fname, content_type, file_size,
-                                extracted_text or "", extraction_method,
-                            )
-                        else:
-                            await conn.execute("""
-                                INSERT INTO legal.email_attachments
-                                    (id, email_doc_id, child_doc_id, filename, content_type,
-                                     file_size, extracted_text, extraction_method, is_processed)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
-                                ON CONFLICT DO NOTHING
-                            """,
-                                att_id, uuid.UUID(email_doc_id), child_doc_id,
-                                fname, content_type, file_size,
-                                extracted_text or "", extraction_method,
-                            )
-                processed += 1
-                continue
-
-            # 2. Chunk the extracted text
-            chunks_text = chunker.split(extracted_text)
-            if not chunks_text:
-                chunks_text = [extracted_text[:CHUNK_SIZE]]
-
-            # 2b. Contextual Retrieval: generate context and enrich chunks
-            att_context = generate_context_sync(
-                title=title,
+            att_spec = DocumentSpec(
                 domain="legal",
                 document_type="email_attachment",
-                content_preview=extracted_text[:3000],
-                case_number=None,
+                source_path=att_source_path,
+                title=title,
+                filename=fname,
+                full_content=full_content,
+                metadata=metadata,
+                parent_doc_id=email_doc_id,
+                relationship_type="has_attachment",
+                attachment_meta={
+                    "id": str(att_id),
+                    "filename": fname,
+                    "content_type": content_type,
+                    "file_size": file_size,
+                    "extracted_text": extracted_text or "",
+                    "extraction_method": extraction_method,
+                },
+                storage_backend=att_blob.storage_backend if att_blob else None,
+                storage_uri=att_blob.storage_uri if att_blob else None,
+                storage_sha256=att_blob.storage_sha256 if att_blob else None,
+                storage_size_bytes=att_blob.storage_size_bytes if att_blob else None,
             )
-            att_enriched_texts = enrich_chunks(att_context, chunks_text)
 
-            # 3. Embed enriched texts
-            try:
-                embeddings = await embedder.embed_batch(att_enriched_texts)
-            except Exception as e:
-                log.warning(f"    Embedding failed for attachment {fname}: {e}")
+            result = await pipeline_ingest(att_spec, pool=pool)
+
+            if result.error:
+                log.error(f"    ✗ Attachment ingest failed: {fname}: {result.error}")
                 _record_run_issue(
                     "error",
-                    "Attachment embedding fallback used",
-                    f"attachment: {fname}\nparent_email: {email_subject[:200]}\nerror: {e}",
+                    "Attachment ingest failed",
+                    f"attachment: {fname}\nparent_email: {email_subject[:200]}\n"
+                    f"error: {result.error}",
                 )
-                embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunks_text)
+                continue
 
-            # 4. Create child document
-            content_hash = hashlib.sha256(extracted_text.encode()).hexdigest()[:16]
-            case_numbers = extract_case_numbers_from_text(extracted_text[:5000])
-
-            async with pool.acquire() as conn:
-                async with conn.transaction():
-                    # 4a. core.documents
-                    await conn.execute("""
-                        INSERT INTO core.documents
-                            (id, domain, source_path, filename, document_type,
-                             title, content_hash, total_chunks, full_content, metadata)
-                        VALUES ($1, 'legal', $2, $3, 'email_attachment', $4,
-                                $5, $6, $7, $8::jsonb)
-                        ON CONFLICT (id) DO NOTHING
-                    """,
-                        child_doc_id, att_source_path, fname, title,
-                        content_hash, len(chunks_text),
-                        extracted_text[:500000],
-                        json.dumps(metadata),
-                    )
-
-                    # 4b. core.document_chunks with embeddings
-                    for i, (chunk_text, emb) in enumerate(zip(chunks_text, embeddings)):
-                        chunk_id = hashlib.md5(
-                            f"att:{att_id}:{i}".encode()
-                        ).hexdigest()
-                        att_enriched = att_enriched_texts[i] if i < len(att_enriched_texts) else None
-                        await conn.execute("""
-                            INSERT INTO core.document_chunks
-                                (id, document_id, chunk_index, total_chunks,
-                                 content, embedded_content, embedding, metadata)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
-                            ON CONFLICT (id) DO NOTHING
-                        """,
-                            chunk_id, child_doc_id, i, len(chunks_text),
-                            chunk_text, att_enriched, _vec_literal(emb),
-                            json.dumps({"case_numbers": case_numbers}),
-                        )
-
-                    # 4c. Link to legal cases
-                    for case_num in case_numbers:
-                        row = await conn.fetchrow(
-                            "SELECT id FROM legal.cases WHERE case_number = $1",
-                            case_num,
-                        )
-                        if row:
-                            await conn.execute("""
-                                INSERT INTO legal.case_documents (case_id, document_id)
-                                VALUES ($1, $2) ON CONFLICT DO NOTHING
-                            """, row["id"], child_doc_id)
-
-                    # 4d. Document relationship: email → attachment
-                    await conn.execute("""
-                        INSERT INTO core.document_relationships
-                            (source_document_id, target_document_id, relationship_type)
-                        VALUES ($1, $2, 'has_attachment')
-                        ON CONFLICT DO NOTHING
-                    """, uuid.UUID(email_doc_id), child_doc_id)
-
-                    # 4e. legal.email_attachments record
-                    if existing_row:
-                        await conn.execute("""
-                            UPDATE legal.email_attachments
-                            SET child_doc_id = $2,
-                                filename = $3,
-                                content_type = $4,
-                                file_size = $5,
-                                extracted_text = $6,
-                                extraction_method = $7,
-                                is_processed = true
-                            WHERE id = $1
-                        """,
-                            att_id, child_doc_id, fname, content_type,
-                            file_size, extracted_text[:100000], extraction_method,
-                        )
-                    else:
-                        await conn.execute("""
-                            INSERT INTO legal.email_attachments
-                                (id, email_doc_id, child_doc_id, filename,
-                                 content_type, file_size, extracted_text,
-                                 extraction_method, is_processed)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
-                            ON CONFLICT DO NOTHING
-                        """,
-                            att_id, uuid.UUID(email_doc_id), child_doc_id,
-                            fname, content_type, file_size,
-                            extracted_text[:100000], extraction_method,
-                        )
-
-            text_len = len(extracted_text)
-            log.info(
-                f"    📎 {fname} ({file_size:,} bytes) → "
-                f"{text_len:,} chars, {len(chunks_text)} chunks [{extraction_method}]"
-            )
+            if result.was_existing:
+                log.info(f"    📎 {fname} ({file_size:,} bytes) — already ingested, skipping")
+            else:
+                text_len = len(full_content)
+                log.info(
+                    f"    📎 {fname} ({file_size:,} bytes) → "
+                    f"{text_len:,} chars, {result.chunk_count} chunks [{extraction_method}]"
+                )
             processed += 1
 
         except Exception as e:
@@ -2068,20 +2101,9 @@ async def process_and_ingest_email(
     safe_subject = re.sub(r'[^\w\s-]', '', subject)[:60].strip()
     filename = f"{date_str} - {safe_subject}.eml"
 
-    # Create a stable source_path based on mailbox + message_id
+    # Create a stable source_path based on mailbox + message_id.
+    # The pipeline uses this as its idempotency key.
     source_path = f"graph://{mailbox}/{msg_id or msg_meta.get('id', '')}"
-    existing_doc_id = await pool.fetchval(
-        "SELECT id FROM core.documents WHERE source_path = $1 LIMIT 1",
-        source_path,
-    )
-    if existing_doc_id:
-        log.info(f"  Duplicate graph source_path already exists, skipping {source_path}")
-        _record_run_issue(
-            "warning",
-            "Duplicate graph email skipped",
-            f"source_path: {source_path}\nexisting_document_id: {existing_doc_id}",
-        )
-        return None
 
     local_eml_path = persist_graph_mime_copy(
         mailbox=mailbox,
@@ -2090,10 +2112,95 @@ async def process_and_ingest_email(
         date_hint=date_str,
     )
 
-    chunks_text = chunker.split(parsed["full_text"])
+    # Upload the raw .eml to MinIO. Gives us a durable archival copy + the
+    # storage_uri we persist on the core.documents row so MCP downloads and
+    # retention_sweep can find it later. FS copy above stays in place for
+    # legacy reads until a backfill pass moves existing 2.3 GB into MinIO.
+    eml_blob = blob_storage.upload_eml(
+        mime_data,
+        mailbox=mailbox,
+        graph_message_id=msg_meta.get("id", "") or msg_id or "unknown",
+    )
+    if eml_blob is None:
+        log.debug("  MinIO upload skipped for %s (not configured or failed)",
+                  filename)
 
+    # Pre-parse the date for consistency; the pipeline accepts either string
+    # or datetime but pre-parsed avoids a second parse in the SMS hook below.
+    date_sent_dt = _parse_email_date(h["date"])
+
+    email_meta_dict = {
+        "subject": subject,
+        "message_id": msg_id,
+        "in_reply_to": h["in_reply_to"],
+        "thread_id": h.get("references", "").split()[0] if h.get("references") else msg_id,
+        "sender": h["from"],
+        "recipients": h["to"],
+        "cc": h["cc"],
+        "date_sent": date_sent_dt,
+        "direction": direction,
+        "mailbox": mailbox,
+        "has_attachments": h.get("has_attachments", False),
+    }
+
+    metadata_dict = {
+        "file_type": "eml",
+        "mailbox": mailbox,
+        "source": "graph_api",
+        "graph_message_id": msg_meta.get("id", ""),
+        "received_date": date_str,
+        "local_eml_path": local_eml_path,
+    }
+
+    # Hand off to the unified ingestion pipeline. The pipeline owns:
+    #   - chunker routing (email body → split_email_body)
+    #   - dedup via source_path
+    #   - Contextual Retrieval + embedding of body chunks only
+    #   - core.documents / core.document_chunks / case_documents /
+    #     email_metadata / document_tags writes in one transaction
+    # Attachments still run through the domain-specific process_email_attachments
+    # below because it also writes legal.email_attachments (not yet in pipeline).
+    spec = DocumentSpec(
+        domain="legal",
+        document_type="email",
+        source_path=source_path,
+        title=subject,
+        filename=filename,
+        full_content=parsed["full_text"],
+        content_hash=content_hash,
+        metadata=metadata_dict,
+        case_numbers=case_nums,
+        email_meta=email_meta_dict,
+        storage_backend=eml_blob.storage_backend if eml_blob else None,
+        storage_uri=eml_blob.storage_uri if eml_blob else None,
+        storage_sha256=eml_blob.storage_sha256 if eml_blob else None,
+        storage_size_bytes=eml_blob.storage_size_bytes if eml_blob else None,
+    )
+
+    result = await pipeline_ingest(spec, pool=pool)
+
+    if result.was_existing:
+        log.info(f"  Duplicate graph source_path already exists, skipping {source_path}")
+        _record_run_issue(
+            "warning",
+            "Duplicate graph email skipped",
+            f"source_path: {source_path}\nexisting_document_id: {result.doc_id}",
+        )
+        return None
+
+    if result.error:
+        log.error(f"  Ingest error for {filename}: {result.error}")
+        _record_run_issue(
+            "error",
+            "Email ingest failed",
+            f"filename: {filename}\nsource_path: {source_path}\nerror: {result.error}",
+        )
+        return None
+
+    # Build a legacy IngestedDocument for downstream callers
+    # (process_email_attachments needs doc_id; the rest is for logging).
     doc = IngestedDocument(
-        doc_id=str(uuid.uuid4()),
+        doc_id=result.doc_id,
         domain="legal",
         source_path=source_path,
         filename=filename,
@@ -2101,79 +2208,30 @@ async def process_and_ingest_email(
         title=subject,
         content_hash=content_hash,
         full_content=parsed["full_text"],
-        metadata={
-            "file_type": "eml",
-            "mailbox": mailbox,
-            "source": "graph_api",
-            "graph_message_id": msg_meta.get("id", ""),
-            "received_date": date_str,
-            "local_eml_path": local_eml_path,
-        },
-        case_numbers=case_nums,
-        email_meta={
-            "subject": subject,
-            "message_id": msg_id,
-            "in_reply_to": h["in_reply_to"],
-            "thread_id": h.get("references", "").split()[0] if h.get("references") else msg_id,
-            "sender": h["from"],
-            "recipients": h["to"],
-            "cc": h["cc"],
-            "date_sent": h["date"],
-            "direction": direction,
-            "mailbox": mailbox,
-            "has_attachments": h.get("has_attachments", False),
-        },
+        metadata=metadata_dict,
+        case_numbers=case_nums or [],
+        email_meta=email_meta_dict,
     )
 
-    for i, chunk_text in enumerate(chunks_text):
-        doc.chunks.append(DocumentChunk(
-            content=chunk_text,
-            metadata={"case_numbers": case_nums},
-            chunk_index=i,
-            total_chunks=len(chunks_text),
-        ))
-
-    # Embed
-    chunk_texts = [c.content for c in doc.chunks]
-    if not chunk_texts:
-        return None
-
-    # Contextual Retrieval: generate context and enrich chunks
-    context = generate_context_sync(
-        title=subject,
-        domain="legal",
-        document_type="email",
-        content_preview=parsed["full_text"][:3000],
-        case_number=case_nums[0] if case_nums else None,
-    )
-    enriched_texts = enrich_chunks(context, chunk_texts)
-
-    # Store enriched text on chunks for DB persistence
-    for chunk, enriched in zip(doc.chunks, enriched_texts):
-        chunk.metadata["_embedded_content"] = enriched
-
-    try:
-        embeddings = await embedder.embed_batch(enriched_texts)
-    except Exception as e:
-        log.error(f"  Embedding failed for {filename}: {e}")
-        _record_run_issue(
-            "error",
-            "Email embedding fallback used",
-            f"filename: {filename}\nsource_path: {source_path}\nerror: {e}",
-        )
-        embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunk_texts)
-
-    # Write to DB
-    try:
-        await write_email_document(pool, doc, embeddings)
-    except Exception as e:
-        log.error(f"  DB write error for {filename}: {e}")
-        _record_run_issue(
-            "error",
-            "Email DB write failed",
-            f"filename: {filename}\nsource_path: {source_path}\nerror: {e}",
-        )
-        return None
+    # SMS notification hook — previously lived inside write_email_document's
+    # transaction. Moved outside because queue_email_sms is already a
+    # fire-and-forget (swallows its own exceptions), and keeping it separate
+    # from the ingest transaction is cleaner.
+    if direction == "inbound":
+        try:
+            from email_notify import queue_email_sms
+            await queue_email_sms(
+                pool,
+                sender=email_meta_dict.get("sender", "") or "",
+                subject=subject,
+                received_at=date_sent_dt,
+                importance=msg_meta.get("importance"),
+                graph_id=msg_id,
+                mailbox=mailbox,
+                body_preview=parsed.get("full_text") or "",
+            )
+        except Exception as sms_e:
+            log.warning(f"SMS queue failed for {email_meta_dict.get('sender','?')}: {sms_e}")
 
     # Process attachments inline
     att_list = parsed.get("attachments", [])

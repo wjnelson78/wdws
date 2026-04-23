@@ -45,6 +45,10 @@ import asyncpg
 import httpx
 from PIL import Image
 
+from ingestion_pipeline import (
+    DocumentSpec,
+    ingest as pipeline_ingest,
+)
 from embedding_service import (
     embed_texts_sync, embed_query_sync, _vec_literal as _embedding_vec_literal,
     EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
@@ -547,94 +551,6 @@ async def get_unlinked_attachments(pool: asyncpg.Pool) -> List[dict]:
     return [dict(r) for r in rows]
 
 
-async def write_attachment_document(
-    pool: asyncpg.Pool,
-    att_id: str,
-    email_doc_id,
-    filename: str,
-    title: str,
-    text: str,
-    extraction_method: str,
-    chunks_text: List[str],
-    embeddings: List[List[float]],
-    case_numbers: List[str],
-    source_path: str,
-    enriched_texts: Optional[List[str]] = None,
-):
-    """Write attachment as a full document + chunks + link back."""
-    doc_id = uuid.uuid4()
-    content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
-
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # 1. core.documents
-            await conn.execute("""
-                INSERT INTO core.documents
-                    (id, domain, source_path, filename, document_type, title,
-                     content_hash, total_chunks, full_content, metadata)
-                VALUES ($1, 'legal', $2, $3, 'email_attachment', $4,
-                        $5, $6, $7, $8::jsonb)
-                ON CONFLICT (id) DO NOTHING
-            """,
-                doc_id, source_path, filename, title,
-                content_hash, len(chunks_text),
-                text[:500000],
-                json.dumps({
-                    "parent_email_doc_id": str(email_doc_id),
-                    "attachment_id": str(att_id),
-                    "extraction_method": extraction_method,
-                }),
-            )
-
-            # 2. core.document_chunks with embeddings
-            for i, (chunk_text, emb) in enumerate(zip(chunks_text, embeddings)):
-                chunk_id = hashlib.md5(
-                    f"att:{att_id}:{i}".encode()
-                ).hexdigest()
-                enriched = enriched_texts[i] if enriched_texts and i < len(enriched_texts) else None
-                await conn.execute("""
-                    INSERT INTO core.document_chunks
-                        (id, document_id, chunk_index, total_chunks,
-                         content, embedded_content, embedding, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8::jsonb)
-                    ON CONFLICT (id) DO NOTHING
-                """,
-                    chunk_id, doc_id, i, len(chunks_text),
-                    chunk_text, enriched, _vec_literal(emb),
-                    json.dumps({"case_numbers": case_numbers}),
-                )
-
-            # 3. Link cases
-            for case_num in case_numbers:
-                row = await conn.fetchrow(
-                    "SELECT id FROM legal.cases WHERE case_number = $1",
-                    case_num
-                )
-                if row:
-                    await conn.execute("""
-                        INSERT INTO legal.case_documents (case_id, document_id)
-                        VALUES ($1, $2) ON CONFLICT DO NOTHING
-                    """, row["id"], doc_id)
-
-            # 4. Document relationship: email → attachment
-            await conn.execute("""
-                INSERT INTO core.document_relationships
-                    (source_document_id, target_document_id, relationship_type)
-                VALUES ($1, $2, 'has_attachment')
-                ON CONFLICT DO NOTHING
-            """, email_doc_id, doc_id)
-
-            # 5. Update email_attachments — link + update OCR text
-            await conn.execute("""
-                UPDATE legal.email_attachments
-                SET child_doc_id = $1,
-                    extracted_text = $2,
-                    extraction_method = $3,
-                    is_processed = true
-                WHERE id = $4
-            """, doc_id, text[:100000], extraction_method, uuid.UUID(str(att_id)))
-
-    return doc_id
 
 
 # ============================================================
@@ -830,55 +746,75 @@ async def main():
         email_doc_id = att_info["email_doc_id"]
         email_source_path = att_info["email_source_path"]
 
-        # Extract case numbers from attachment text
-        case_numbers = extract_case_numbers_from_text(text[:5000])
-
-        # Chunk
-        chunks_text = chunker.split(text)
-        if not chunks_text:
-            write_tracker.tick(success=False, filename=filename, detail="no chunks")
-            continue
-
-        # Contextual Retrieval: generate context and enrich chunks
-        context = generate_context_sync(
-            title=title if title else f"Attachment: {filename}",
-            domain="legal",
-            document_type="email_attachment",
-            content_preview=text[:3000],
-            case_number=case_numbers[0] if case_numbers else None,
-        )
-        enriched_texts = enrich_chunks(context, chunks_text)
-
-        # Embed enriched texts
-        try:
-            all_embeddings = []
-            for i in range(0, len(enriched_texts), EMBEDDING_BATCH_SIZE):
-                batch = enriched_texts[i:i + EMBEDDING_BATCH_SIZE]
-                embs = await embedder.embed_batch(batch)
-                all_embeddings.extend(embs)
-        except Exception as e:
-            log.error(f"  ✗ Embedding failed for {filename}: {e}")
-            all_embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunks_text)
-
-        # Write to DB
+        # Compute title first so the pipeline (and downstream logs) have it.
+        # Note: the previous version referenced `title` before assigning it —
+        # that was a latent bug (only survived because the first att_id
+        # iteration was always the re-entry of a process restart). Fixed here.
         title = f"Attachment: {filename}"
         if email_subject:
             title = f"{filename} (from: {email_subject[:80]})"
 
+        # Hand off to the unified pipeline — handles chunking, Contextual
+        # Retrieval, embedding, core.documents / core.document_chunks /
+        # legal.case_documents / core.document_relationships (parent→child)
+        # and the legal.email_attachments upsert via attachment_meta.
+        # Auto-extracts case numbers from the OCR'd text.
+        #
+        # source_path must be UNIQUE per attachment — the pipeline uses it
+        # as its idempotency key. Previously the old write path reused the
+        # parent email's source_path across all attachments; under the
+        # pipeline that would cause the second attachment to match the first
+        # and get dedup'd as was_existing. Disambiguate with the att_id.
+        att_source_path = f"{email_source_path}#attachment/{att_id}"
+        spec = DocumentSpec(
+            domain="legal",
+            document_type="email_attachment",
+            source_path=att_source_path,
+            title=title,
+            filename=filename,
+            full_content=text,
+            parent_doc_id=str(email_doc_id),
+            relationship_type="has_attachment",
+            metadata={
+                "parent_email_doc_id": str(email_doc_id),
+                "parent_email_source_path": email_source_path,
+                "attachment_id": str(att_id),
+                "extraction_method": method,
+                "source": "ingest_attachments",
+            },
+            attachment_meta={
+                "id": str(att_id),
+                "filename": filename,
+                "extracted_text": text,
+                "extraction_method": method,
+            },
+        )
+
         try:
-            doc_id = await write_attachment_document(
-                pool, att_id, email_doc_id, filename, title,
-                text, method, chunks_text, all_embeddings,
-                case_numbers, email_source_path,
-                enriched_texts=enriched_texts,
-            )
-            total_docs += 1
-            total_chunks += len(chunks_text)
-            write_tracker.tick(success=True, chunks=len(chunks_text), filename=filename)
+            result = await pipeline_ingest(spec, pool=pool)
         except Exception as e:
-            log.error(f"  ✗ DB write failed for {filename}: {e}")
+            log.error(f"  ✗ Ingest failed for {filename}: {e}")
             write_errors += 1
             write_tracker.tick(success=False, filename=filename, detail=str(e)[:60])
+            continue
+
+        if result.error:
+            log.error(f"  ✗ Ingest error for {filename}: {result.error}")
+            write_errors += 1
+            write_tracker.tick(success=False, filename=filename, detail=result.error[:60])
+            continue
+
+        if result.chunk_count == 0:
+            write_tracker.tick(success=False, filename=filename, detail="no chunks")
+            continue
+
+        total_docs += 1
+        total_chunks += result.chunk_count
+        write_tracker.tick(
+            success=True,
+            chunks=result.chunk_count,
+            filename=filename,
+        )
 
     log.info(f"  ✔ {write_tracker.summary()}")
 

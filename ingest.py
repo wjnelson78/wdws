@@ -44,6 +44,10 @@ import pytesseract
 from pdf2image import convert_from_path, pdfinfo_from_path
 from PIL import Image
 
+from ingestion_pipeline import (
+    DocumentSpec,
+    ingest as pipeline_ingest,
+)
 from embedding_service import (
     embed_texts_sync, embed_query_sync, _vec_literal as _embedding_vec_literal,
     EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
@@ -1022,113 +1026,6 @@ def _parse_date(date_str: str) -> Optional[datetime]:
         return None
 
 
-async def write_document(pool: asyncpg.Pool, doc: IngestedDocument, embeddings: List[List[float]]):
-    """Write a fully processed document + chunks + enrichment to PostgreSQL."""
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # 1. core.documents (raw_content preserves pre-cleaning text)
-            await conn.execute("""
-                INSERT INTO core.documents
-                    (id, domain, source_path, filename, document_type, title,
-                     content_hash, total_chunks, full_content, raw_content, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
-                ON CONFLICT (id) DO NOTHING
-            """,
-                uuid.UUID(doc.doc_id), doc.domain, doc.source_path,
-                doc.filename, doc.document_type, doc.title,
-                doc.content_hash, len(doc.chunks),
-                doc.full_content[:500000],  # Safety cap — cleaned text
-                doc.full_content[:500000],  # raw_content — same for now, differs when cleaning is added
-                json.dumps(doc.metadata),
-            )
-
-            # 2. core.document_chunks (embedded_content = contextual text that was actually embedded)
-            for chunk, emb in zip(doc.chunks, embeddings):
-                chunk_id = hashlib.md5(
-                    f"{doc.source_path}:{chunk.chunk_index}".encode()
-                ).hexdigest()
-                # Use enriched text if available (from contextual retrieval)
-                embedded_content = chunk.metadata.pop("_embedded_content", chunk.content)
-                chunk.metadata.pop("_context", None)
-                await conn.execute("""
-                    INSERT INTO core.document_chunks
-                        (id, document_id, chunk_index, total_chunks,
-                         content, embedding, embedding_model_id,
-                         embedded_content, embedded_at, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6::halfvec, 2,
-                            $7, now(), $8::jsonb)
-                    ON CONFLICT (id) DO NOTHING
-                """,
-                    chunk_id, uuid.UUID(doc.doc_id),
-                    chunk.chunk_index, chunk.total_chunks,
-                    chunk.content, _vec_literal(emb),
-                    embedded_content,
-                    json.dumps(chunk.metadata),
-                )
-
-            # 3. Legal enrichment
-            if doc.domain == "legal":
-                # Link to cases
-                for case_num in doc.case_numbers:
-                    row = await conn.fetchrow(
-                        "SELECT id FROM legal.cases WHERE case_number = $1",
-                        case_num
-                    )
-                    if row:
-                        await conn.execute("""
-                            INSERT INTO legal.case_documents (case_id, document_id)
-                            VALUES ($1, $2) ON CONFLICT DO NOTHING
-                        """, row["id"], uuid.UUID(doc.doc_id))
-
-                # Email metadata
-                if doc.email_meta:
-                    em = doc.email_meta
-                    await conn.execute("""
-                        INSERT INTO legal.email_metadata
-                            (document_id, message_id, in_reply_to, thread_id,
-                             sender, recipients, cc, date_sent, direction,
-                             mailbox, has_attachments, subject)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                        ON CONFLICT (document_id) DO NOTHING
-                    """,
-                        uuid.UUID(doc.doc_id),
-                        em.get("message_id"), em.get("in_reply_to"),
-                        em.get("thread_id"),
-                        em.get("sender"), em.get("recipients"), em.get("cc"),
-                        _parse_email_date(em.get("date_sent", "")),
-                        em.get("direction"), em.get("mailbox"),
-                        em.get("has_attachments", False),
-                        em.get("subject"),
-                    )
-
-            # 4. Medical enrichment
-            elif doc.domain == "medical":
-                patient_id = None
-                if doc.patient_name:
-                    patient_id = await ensure_patient_exists(conn, doc.patient_name)
-
-                provider_id = None
-                if doc.provider:
-                    provider_id = await ensure_provider_exists(
-                        conn, doc.provider, doc.facility
-                    )
-
-                await conn.execute("""
-                    INSERT INTO medical.record_metadata
-                        (document_id, patient_id, provider_id, record_type,
-                         date_of_service, facility, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-                    ON CONFLICT (document_id) DO NOTHING
-                """,
-                    uuid.UUID(doc.doc_id),
-                    patient_id, provider_id,
-                    doc.record_type,
-                    _parse_date(doc.date_of_service),
-                    doc.facility,
-                    json.dumps({}),
-                )
-
-
 async def ensure_patient_exists(conn, name: str) -> int:
     row = await conn.fetchrow("SELECT id FROM medical.patients WHERE name = $1", name)
     if row:
@@ -1229,46 +1126,56 @@ async def embed_and_write_single(
 ):
     """Embed and write a single document with Contextual Retrieval.
 
-    1. Generate document-level context summary via Claude Sonnet
-    2. Prepend context to each chunk
-    3. Embed the enriched chunks with BGE-M3
-    4. Write to PostgreSQL with embedded_content tracking
+    Delegates to ingestion_pipeline.ingest() which owns chunking, contextual
+    retrieval, embedding, core.documents + core.document_chunks inserts,
+    legal.case_documents linking, legal.email_metadata / medical.record_metadata
+    side-table writes, and idempotency via source_path.
+
+    The `embedder` parameter is retained for API compatibility but unused —
+    the pipeline calls embed_texts_sync directly from embedding_service.
     """
-    chunk_texts = [c.content for c in doc.chunks]
-    if not chunk_texts:
+    if not doc.full_content or not doc.full_content.strip():
         return
 
-    # Generate contextual summary for this document
-    case_number = doc.case_numbers[0] if doc.case_numbers else None
-    context = generate_context_sync(
-        title=doc.title,
+    # Build the type-specific side-table extensions the pipeline knows about.
+    email_meta = doc.email_meta if doc.domain == "legal" else None
+    medical_meta = None
+    if doc.domain == "medical" and (doc.patient_name or doc.provider or doc.record_type):
+        medical_meta = {
+            "patient_name": doc.patient_name,
+            "provider": doc.provider,
+            "facility": doc.facility,
+            "date_of_service": doc.date_of_service,
+            "record_type": doc.record_type,
+        }
+
+    spec = DocumentSpec(
         domain=doc.domain,
         document_type=doc.document_type,
-        content_preview=doc.full_content[:3000],
-        case_number=case_number,
+        source_path=doc.source_path,
+        title=doc.title,
+        filename=doc.filename,
+        full_content=doc.full_content,
+        content_hash=doc.content_hash,
+        metadata=doc.metadata,
+        case_numbers=doc.case_numbers,
+        email_meta=email_meta,
+        medical_meta=medical_meta,
     )
 
-    # Prepend context to each chunk before embedding
-    enriched_texts = enrich_chunks(context, chunk_texts)
+    result = await pipeline_ingest(spec, pool=pool)
 
-    # Store enriched texts on the chunks so write_document can persist them
-    for chunk, enriched in zip(doc.chunks, enriched_texts):
-        chunk.metadata["_embedded_content"] = enriched
-        chunk.metadata["_context"] = context[:100]
+    if result.error:
+        log.error(f"  Ingest failed for {doc.filename}: {result.error}")
+        stats["errors"] = stats.get("errors", 0) + 1
+        return
 
-    # Embed the enriched (contextual) texts
-    try:
-        embeddings = await embedder.embed_batch(enriched_texts)
-    except Exception as e:
-        log.error(f"  Embedding failed for {doc.filename}: {e}")
-        embeddings = [[0.0] * EMBEDDING_DIMENSIONS] * len(chunk_texts)
+    if result.was_existing:
+        # Source already ingested — no new chunks to count. Callers already
+        # filter on source_path before queueing docs, so this is rare.
+        return
 
-    try:
-        await write_document(pool, doc, embeddings)
-        stats["chunks"] += len(doc.chunks)
-    except Exception as e:
-        log.error(f"  DB write error for {doc.filename}: {e}")
-        stats["errors"] += 1
+    stats["chunks"] = stats.get("chunks", 0) + result.chunk_count
 
 
 async def ingest_legal(pool: asyncpg.Pool, embedder: EmbeddingClient,

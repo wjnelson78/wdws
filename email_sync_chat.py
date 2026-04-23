@@ -65,6 +65,12 @@ import sys
 sys.path.insert(0, "/opt/wdws")
 from embedding_service import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 from contextual_retrieval import generate_context_sync, enrich_chunks
+from email_chunker import (
+    EmailAwareChunker,
+    ChunkResult,
+    PartType,
+    TextChunker,  # back-compat alias → EmailAwareChunker
+)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 EMBEDDING_BATCH_SIZE = 20
@@ -286,61 +292,11 @@ class EmbeddingClient:
 
 
 # ══════════════════════════════════════════════════════════════
-# Text Chunker
+# Text Chunker — imported from email_chunker module.
+# TextChunker is a back-compat alias for EmailAwareChunker.
+# Email body ingest should call .split_email_body() for structure-aware
+# chunking; .split() remains available for generic (non-email) text.
 # ══════════════════════════════════════════════════════════════
-
-class TextChunker:
-    def __init__(self, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-        self.chunk_size = chunk_size
-        self.overlap = overlap
-        self.separators = ["\n\n", "\n", ". ", " ", ""]
-
-    def split(self, text: str) -> List[str]:
-        if not text or len(text.strip()) < 50:
-            return [text.strip()] if text and text.strip() else []
-        return self._split_text(text, self.separators)
-
-    def _split_text(self, text: str, separators: list) -> list:
-        final_chunks = []
-        separator = separators[-1]
-        new_separators = []
-        for i, sep in enumerate(separators):
-            if sep == "" or sep in text:
-                separator = sep
-                new_separators = separators[i + 1:]
-                break
-        splits = text.split(separator) if separator else list(text)
-        good_splits = []
-        for s in splits:
-            if len(s) < self.chunk_size:
-                good_splits.append(s)
-            else:
-                if good_splits:
-                    final_chunks.extend(self._merge(good_splits, separator))
-                    good_splits = []
-                if new_separators:
-                    final_chunks.extend(self._split_text(s, new_separators))
-                else:
-                    final_chunks.append(s)
-        if good_splits:
-            final_chunks.extend(self._merge(good_splits, separator))
-        return final_chunks
-
-    def _merge(self, splits: list, separator: str) -> list:
-        docs = []
-        current = []
-        total = 0
-        for s in splits:
-            if total + len(s) > self.chunk_size and current:
-                docs.append(separator.join(current))
-                while total > self.overlap and current:
-                    total -= len(current[0])
-                    current.pop(0)
-            current.append(s)
-            total += len(s)
-        if current:
-            docs.append(separator.join(current))
-        return docs
 
 
 # ══════════════════════════════════════════════════════════════
@@ -589,25 +545,52 @@ async def sync_account(
                     stats["messages_new"] += 1
                     existing.add(graph_msg_id)
 
-                    # Chunk for embedding
+                    # Structure-aware chunking: split body into body / quoted /
+                    # signature / disclaimer parts. Only 'body' is embedded;
+                    # the rest are stored with chunk_source != 'body' and may
+                    # be re-embedded later or used for FTS only.
                     full_text = f"Subject: {subject}\nFrom: {sender_name} <{sender_addr}>\n\n{body_text}"
-                    chunks = chunker.split(full_text[:50000])
+                    chunk_results = chunker.split_email_body(full_text[:50000])
 
-                    # Contextual Retrieval — enrich chunks before embedding
-                    cr_context = generate_context_sync(
-                        title=subject,
-                        domain="email",
-                        document_type="email",
-                        content_preview=full_text[:3000],
-                        case_number=None,
-                    )
-                    enriched = enrich_chunks(cr_context, chunks)
+                    # Defensive fallback for extremely short / malformed bodies
+                    if not chunk_results:
+                        generic = chunker.split(full_text[:50000])
+                        chunk_results = [
+                            ChunkResult(text=t, source_part=PartType.BODY, is_embedded=True)
+                            for t in generic
+                        ]
 
-                    for ci, (chunk_text, enriched_text) in enumerate(zip(chunks, enriched)):
-                        pending_chunks.append((msg_uuid, chunk_text, ci, "body", None))
-                        pending_embeddings.append(enriched_text)
-                        pending_chunk_ids.append((msg_uuid, ci))
-                        stats["chunks_created"] += 1
+                    body_texts_for_embed = [r.text for r in chunk_results if r.is_embedded]
+
+                    if body_texts_for_embed:
+                        cr_context = generate_context_sync(
+                            title=subject,
+                            domain="email",
+                            document_type="email",
+                            content_preview=full_text[:3000],
+                            case_number=None,
+                        )
+                        enriched_body = enrich_chunks(cr_context, body_texts_for_embed)
+                    else:
+                        enriched_body = []
+
+                    body_iter = iter(enriched_body)
+                    for ci, r in enumerate(chunk_results):
+                        if r.is_embedded:
+                            enriched_text = next(body_iter)
+                            pending_chunks.append(
+                                (msg_uuid, r.text, ci, r.source_part.value, None)
+                            )
+                            pending_embeddings.append(enriched_text)
+                            pending_chunk_ids.append((msg_uuid, ci))
+                            stats["chunks_created"] += 1
+                        else:
+                            # Non-body chunks are skipped here — they'd either
+                            # duplicate an already-indexed parent email (quoted)
+                            # or be boilerplate (signature / disclaimer). If
+                            # FTS-only storage of these is desired later, add
+                            # an INSERT here with NULL embedding.
+                            pass
 
                 except Exception as e:
                     log.error("    Failed to insert message %s: %s", graph_msg_id[:20], e)
@@ -912,19 +895,27 @@ async def priority_index_message(
             msg.get("webLink"),
         )
 
-        # Embed
+        # Embed — structure-aware chunking; only body parts get embedded.
         full_text = f"Subject: {subject}\nFrom: {sender_name} <{sender_addr}>\n\n{body_text}"
-        chunker = TextChunker()
-        chunks = chunker.split(full_text[:50000])
-        if chunks:
-            embeddings = await embedder.embed_batch(chunks[:10])
-            for ci, (chunk_text, emb) in enumerate(zip(chunks[:10], embeddings)):
+        chunker = EmailAwareChunker()
+        chunk_results = chunker.split_email_body(full_text[:50000])
+        if not chunk_results:
+            # Defensive fallback for short / malformed bodies
+            chunk_results = [
+                ChunkResult(text=t, source_part=PartType.BODY, is_embedded=True)
+                for t in chunker.split(full_text[:50000])
+            ]
+        body_chunks = [r for r in chunk_results if r.is_embedded][:10]
+        if body_chunks:
+            embeddings = await embedder.embed_batch([r.text for r in body_chunks])
+            for ci, (r, emb) in enumerate(zip(body_chunks, embeddings)):
                 await pool.execute("""
                     INSERT INTO chat.email_message_chunks
                         (message_id, chunk_index, chunk_text, chunk_source, embedding)
-                    VALUES ($1, $2, $3, 'body', $4::halfvec)
+                    VALUES ($1, $2, $3, $4, $5::halfvec)
                     ON CONFLICT (message_id, chunk_index) DO NOTHING
-                """, uuid.UUID(msg_uuid), ci, chunk_text, _vec_literal(emb))
+                """, uuid.UUID(msg_uuid), ci, r.text, r.source_part.value,
+                     _vec_literal(emb))
 
         await pool.execute(
             "UPDATE chat.email_messages SET status = 'indexed', indexed_at = now() WHERE id = $1",

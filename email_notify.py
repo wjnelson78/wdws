@@ -8,13 +8,20 @@ row with channel='sms'. The actual send happens in notification_service.py
 which reads the queue, enforces quiet hours + rate limiting, and dispatches
 via telnyx_sms.
 
-Filter triggers an SMS when ANY of these hold:
-  - Sender's domain matches a hard-coded VIP domain list (courts, counsel,
-    medical providers, insurance carriers)
-  - Sender's email matches a VIP-specific contact (from email_sync_config
-    TARGET_SPECIFIC_EMAILS)
-  - Email's importance flag is "high"
-  - Subject contains URGENT / ASAP / COURT ORDER / etc.
+Trigger rule (as of 2026-04-22, widened from a VIP-only allowlist):
+
+  Fire SMS when ALL hold:
+    1. Recipient mailbox matches SMS_MAILBOX (default: athena@seattleseahawks.me).
+       Mail to William's personal mailbox (william@...) is intentionally silent
+       — his phone is his own inbox, he doesn't need push-to-phone for it.
+    2. Sender is a real human (not a noreply / auto / mailer-daemon bot).
+
+  That's it. Every inbound human email to Athena gets a heads-up SMS; William
+  can always respond to noise by adding specific senders to the bot list.
+
+The VIP domain/sender lists are kept below for historical reference and in
+case we want to restore tier-based priorities later, but they no longer gate
+SMS.
 """
 
 from __future__ import annotations
@@ -34,7 +41,22 @@ log = logging.getLogger("email-notify")
 # Filter configuration
 # ---------------------------------------------------------------------------
 
-# Always notify when sender's domain matches one of these.
+# Only fire SMS for inbound email addressed to this mailbox. Anything to
+# William's personal inbox stays silent.
+SMS_MAILBOX = os.getenv("SMS_MAILBOX", "athena@seattleseahawks.me").lower()
+
+# Noreply / bot senders that never warrant a phone ping, regardless of where
+# they're addressed. Deliberately conservative — add more here (e.g. a
+# specific newsletter that's pestering you) rather than inventing broad
+# patterns that could suppress legitimate senders like "alerts@uscourts.gov".
+SMS_SUPPRESS_SENDER_PATTERNS = (
+    "noreply@", "no-reply@", "donotreply@", "do-not-reply@",
+    "auto@", "automated@", "mailer-daemon@", "postmaster@",
+)
+
+# The following VIP lists are retained for reference and potential future use
+# (tier-based urgency, prioritized queue order, etc.), but they no longer gate
+# whether an SMS fires — any inbound-to-athena human email triggers now.
 SMS_TRIGGER_DOMAINS = {
     # Courts
     "courts.wa.gov", "snoco.org", "co.snohomish.wa.us", "co.chelan.wa.us",
@@ -103,42 +125,98 @@ def _sender_display(raw_sender: str) -> str:
     return em[:40]
 
 
-def should_sms(*, sender: str, subject: str, importance: Optional[str] = None) -> tuple[bool, str]:
-    """Return (trigger, reason). Never sends SMS for promo/auto/support bots."""
-    domain = _sender_domain(sender)
-    email_lc = _extract_sender_email(sender)
+# Max age of an email before we stop firing SMS for it. Covers the common
+# "delta bootstrap re-walks 1,754 inbox messages" case — we don't want to
+# text William for every month-old mail that gets re-ingested.
+SMS_MAX_AGE_MINUTES = 15
 
-    # Never notify for automated / no-reply senders, even if their domain matches
-    if any(bot in email_lc for bot in (
-        "noreply@", "no-reply@", "donotreply@", "do-not-reply@",
-        "auto@", "automated@", "mailer-daemon@", "postmaster@",
-    )):
+
+def should_sms(
+    *,
+    sender: str,
+    subject: str,
+    importance: Optional[str] = None,
+    mailbox: Optional[str] = None,
+    received_at: Optional[datetime] = None,
+) -> tuple[bool, str]:
+    """Return (trigger, reason).
+
+    Rule: fire iff
+      - addressed to the Athena mailbox, AND
+      - sender is not a bot / auto-sender, AND
+      - received within the last SMS_MAX_AGE_MINUTES (so bootstrap/backfill
+        re-ingests of historical mail stay silent).
+    """
+    mbox = (mailbox or "").strip().lower()
+    if not mbox:
+        return False, "no_mailbox"
+    if mbox != SMS_MAILBOX:
+        return False, f"not_athena_mailbox:{mbox}"
+
+    email_lc = _extract_sender_email(sender)
+    if any(bot in email_lc for bot in SMS_SUPPRESS_SENDER_PATTERNS):
         return False, "auto_sender_suppressed"
 
-    if email_lc in SMS_TRIGGER_SENDERS:
-        return True, f"vip_sender:{email_lc}"
+    # Recency gate — only alert on actually-new mail.
+    if received_at is not None:
+        try:
+            now_utc = datetime.now(received_at.tzinfo) if received_at.tzinfo else datetime.utcnow()
+            age_min = (now_utc - received_at).total_seconds() / 60.0
+            if age_min > SMS_MAX_AGE_MINUTES:
+                return False, f"stale:{int(age_min)}min"
+        except Exception:
+            # If we can't compute age, err toward silence (don't spam).
+            return False, "received_at_unparseable"
+    else:
+        return False, "no_received_at"
 
-    if domain in SMS_TRIGGER_DOMAINS:
-        return True, f"trigger_domain:{domain}"
-    if USCOURTS_RE.search(domain):
-        return True, f"federal_court:{domain}"
-
-    if (importance or "").lower() == "high":
-        return True, "importance_high"
-
-    if _URGENCY_RE.search(subject or ""):
-        return True, "urgency_keyword"
-
-    return False, "no_match"
+    return True, "athena_inbound"
 
 
-def format_sms(*, sender: str, subject: str, received_at: Optional[datetime] = None) -> str:
-    """Build the SMS body. Target ≤ 160 chars for single-part GSM-7 delivery."""
+def _first_two_lines(body: str) -> str:
+    """Pull up to the first two non-empty, non-quoted lines of an email body.
+
+    Skips leading blank lines, collapsed whitespace, common reply-header
+    giveaways ('On ... wrote:', '>', 'From:', 'Sent:', etc.) so the preview
+    shows actual new content rather than quoted history.
+    """
+    if not body:
+        return ""
+    out: list[str] = []
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            continue
+        if re.match(r"^(on\s.*\swrote:|from:|sent:|to:|subject:|cc:|bcc:|date:)",
+                    line, re.IGNORECASE):
+            continue
+        line = re.sub(r"\s+", " ", line)
+        out.append(line)
+        if len(out) == 2:
+            break
+    return " · ".join(out)
+
+
+def format_sms(
+    *,
+    sender: str,
+    subject: str,
+    received_at: Optional[datetime] = None,
+    body_preview: Optional[str] = None,
+) -> str:
+    """Build the SMS body.
+
+    Format (multi-part; Telnyx handles concatenation):
+        [ATHENA] Sender Name @ 14:23
+        Subject line here
+        First line of body · Second line
+    """
     who = _sender_display(sender)
     subj = (subject or "(no subject)").strip()
-    # Collapse whitespace + strip non-printable
     subj = re.sub(r"\s+", " ", subj)
-    # When received — short local time
+
     t = ""
     if received_at:
         try:
@@ -146,13 +224,18 @@ def format_sms(*, sender: str, subject: str, received_at: Optional[datetime] = N
         except Exception:
             t = ""
 
-    prefix = "[ATHENA] "
-    # Budget: 160 - len(prefix) - len(who) - 2 (": ") - len(t)
-    reserve = len(prefix) + len(who) + 2 + len(t)
-    avail = max(20, 160 - reserve)
-    if len(subj) > avail:
-        subj = subj[: avail - 1] + "…"
-    return f"{prefix}{who}: {subj}{t}"
+    # Line 1: header
+    lines = [f"[ATHENA] {who}{t}"]
+    # Line 2: subject (cap to ~100 chars)
+    lines.append(subj[:100] + ("…" if len(subj) > 100 else ""))
+    # Line 3: body preview (cap to ~200 chars — keeps total under 2 SMS parts)
+    if body_preview:
+        preview = _first_two_lines(body_preview)
+        if preview:
+            if len(preview) > 200:
+                preview = preview[:199] + "…"
+            lines.append(preview)
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -168,15 +251,22 @@ async def queue_email_sms(
     importance: Optional[str] = None,
     graph_id: Optional[str] = None,
     mailbox: Optional[str] = None,
+    body_preview: Optional[str] = None,
 ) -> Optional[str]:
     """If the email matches the SMS filter, insert a queue row.
     Returns the match reason (or None if skipped)."""
 
-    trigger, reason = should_sms(sender=sender, subject=subject, importance=importance)
+    trigger, reason = should_sms(
+        sender=sender, subject=subject, importance=importance,
+        mailbox=mailbox, received_at=received_at,
+    )
     if not trigger:
         return None
 
-    body = format_sms(sender=sender, subject=subject, received_at=received_at)
+    body = format_sms(
+        sender=sender, subject=subject,
+        received_at=received_at, body_preview=body_preview,
+    )
     sections = [
         {
             "heading": "New priority email",
@@ -211,19 +301,29 @@ async def queue_email_sms(
 
 
 if __name__ == "__main__":
-    # Quick smoke test of the filter logic
+    # Smoke test — exercises the new athena-mailbox-only rule plus the bot
+    # suppression filter. Each case is (sender, subject, mailbox).
+    ATHENA = "athena@seattleseahawks.me"
+    WILLIAM = "william@seattleseahawks.me"
     cases = [
-        ("Sara Murray <sara.c.murray@gmail.com>", "Re: Strategic Update"),
-        ("noreply@starbucks.com", "Your order"),
-        ("clerk@courts.wa.gov", "Order on Motion"),
-        ("Bobby Hair <bobby@playfasa.com>", "Website issue"),
-        ("random@google.com", "Notification"),
-        ("counsel@ogletree.com", "Deposition scheduling"),
-        ("anyone@somewhere.com", "URGENT: hearing tomorrow"),
+        # Human senders to athena — should ALL trigger
+        ("Sara Murray <sara.c.murray@gmail.com>", "Re: Strategic Update", ATHENA),
+        ("Bobby Hair <bobby@playfasa.com>", "Website issue", ATHENA),
+        ("counsel@ogletree.com", "Deposition scheduling", ATHENA),
+        ("random@google.com", "Notification", ATHENA),
+        ("anyone@somewhere.com", "URGENT: hearing tomorrow", ATHENA),
+        ("clerk@courts.wa.gov", "Order on Motion", ATHENA),
+        # Bot / no-reply senders — should be suppressed even to athena
+        ("noreply@starbucks.com", "Your order", ATHENA),
+        ("news@nytimes.com", "Daily digest", ATHENA),
+        # Anything to William's personal mailbox — should be silent
+        ("Sara Murray <sara.c.murray@gmail.com>", "Personal note", WILLIAM),
+        ("counsel@ogletree.com", "Deposition scheduling", WILLIAM),
     ]
-    for sender, subject in cases:
-        trig, reason = should_sms(sender=sender, subject=subject)
+    for sender, subject, mailbox in cases:
+        trig, reason = should_sms(sender=sender, subject=subject, mailbox=mailbox)
         msg = format_sms(sender=sender, subject=subject) if trig else "—"
-        print(f"{'✓' if trig else '✗'} [{reason:30s}]  {sender[:45]:45s}  {subject[:40]}")
+        print(f"{'✓' if trig else '✗'} [{reason:28s}] to={mailbox[:20]:20s}  "
+              f"{sender[:40]:40s}  {subject[:35]}")
         if trig:
             print(f"   SMS: {msg}")

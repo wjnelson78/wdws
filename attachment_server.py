@@ -21,6 +21,7 @@ Endpoints:
     GET /health                        — Health check
 """
 
+import io
 import os
 import logging
 from pathlib import Path
@@ -31,9 +32,11 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.requests import Request
-from starlette.responses import JSONResponse, FileResponse
+from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+
+import blob_storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("attachment-server")
@@ -56,6 +59,70 @@ async def health(request: Request):
     return JSONResponse({"status": "ok", "service": "wdws-attachment-server"})
 
 
+def _serve_blob_or_fs(
+    *,
+    label: str,
+    storage_backend: Optional[str],
+    storage_uri: Optional[str],
+    fs_path_str: Optional[str],
+    filename: str,
+    content_type: str,
+):
+    """Prefer MinIO/S3 for the bytes; fall back to local FS.
+
+    Why preferred: after the Phase-1 migration, storage_backend/uri is the
+    authoritative location. FS copies are kept only as fallback until the
+    Phase-3 deletion pass runs. Existing un-migrated rows with FS-only paths
+    still work via the fallback.
+    """
+    content_type = content_type or "application/octet-stream"
+
+    # Preferred: blob storage
+    if storage_backend in ("minio", "s3") and storage_uri:
+        try:
+            blob_bytes = blob_storage.get_bytes(storage_uri)
+        except Exception as e:
+            log.warning(f"{label}: blob fetch raised ({storage_uri}): {e}")
+            blob_bytes = None
+        if blob_bytes is not None:
+            log.info(f"{label}: serving {filename} from {storage_uri} "
+                     f"({len(blob_bytes)} bytes)")
+            return StreamingResponse(
+                io.BytesIO(blob_bytes),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="{filename}"'
+                    ),
+                    "Content-Length": str(len(blob_bytes)),
+                },
+            )
+        log.info(f"{label}: blob fetch returned nothing; falling back to FS")
+
+    # Fallback: filesystem (existing un-migrated rows + Phase-2 verification)
+    if not fs_path_str:
+        return JSONResponse(
+            {"error": "No file available",
+             "detail": "neither blob storage nor FS path"},
+            status_code=404,
+        )
+    file_path = Path(fs_path_str)
+    try:
+        file_path.resolve().relative_to(ALLOWED_BASE.resolve())
+    except ValueError:
+        log.warning(f"{label}: path traversal attempt blocked: {file_path}")
+        return JSONResponse({"error": "Access denied"}, status_code=403)
+    if not file_path.exists():
+        return JSONResponse(
+            {"error": "File not found on disk", "path": str(file_path)},
+            status_code=404,
+        )
+    log.info(f"{label}: serving {filename} from FS ({file_path})")
+    return FileResponse(
+        str(file_path), media_type=content_type, filename=filename,
+    )
+
+
 async def download_by_attachment_id(request: Request):
     """Download an attachment file by its UUID from legal.email_attachments."""
     attachment_id = request.path_params["attachment_id"]
@@ -63,6 +130,7 @@ async def download_by_attachment_id(request: Request):
         p = await get_pool()
         row = await p.fetchrow("""
             SELECT ea.filename, ea.content_type,
+                   d.storage_backend, d.storage_uri,
                    d.metadata->>'local_attachment_path' AS file_path
             FROM legal.email_attachments ea
             LEFT JOIN core.documents d ON d.id = ea.child_doc_id
@@ -72,26 +140,17 @@ async def download_by_attachment_id(request: Request):
         log.error(f"DB error for attachment {attachment_id}: {e}")
         return JSONResponse({"error": "Database error", "detail": str(e)}, status_code=500)
 
-    if not row or not row["file_path"]:
+    if not row:
         return JSONResponse({"error": "Attachment not found"}, status_code=404)
 
-    file_path = Path(row["file_path"])
-
-    # Security: ensure the file is under the allowed base directory
-    try:
-        file_path.resolve().relative_to(ALLOWED_BASE.resolve())
-    except ValueError:
-        log.warning(f"Path traversal attempt blocked: {file_path}")
-        return JSONResponse({"error": "Access denied"}, status_code=403)
-
-    if not file_path.exists():
-        return JSONResponse({"error": "File not found on disk", "path": str(file_path)}, status_code=404)
-
-    content_type = row["content_type"] or "application/octet-stream"
-    filename = row["filename"] or file_path.name
-
-    log.info(f"Serving attachment {attachment_id}: {filename} ({file_path})")
-    return FileResponse(str(file_path), media_type=content_type, filename=filename)
+    return _serve_blob_or_fs(
+        label=f"attachment {attachment_id}",
+        storage_backend=row["storage_backend"],
+        storage_uri=row["storage_uri"],
+        fs_path_str=row["file_path"],
+        filename=row["filename"] or "attachment.bin",
+        content_type=row["content_type"] or "application/octet-stream",
+    )
 
 
 async def download_by_document_id(request: Request):
@@ -101,9 +160,11 @@ async def download_by_document_id(request: Request):
         p = await get_pool()
         row = await p.fetchrow("""
             SELECT filename,
+                   storage_backend, storage_uri,
                    metadata->>'local_attachment_path' AS file_path,
                    COALESCE(
-                       (SELECT ea.content_type FROM legal.email_attachments ea WHERE ea.child_doc_id = d.id LIMIT 1),
+                       (SELECT ea.content_type FROM legal.email_attachments ea
+                          WHERE ea.child_doc_id = d.id LIMIT 1),
                        'application/octet-stream'
                    ) AS content_type
             FROM core.documents d
@@ -113,25 +174,17 @@ async def download_by_document_id(request: Request):
         log.error(f"DB error for document {document_id}: {e}")
         return JSONResponse({"error": "Database error", "detail": str(e)}, status_code=500)
 
-    if not row or not row["file_path"]:
-        return JSONResponse({"error": "Document not found or has no file path"}, status_code=404)
+    if not row:
+        return JSONResponse({"error": "Document not found"}, status_code=404)
 
-    file_path = Path(row["file_path"])
-
-    try:
-        file_path.resolve().relative_to(ALLOWED_BASE.resolve())
-    except ValueError:
-        log.warning(f"Path traversal attempt blocked: {file_path}")
-        return JSONResponse({"error": "Access denied"}, status_code=403)
-
-    if not file_path.exists():
-        return JSONResponse({"error": "File not found on disk", "path": str(file_path)}, status_code=404)
-
-    content_type = row["content_type"] or "application/octet-stream"
-    filename = row["filename"] or file_path.name
-
-    log.info(f"Serving document {document_id}: {filename} ({file_path})")
-    return FileResponse(str(file_path), media_type=content_type, filename=filename)
+    return _serve_blob_or_fs(
+        label=f"document {document_id}",
+        storage_backend=row["storage_backend"],
+        storage_uri=row["storage_uri"],
+        fs_path_str=row["file_path"],
+        filename=row["filename"] or "download.bin",
+        content_type=row["content_type"] or "application/octet-stream",
+    )
 
 
 async def list_attachments(request: Request):

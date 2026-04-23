@@ -108,7 +108,10 @@ ATHENA_ALERT_EMAIL = (os.getenv("ATHENA_ALERT_EMAIL", DEFAULT_ATHENA_MAILBOX) or
 ATHENA_EMAIL_DRAFT_MODEL = os.getenv("ATHENA_EMAIL_DRAFT_MODEL", os.getenv("AGENT_LLM_MODEL_HIGH", "gpt-5.4"))
 GRAPH_ATTACHMENT_SIMPLE_LIMIT = 3 * 1024 * 1024
 GRAPH_ATTACHMENT_UPLOAD_CHUNK_SIZE = 320 * 1024 * 10
-from embedding_service import embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, _vec_literal
+from embedding_service import (
+    embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
+    _vec_literal, rerank,
+)
 EMBEDDING_DIMS = EMBEDDING_DIMENSIONS   # 1024 (BGE-M3 local)
 EMBEDDING_PROVIDER = (os.getenv("EMBEDDING_PROVIDER", "local") or "local").strip()
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop"))
@@ -767,6 +770,7 @@ async def _load_original_document_bytes(document_id: str) -> tuple[dict, bytes]:
     doc = await p.fetchrow("""
         SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.source_path,
                d.full_content, d.metadata,
+               d.storage_backend, d.storage_uri,
                em.message_id, em.subject, em.mailbox
         FROM core.documents d
         LEFT JOIN legal.email_metadata em ON em.document_id = d.id
@@ -778,6 +782,36 @@ async def _load_original_document_bytes(document_id: str) -> tuple[dict, bytes]:
 
     source_path = doc["source_path"] or ""
     filename = doc["filename"] or doc["title"] or f"document-{document_id}"
+
+    # MinIO / S3 blob — preferred when populated. These docs were ingested
+    # with their raw bytes uploaded to object storage; we read from there
+    # directly rather than re-fetching from Graph or the legacy FS path.
+    storage_backend = doc["storage_backend"] or ""
+    storage_uri = doc["storage_uri"] or ""
+    if storage_backend in ("minio", "s3") and storage_uri:
+        try:
+            import blob_storage as _bs
+            blob_bytes = _bs.get_bytes(storage_uri)
+        except Exception as _bs_err:
+            log.warning("Blob storage fetch raised for %s (%s): %s",
+                        document_id, storage_uri, _bs_err)
+            blob_bytes = None
+        if blob_bytes is not None:
+            mime_type = _guess_mime_type(filename)
+            if doc["document_type"] in ("email", "eml"):
+                mime_type = "message/rfc822"
+            return ({
+                "document_id": str(doc["id"]),
+                "filename": filename,
+                "mime_type": mime_type,
+                "source_kind": f"blob_storage:{storage_backend}",
+                "storage_uri": storage_uri,
+                "original_available": True,
+            }, blob_bytes)
+        # If blob storage failed, fall through to legacy retrieval paths
+        # below — gives us graceful degradation during MinIO outages.
+        log.info("Blob fetch returned no bytes for %s; falling back to "
+                 "legacy paths", document_id)
 
     if source_path.startswith("graph://"):
         if doc["document_type"] in ("email", "eml"):
@@ -2623,9 +2657,13 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             idx += 1
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        params.append(limit * 3)  # fetch extra to deduplicate
+        # Oversample 5x so the reranker has a useful candidate pool; without
+        # oversampling the rerank step only reorders what dense retrieval
+        # already gave us, which blunts the quality gain.
+        fetch_n = max(limit * 5, 50)
+        params.append(fetch_n)
 
-        # Fetch top chunks, then deduplicate to best-per-document
+        # Fetch top chunks, then rerank, then deduplicate to best-per-document
         rows = await p.fetch(f"""
             SELECT c.id AS chunk_id, d.id AS doc_id, d.title, d.filename,
                    d.domain, d.document_type, d.source_path,
@@ -2640,9 +2678,25 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             LIMIT ${idx}
         """, *params)
 
+        # Rerank the dense-retrieval candidates with bge-reranker-v2-m3.
+        # On CPU this is ~50ms per pair; with fetch_n=50 that's ~2.5s total.
+        rows_list = list(rows)
+        rerank_scores_by_chunk: dict[str, float] = {}
+        if rows_list:
+            try:
+                passages = [r["content"] for r in rows_list]
+                ranked = await rerank(query, passages)
+                # ranked is [(orig_idx, score), ...] sorted desc. Capture scores
+                # first (keyed by chunk_id from original row order), then reorder.
+                for orig_idx, score in ranked:
+                    rerank_scores_by_chunk[str(rows_list[orig_idx]["chunk_id"])] = float(score)
+                rows_list = [rows_list[orig_idx] for orig_idx, _ in ranked]
+            except Exception as e:
+                log.warning("semantic_search rerank failed, falling back to cosine order: %s", e)
+
         # Deduplicate: keep best chunk per document
         seen_docs: dict[str, dict] = {}
-        for r in rows:
+        for r in rows_list:
             doc_id = str(r["doc_id"])
             if doc_id not in seen_docs:
                 entry = {
@@ -2651,6 +2705,9 @@ async def semantic_search(query: str, domain: Optional[str] = None,
                     "domain": r["domain"],
                     "type": r["document_type"],
                     "similarity": round(1 - r["distance"], 4),
+                    "rerank_score": round(
+                        rerank_scores_by_chunk.get(str(r["chunk_id"]), 0.0), 6
+                    ) if rerank_scores_by_chunk else None,
                     "chunk_index": r["chunk_index"],
                     "content_preview": r["content"][:500],
                     "source_path": r["source_path"],
@@ -5246,8 +5303,35 @@ async def rag_query(
             if cid not in chunk_data:
                 chunk_data[cid] = dict(r)
 
-        # Sort by RRF score, deduplicate per document, take top_k
+        # Sort by RRF score, then rerank the top-N with bge-reranker-v2-m3.
+        # Rerank improves top-k ordering dramatically for question-style
+        # queries; we run it on a truncated candidate pool to keep latency
+        # bounded (CPU path: ~50ms/pair, so 50 candidates ≈ 2.5s).
         sorted_chunks = sorted(chunk_scores.items(), key=lambda x: x[1], reverse=True)
+
+        rerank_pool = min(len(sorted_chunks), max(top_k * 4, 50))
+        rerank_candidates = sorted_chunks[:rerank_pool]
+
+        rerank_scores: dict[str, float] = {}
+        if rerank_candidates:
+            try:
+                passages = [chunk_data[cid]["content"] for cid, _ in rerank_candidates]
+                ranked = await rerank(question, passages)
+                for (cid, _), (orig_idx, score) in zip(
+                    rerank_candidates,
+                    sorted(ranked, key=lambda x: x[0]),  # score back to original order
+                ):
+                    rerank_scores[cid] = float(score)
+            except Exception as e:
+                log.warning("rerank failed, falling back to RRF order: %s", e)
+
+        # Final ordering: rerank score if available, else RRF score. Candidates
+        # outside the rerank pool fall through on RRF alone.
+        def _final_score(item):
+            cid, rrf = item
+            return rerank_scores.get(cid, -1e9), rrf
+        sorted_chunks = sorted(sorted_chunks, key=_final_score, reverse=True)
+
         seen_docs: set[str] = set()
         contexts = []
         for cid, score in sorted_chunks:
@@ -5265,6 +5349,7 @@ async def rag_query(
                 "type": r["document_type"],
                 "domain": r["domain"],
                 "rrf_score": round(score, 6),
+                "rerank_score": round(rerank_scores[cid], 6) if cid in rerank_scores else None,
                 "chunk_index": r["chunk_index"],
                 "text": r["content"],
                 "_header": (

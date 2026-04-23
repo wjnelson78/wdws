@@ -46,6 +46,10 @@ import httpx
 from inotify_simple import INotify, flags as inotify_flags
 from PIL import Image
 
+from ingestion_pipeline import (
+    DocumentSpec,
+    ingest as pipeline_ingest,
+)
 from embedding_service import (
     embed_texts_sync, embed_query_sync,
     _vec_literal as _embedding_vec_literal,
@@ -520,7 +524,12 @@ async def write_document(pool: asyncpg.Pool, doc_id: str, domain: str,
                          embeddings: List[List[float]],
                          medical_meta: Optional[dict] = None,
                          enriched_texts: Optional[List[str]] = None):
-    """Write document + chunks + enrichment to PostgreSQL."""
+    """DEPRECATED: left for rollback. process_file now delegates to
+    ingestion_pipeline.ingest() via DocumentSpec. Remove after one release
+    of stable pipeline operation.
+
+    Write document + chunks + enrichment to PostgreSQL.
+    """
     async with pool.acquire() as conn:
         async with conn.transaction():
             # core.documents
@@ -650,39 +659,11 @@ async def process_file(pool: asyncpg.Pool, embedder: EmbeddingClient,
         log.warning(f"  No meaningful text extracted from {filename}")
         return False
 
-    # Chunk
-    chunker = TextChunker()
-    chunks = chunker.split(text)
-    if not chunks:
-        log.warning(f"  No chunks produced for {filename}")
-        return False
-
-    log.info(f"  {len(chunks)} chunks, embedding...")
-
-    # Contextual Retrieval: generate context and enrich chunks
-    context = generate_context_sync(
-        title=file_path.stem.replace("_", " ").replace("-", " "),
-        domain=domain,
-        document_type="document",
-        content_preview=text[:3000],
-        case_number=None,
-    )
-    enriched_texts = enrich_chunks(context, chunks)
-
-    # Embed enriched texts (batch in groups of 2000)
-    all_embeddings = []
-    for i in range(0, len(enriched_texts), 2000):
-        batch = enriched_texts[i:i+2000]
-        try:
-            embs = await embedder.embed_batch(batch)
-            all_embeddings.extend(embs)
-        except Exception as e:
-            log.error(f"  Embedding failed for {filename}: {e}")
-            # Zero-fill fallback
-            all_embeddings.extend([[0.0] * EMBEDDING_DIMENSIONS] * len(batch))
-
-    # Determine document type
+    # Determine document type and optional medical enrichment before pipeline
+    # hand-off. Medical records on this box are always William's; the domain
+    # router (get_domain_for_path) decides which subdir maps to medical.
     ext = file_path.suffix.lower()
+    medical_meta = None
     if domain == "medical":
         doc_type = auto_categorize_medical(text, filename)
         medical_meta = {
@@ -690,55 +671,86 @@ async def process_file(pool: asyncpg.Pool, embedder: EmbeddingClient,
             "record_type": doc_type,
             "date_of_service": extract_date_from_text(text, filename),
             "provider": "",
-            "facility": "UW Medicine" if "uw" in filename.lower() or "university of washington" in text[:2000].lower() else "",
+            "facility": (
+                "UW Medicine"
+                if "uw" in filename.lower()
+                or "university of washington" in text[:2000].lower()
+                else ""
+            ),
         }
     elif domain == "legal":
         doc_type = "court_filing" if ext == ".pdf" else (
             "email" if ext == ".eml" else "legal_document"
         )
-        medical_meta = None
     else:
         doc_type = "document"
-        medical_meta = None
 
-    doc_id = str(uuid.uuid4())
-    content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
     title = file_path.stem.replace("_", " ").replace("-", " ")
 
-    log.info(f"  Writing to DB: domain={domain}, type={doc_type}, chunks={len(chunks)}")
+    log.info(f"  Writing to DB: domain={domain}, type={doc_type}")
+
+    # Hand off to the unified pipeline. It handles chunker routing,
+    # contextual-retrieval enrichment, embedding, core.documents /
+    # core.document_chunks, legal.case_documents auto-linking, and
+    # medical.record_metadata (via medical_meta).
+    spec = DocumentSpec(
+        domain=domain,
+        document_type=doc_type,
+        source_path=source_path,
+        title=title,
+        filename=filename,
+        full_content=text,
+        metadata={
+            "file_type": ext.lstrip("."),
+            "source": "samba_dropbox",
+            "dropped_at": datetime.now().isoformat(),
+        },
+        medical_meta=medical_meta,
+    )
 
     try:
-        await write_document(
-            pool, doc_id, domain, source_path, filename,
-            doc_type, title, content_hash, text,
-            {"file_type": ext.lstrip("."), "source": "samba_dropbox",
-             "dropped_at": datetime.now().isoformat()},
-            chunks, all_embeddings, medical_meta,
-            enriched_texts=enriched_texts,
-        )
-
-        # Send push notification about new document
-        try:
-            import httpx as _httpx
-            _ntfy_topic = os.getenv("NTFY_TOPIC", "")
-            if _ntfy_topic:
-                async with _httpx.AsyncClient(timeout=5) as _client:
-                    await _client.post(
-                        f"https://ntfy.sh/{_ntfy_topic}",
-                        headers={
-                            "Title": f"📄 New {domain} document ingested",
-                            "Priority": "3",
-                            "Tags": "page_facing_up",
-                        },
-                        content=f"{filename}\nType: {doc_type}\nChunks: {len(chunks)}\nNow searchable in Athena",
-                    )
-        except Exception:
-            pass  # Notification is best-effort
-
-        return True
+        result = await pipeline_ingest(spec, pool=pool)
     except Exception as e:
         log.error(f"  DB write failed for {filename}: {e}")
         return False
+
+    if result.error:
+        log.error(f"  Ingest error for {filename}: {result.error}")
+        return False
+
+    if result.was_existing:
+        # file_already_ingested above should catch most duplicates; this is
+        # belt-and-suspenders when multiple watchers race on the same file.
+        log.info(f"  Already ingested (pipeline dedup): {filename}")
+        return True
+
+    log.info(
+        f"  ✓ Ingested {filename} → {result.chunk_count} chunks "
+        f"(embedded={result.embedded_chunk_count}, cases_linked={result.case_links_created})"
+    )
+
+    # Push notification — best-effort, never fails the ingest.
+    try:
+        import httpx as _httpx
+        _ntfy_topic = os.getenv("NTFY_TOPIC", "")
+        if _ntfy_topic:
+            async with _httpx.AsyncClient(timeout=5) as _client:
+                await _client.post(
+                    f"https://ntfy.sh/{_ntfy_topic}",
+                    headers={
+                        "Title": f"📄 New {domain} document ingested",
+                        "Priority": "3",
+                        "Tags": "page_facing_up",
+                    },
+                    content=(
+                        f"{filename}\nType: {doc_type}\nChunks: {result.chunk_count}\n"
+                        "Now searchable in Athena"
+                    ),
+                )
+    except Exception:
+        pass  # Notification is best-effort
+
+    return True
 
 
 # ============================================================

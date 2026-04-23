@@ -1,21 +1,34 @@
 """
-Athena Cognitive Engine — Embedding Service (BGE-M3)
-====================================================
-Produces 1024-dim dense vectors via BGE-M3. Two inference paths:
+Athena Cognitive Engine — Embedding + Reranking Service
+========================================================
+Produces 1024-dim dense vectors via BGE-M3 and cross-encoder rerank scores
+via bge-reranker-v2-m3. Two inference paths for each, with matching
+fallback semantics:
 
-1. HuggingFace Inference Endpoint (GPU, TEI) — primary when HF_ENDPOINT_URL
-   + HF_API_TOKEN are set. ~10-20x faster than CPU for bulk work.
-2. Local sentence-transformers on CPU — always available as fallback for
-   cold starts, network blips, or HF outages.
+Embeddings (BGE-M3, 1024 dims):
+  1. HuggingFace Inference Endpoint (HF_ENDPOINT_URL + HF_API_TOKEN) —
+     primary when configured; ~10-20x faster than CPU for bulk work.
+  2. Local sentence-transformers on CPU — always-available fallback.
 
-Both paths return the same 1024-dim unit-normalized vectors, so vectors
-from either path are interchangeable in pgvector search.
+Reranker (bge-reranker-v2-m3, cross-encoder):
+  1. HF TEI rerank endpoint (HF_RERANKER_ENDPOINT_URL + HF_API_TOKEN) —
+     primary when configured. TEI's `/rerank` route takes
+     {"query": str, "texts": [str]} and returns [{index, score}, ...].
+  2. Local CrossEncoder on CPU — fallback. ~50ms per query/passage pair
+     on CPU, so 50 candidates ≈ 2.5s; fine for interactive search.
+
+Both reranker paths return the same (index, score) pairs sorted by score
+descending, so callers can swap transparently.
 
 Usage:
-    from embedding_service import embed_texts, embed_query
+    from embedding_service import embed_query, embed_texts, rerank
 
-    vector = await embed_query("employment discrimination")
-    vectors = await embed_texts(["chunk 1 text", "chunk 2 text", ...])
+    vec = await embed_query("employment discrimination")
+    vecs = await embed_texts(["chunk 1", "chunk 2", ...])
+
+    # After dense retrieval returns top-50 candidates:
+    ranked = await rerank(query, [c["text"] for c in candidates], top_k=10)
+    top = [candidates[i] for i, score in ranked]
 """
 import asyncio
 import logging
@@ -44,11 +57,25 @@ HF_TIMEOUT = float(os.getenv("HF_EMBEDDING_TIMEOUT", "90"))  # long enough for c
 HF_BATCH_SIZE = int(os.getenv("HF_EMBEDDING_BATCH_SIZE", "32"))  # TEI default max_client_batch_size
 HF_ENABLED = bool(HF_ENDPOINT_URL and HF_API_TOKEN)
 
+# Reranker: separate HF endpoint (TEI cross-encoder) with same token.
+# Kept as its own env var because embed + rerank will typically run on
+# different TEI deployments (different model weights, different GPUs).
+RERANKER_MODEL_NAME = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+HF_RERANKER_ENDPOINT_URL = os.getenv("HF_RERANKER_ENDPOINT_URL", "").rstrip("/")
+HF_RERANKER_TIMEOUT = float(os.getenv("HF_RERANKER_TIMEOUT", "60"))
+HF_RERANKER_ENABLED = bool(HF_RERANKER_ENDPOINT_URL and HF_API_TOKEN)
+
 if HF_ENABLED:
     log.info("HF Inference Endpoint enabled (GPU path primary, CPU fallback): %s",
              HF_ENDPOINT_URL)
 else:
     log.info("HF Inference Endpoint disabled (CPU-only) — set HF_ENDPOINT_URL + HF_API_TOKEN to enable")
+
+if HF_RERANKER_ENABLED:
+    log.info("HF Reranker Endpoint enabled: %s", HF_RERANKER_ENDPOINT_URL)
+else:
+    log.info("HF Reranker Endpoint disabled (local CPU CrossEncoder fallback) — "
+             "set HF_RERANKER_ENDPOINT_URL + HF_API_TOKEN to enable")
 
 # Legacy compat — these are used by search endpoints
 EMBEDDING_MODEL = EMBEDDING_MODEL_NAME
@@ -306,6 +333,185 @@ async def embed_texts_with_progress(
             await callback(batch_num + 1, total_batches, time.time() - t0)
 
     return all_embeddings
+
+
+# ============================================================
+# RERANKER (bge-reranker-v2-m3, cross-encoder)
+# ============================================================
+#
+# The reranker is a SEPARATE model from the embedder — cross-encoders
+# read (query, passage) pairs jointly, producing higher-quality relevance
+# scores than cosine-on-dense-vectors but at O(n) cost per query.
+#
+# Pipeline: dense retrieval returns top-50 → rerank to top-10 → return.
+# Net effect on search quality is large; compute cost per query is small
+# (one short forward pass per candidate, ~50ms on CPU).
+
+_reranker = None
+
+
+def _load_reranker():
+    """Load BAAI/bge-reranker-v2-m3 as a CrossEncoder (local fallback)."""
+    global _reranker
+    if _reranker is not None:
+        return _reranker
+
+    from sentence_transformers import CrossEncoder
+    offline = os.getenv("HF_HUB_OFFLINE", "0") == "1" or \
+              os.getenv("TRANSFORMERS_OFFLINE", "0") == "1"
+    log.info("Loading reranker model %s (local_files_only=%s)...",
+             RERANKER_MODEL_NAME, offline)
+    t0 = time.time()
+    _reranker = CrossEncoder(
+        RERANKER_MODEL_NAME,
+        device="cpu",
+        trust_remote_code=True,
+        local_files_only=offline,
+    )
+    log.info("Reranker loaded in %.1fs", time.time() - t0)
+    return _reranker
+
+
+def _rerank_hf_sync(query: str, passages: list[str]) -> list[tuple[int, float]]:
+    """Call TEI /rerank. Returns [(index, score), ...] sorted desc."""
+    client = _get_hf_sync_client()
+    r = client.post(
+        f"{HF_RERANKER_ENDPOINT_URL}/rerank",
+        json={"query": query, "texts": _truncate(passages), "raw_scores": False},
+        timeout=HF_RERANKER_TIMEOUT,
+    )
+    r.raise_for_status()
+    # TEI returns [{"index": int, "score": float}, ...] sorted desc.
+    return [(item["index"], float(item["score"])) for item in r.json()]
+
+
+async def _rerank_hf_async(query: str, passages: list[str]) -> list[tuple[int, float]]:
+    client = _get_hf_async_client()
+    r = await client.post(
+        f"{HF_RERANKER_ENDPOINT_URL}/rerank",
+        json={"query": query, "texts": _truncate(passages), "raw_scores": False},
+        timeout=HF_RERANKER_TIMEOUT,
+    )
+    r.raise_for_status()
+    return [(item["index"], float(item["score"])) for item in r.json()]
+
+
+def _rerank_cpu_sync(query: str, passages: list[str]) -> list[tuple[int, float]]:
+    """Local CrossEncoder rerank — returns (index, score) desc."""
+    model = _load_reranker()
+    pairs = [(query, p) for p in _truncate(passages)]
+    scores = model.predict(pairs, show_progress_bar=False)
+    ranked = sorted(enumerate(scores.tolist()), key=lambda x: -x[1])
+    return ranked
+
+
+# ── Public reranker API ──────────────────────────────────────
+
+def rerank_sync(
+    query: str,
+    passages: list[str],
+    top_k: Optional[int] = None,
+) -> list[tuple[int, float]]:
+    """Rerank `passages` against `query`. Returns [(original_index, score), ...]
+    sorted by score desc, optionally truncated to top_k.
+
+    Tries HF reranker endpoint first (if configured), falls back to local CPU
+    on any failure — matching the embedder's path-selection semantics.
+    """
+    if not passages:
+        return []
+
+    ranked: Optional[list[tuple[int, float]]] = None
+
+    if HF_RERANKER_ENABLED:
+        try:
+            ranked = _rerank_hf_sync(query, passages)
+        except Exception as e:
+            log.warning(
+                "HF reranker endpoint failed (%s: %s) — falling back to local CPU",
+                type(e).__name__, e,
+            )
+
+    if ranked is None:
+        ranked = _rerank_cpu_sync(query, passages)
+
+    if top_k is not None and top_k > 0:
+        ranked = ranked[:top_k]
+    return ranked
+
+
+async def rerank(
+    query: str,
+    passages: list[str],
+    top_k: Optional[int] = None,
+) -> list[tuple[int, float]]:
+    """Async rerank — same semantics as rerank_sync."""
+    if not passages:
+        return []
+
+    ranked: Optional[list[tuple[int, float]]] = None
+
+    if HF_RERANKER_ENABLED:
+        try:
+            ranked = await _rerank_hf_async(query, passages)
+        except Exception as e:
+            log.warning(
+                "HF reranker endpoint failed (%s: %s) — falling back to local CPU",
+                type(e).__name__, e,
+            )
+
+    if ranked is None:
+        loop = asyncio.get_event_loop()
+        ranked = await loop.run_in_executor(None, _rerank_cpu_sync, query, passages)
+
+    if top_k is not None and top_k > 0:
+        ranked = ranked[:top_k]
+    return ranked
+
+
+# ============================================================
+# Model registry helper
+# ============================================================
+#
+# Returns the core.embedding_models.id for the currently-active embedder,
+# creating/upserting the registry row if needed. Called by the ingestion
+# pipeline per-document so core.document_chunks.embedding_model_id is
+# always populated — lets future re-embedding migrations run side-by-side
+# via the ops.embedding_migration tracker.
+
+_embedding_model_id_cache: dict[tuple, int] = {}
+
+
+async def get_or_create_embedding_model_id(conn_or_pool) -> int:
+    """Resolve (and cache) the current embedding model ID.
+
+    Accepts either an asyncpg Connection or Pool. Safe to call inside
+    another transaction — the upsert is idempotent.
+    """
+    cache_key = (EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS)
+    cached = _embedding_model_id_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    provider = "local" if not HF_ENABLED else "local+hf_tei"
+    row = await conn_or_pool.fetchrow(
+        """
+        INSERT INTO core.embedding_models (name, provider, dimensions, is_local, is_active)
+        VALUES ($1, $2, $3, true, true)
+        ON CONFLICT (name) DO UPDATE SET
+            provider = EXCLUDED.provider,
+            dimensions = EXCLUDED.dimensions
+        RETURNING id
+        """,
+        EMBEDDING_MODEL_NAME,
+        provider,
+        EMBEDDING_DIMENSIONS,
+    )
+    if not row:
+        raise RuntimeError("Unable to resolve the current embedding model ID")
+    model_id = int(row["id"])
+    _embedding_model_id_cache[cache_key] = model_id
+    return model_id
 
 
 # ── CLI Test ─────────────────────────────────────────────────
