@@ -57,15 +57,49 @@ import random
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 import anthropic
 import asyncpg
 
+try:
+    from zoneinfo import ZoneInfo
+    PT_TZ = ZoneInfo("America/Los_Angeles")
+except ImportError:
+    import pytz  # type: ignore
+    PT_TZ = pytz.timezone("America/Los_Angeles")
+
 sys.path.insert(0, "/opt/wdws")
 from core_safety import HEIGHTENED_CATEGORIES  # noqa: E402
+
+
+# ============================================================
+# Quiet-hours deferral per §10 rule 6
+# ============================================================
+
+def _is_quiet_hours_pt() -> bool:
+    """Return True if current PT time is 10pm-7am (autonomous agent quiet hours)."""
+    now = datetime.now(PT_TZ)
+    return now.hour < 7 or now.hour >= 22
+
+
+async def _wait_until_quiet_hours_end() -> None:
+    """Sleep until 7am PT. Called before creating autonomous
+    ops.pending_approvals rows per §10 rule 6."""
+    while _is_quiet_hours_pt():
+        now = datetime.now(PT_TZ)
+        if now.hour >= 22:
+            target = (now + timedelta(days=1)).replace(
+                hour=7, minute=0, second=0, microsecond=0,
+            )
+        else:
+            target = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        wait_sec = (target - now).total_seconds()
+        print(f"  quiet hours active; sleeping {wait_sec:.0f}s (to {target})",
+              flush=True)
+        await asyncio.sleep(min(wait_sec, 300.0))
 
 
 # ============================================================
@@ -528,7 +562,17 @@ async def create_t4_sample_review(
     conn: asyncpg.Connection, batch_id: uuid.UUID,
     classified: dict, failed: dict,
 ) -> None:
-    """T4_SAMPLE_REVIEW stop-gate per v2.2 §6.5."""
+    """T4_SAMPLE_REVIEW stop-gate per v2.2 §6.5.
+
+    Defers creation if currently in PT quiet hours (10pm-7am) per §10 rule 6.
+    The classifications themselves are already in staging — the row just
+    lives in a 'classified but not yet presented for review' state until
+    quiet hours end.
+    """
+    if _is_quiet_hours_pt():
+        print("sample_batch completed during quiet hours; deferring "
+              "T4_SAMPLE_REVIEW creation until 7am PT", flush=True)
+        await _wait_until_quiet_hours_end()
     # 10 random samples per domain
     samples = {}
     for domain in ('legal', 'medical'):
