@@ -112,6 +112,40 @@ from embedding_service import (
     embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
     _vec_literal, rerank,
 )
+
+# Sprint A Task 3: retrieval-safety helper for privilege + PHI filtering.
+# Primary-surface tools propagated in this pass: search, fetch, semantic_search,
+# fulltext_search, search_emails, search_by_case, case_timeline, search_medical,
+# search_by_date_range, fetch_document. Secondary reads (helpers at 775/834/994,
+# write-path reads at 4900/5752, document-relations at 5786/5794, etc.) tracked
+# in the T3_REVIEW manifest — see SPRINT_A_WORK_ORDER_v2.2.md and the
+# ops.pending_approvals row for sprint_a_t3_review.
+import sys as _sys
+_sys.path.insert(0, "/opt/wdws")
+from core_safety import (  # noqa: E402
+    build_document_safety_filter,
+    fetch_safe_document,
+    PrivilegeDeniedException,
+    PHIAccessDeniedException,
+)
+
+
+def _mcp_caller_context(tool_name: str, extra: Optional[dict] = None) -> dict:
+    """Build caller_context for Sprint A retrieval-safety logging.
+
+    The MCP auth layer gives us client_id via _current_client_id() but no
+    session UUID (MCP's session model doesn't map cleanly to a uuid-typed
+    column yet). We pass None for session_id; correlation across MCP calls
+    can be added in a follow-up if the audit trail warrants it.
+    """
+    ctx = {
+        'tool': f"mcp.{tool_name}",
+        'agent_id': _current_client_id(),
+        'session_id': None,
+    }
+    if extra:
+        ctx.update(extra)
+    return ctx
 EMBEDDING_DIMS = EMBEDDING_DIMENSIONS   # 1024 (BGE-M3 local)
 EMBEDDING_PROVIDER = (os.getenv("EMBEDDING_PROVIDER", "local") or "local").strip()
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/opt/wdws/data/uploads/claude-desktop"))
@@ -2538,16 +2572,25 @@ async def search(query: str) -> dict:
         vec = await _embed_query(query)
         vec_str = "[" + ",".join(str(v) for v in vec) + "]"
 
-        rows = await p.fetch("""
-            SELECT c.document_id, d.title, d.filename, d.source_path,
-                   d.domain, d.document_type,
-                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            WHERE c.embedding IS NOT NULL
-            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
-            LIMIT $2
-        """, vec_str, limit * 3)
+        async with p.acquire() as conn:
+            # Cross-domain default: legal→privilege, medical→phi, non-scope strict
+            clause, filter_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain=None,
+                caller_context=_mcp_caller_context('search'),
+                table_alias='d', next_param_index=3,
+            )
+            rows = await conn.fetch(f"""
+                SELECT c.document_id, d.id, d.title, d.filename, d.source_path,
+                       d.domain, d.document_type, d.privilege, d.phi_status,
+                       (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                WHERE c.embedding IS NOT NULL
+                  AND {clause}
+                ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
+                LIMIT $2
+            """, vec_str, limit * 3, *filter_params)
+            await log_cb(rows)
 
         seen_docs: set[str] = set()
         results = []
@@ -2585,12 +2628,18 @@ async def fetch(id: str) -> dict:
     """
     p = await get_pool()
     try:
-        doc = await p.fetchrow(
-            "SELECT * FROM core.documents WHERE id = $1::uuid",
-            id,
-        )
-        if not doc:
-            return {"error": f"Document {id} not found"}
+        async with p.acquire() as conn:
+            try:
+                doc = await fetch_safe_document(
+                    id, conn=conn,
+                    caller_context=_mcp_caller_context('fetch'),
+                )
+            except PrivilegeDeniedException as e:
+                return {"error": "privilege_denied",
+                        "detail": "document is privileged; caller not authorized for privileged content"}
+            except PHIAccessDeniedException as e:
+                return {"error": "phi_access_denied",
+                        "detail": "document contains PHI; caller did not supply purpose_of_use"}
 
         title = doc["title"] or doc["filename"] or f"Document {id}"
         source_path = doc["source_path"]
@@ -2656,27 +2705,42 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             params.append(f"%{case_number}%")
             idx += 1
 
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        # Oversample 5x so the reranker has a useful candidate pool; without
-        # oversampling the rerank step only reorders what dense retrieval
-        # already gave us, which blunts the quality gain.
-        fetch_n = max(limit * 5, 50)
-        params.append(fetch_n)
+        async with p.acquire() as conn:
+            # Safety filter: pass the domain filter directly so we use the
+            # domain-specific filter branch (legal→privilege, medical→phi) or
+            # cross-domain strict. Caller's explicit domain takes precedence.
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain=safety_domain,
+                caller_context=_mcp_caller_context(
+                    'semantic_search',
+                    {'query_domain': domain, 'case_number': case_number},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        # Fetch top chunks, then rerank, then deduplicate to best-per-document
-        rows = await p.fetch(f"""
-            SELECT c.id AS chunk_id, d.id AS doc_id, d.title, d.filename,
-                   d.domain, d.document_type, d.source_path,
-                   c.content, c.chunk_index,
-                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
-                   em.sender, em.subject, em.date_sent
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            {where}
-            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
-            LIMIT ${idx}
-        """, *params)
+            where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+            # Oversample 5x so the reranker has a useful candidate pool.
+            fetch_n = max(limit * 5, 50)
+            params.append(fetch_n)
+
+            rows = await conn.fetch(f"""
+                SELECT c.id AS chunk_id, d.id AS doc_id, d.id, d.title, d.filename,
+                       d.domain, d.document_type, d.source_path, d.phi_status,
+                       c.content, c.chunk_index,
+                       (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
+                       em.sender, em.subject, em.date_sent
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                {where}
+                ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
+                LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         # Rerank the dense-retrieval candidates with bge-reranker-v2-m3.
         # On CPU this is ~50ms per pair; with fetch_n=50 that's ~2.5s total.
@@ -2742,29 +2806,48 @@ async def fulltext_search(query: str, domain: Optional[str] = None, limit: int =
     limit = min(max(limit, 1), 50)
     p = await get_pool()
     try:
-        if domain:
-            rows = await p.fetch("""
-                SELECT d.id, d.title, d.filename, d.domain, d.document_type,
-                       d.source_path, d.created_at,
-                       ts_rank(d.full_content_tsv, websearch_to_tsquery('english', $1)) AS rank,
-                       ts_headline('english', d.full_content, websearch_to_tsquery('english', $1),
-                                   'MaxWords=60, MinWords=20, StartSel=**, StopSel=**') AS headline
-                FROM core.documents d
-                WHERE d.full_content_tsv @@ websearch_to_tsquery('english', $1)
-                  AND d.domain = $3
-                ORDER BY rank DESC LIMIT $2
-            """, query, limit, domain)
-        else:
-            rows = await p.fetch("""
-                SELECT d.id, d.title, d.filename, d.domain, d.document_type,
-                       d.source_path, d.created_at,
-                       ts_rank(d.full_content_tsv, websearch_to_tsquery('english', $1)) AS rank,
-                       ts_headline('english', d.full_content, websearch_to_tsquery('english', $1),
-                                   'MaxWords=60, MinWords=20, StartSel=**, StopSel=**') AS headline
-                FROM core.documents d
-                WHERE d.full_content_tsv @@ websearch_to_tsquery('english', $1)
-                ORDER BY rank DESC LIMIT $2
-            """, query, limit)
+        async with p.acquire() as conn:
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            if domain:
+                # Params: $1=query, $2=limit, $3=domain, $4+=safety filter
+                safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                    conn=conn, domain=safety_domain,
+                    caller_context=_mcp_caller_context(
+                        'fulltext_search', {'query_domain': domain},
+                    ),
+                    table_alias='d', next_param_index=4,
+                )
+                rows = await conn.fetch(f"""
+                    SELECT d.id, d.title, d.filename, d.domain, d.document_type,
+                           d.source_path, d.created_at, d.privilege, d.phi_status,
+                           ts_rank(d.full_content_tsv, websearch_to_tsquery('english', $1)) AS rank,
+                           ts_headline('english', d.full_content, websearch_to_tsquery('english', $1),
+                                       'MaxWords=60, MinWords=20, StartSel=**, StopSel=**') AS headline
+                    FROM core.documents d
+                    WHERE d.full_content_tsv @@ websearch_to_tsquery('english', $1)
+                      AND d.domain = $3
+                      AND {safety_clause}
+                    ORDER BY rank DESC LIMIT $2
+                """, query, limit, domain, *safety_params)
+                await log_cb(rows)
+            else:
+                safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                    conn=conn, domain=None,
+                    caller_context=_mcp_caller_context('fulltext_search'),
+                    table_alias='d', next_param_index=3,
+                )
+                rows = await conn.fetch(f"""
+                    SELECT d.id, d.title, d.filename, d.domain, d.document_type,
+                           d.source_path, d.created_at, d.privilege, d.phi_status,
+                           ts_rank(d.full_content_tsv, websearch_to_tsquery('english', $1)) AS rank,
+                           ts_headline('english', d.full_content, websearch_to_tsquery('english', $1),
+                                       'MaxWords=60, MinWords=20, StartSel=**, StopSel=**') AS headline
+                    FROM core.documents d
+                    WHERE d.full_content_tsv @@ websearch_to_tsquery('english', $1)
+                      AND {safety_clause}
+                    ORDER BY rank DESC LIMIT $2
+                """, query, limit, *safety_params)
+                await log_cb(rows)
 
         results = [{
             "document_id": str(r["id"]),
@@ -2861,20 +2944,35 @@ async def search_emails(
             params.append(has_attachments)
             idx += 1
 
-        params.append(limit)
-        where = " AND ".join(conditions)
+        async with p.acquire() as conn:
+            # All email hits are domain='legal' by join; apply legal safety filter
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context=_mcp_caller_context(
+                    'search_emails', {'case_number': case_number},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, d.source_path, d.created_at,
-                   em.sender, em.recipients, em.cc, em.subject,
-                   em.date_sent, em.direction, em.has_attachments, em.thread_id,
-                   LEFT(d.full_content, 500) AS preview
-            FROM core.documents d
-            JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE {where}
-            ORDER BY em.date_sent DESC NULLS LAST
-            LIMIT ${idx}
-        """, *params)
+            params.append(limit)
+            where = " AND ".join(conditions)
+
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.source_path, d.created_at,
+                       d.privilege,
+                       em.sender, em.recipients, em.cc, em.subject,
+                       em.date_sent, em.direction, em.has_attachments, em.thread_id,
+                       LEFT(d.full_content, 500) AS preview
+                FROM core.documents d
+                JOIN legal.email_metadata em ON d.id = em.document_id
+                WHERE {where}
+                ORDER BY em.date_sent DESC NULLS LAST
+                LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         results = [{
             "document_id": str(r["id"]),
@@ -2922,23 +3020,36 @@ async def search_by_case(case_number: str, document_type: Optional[str] = None, 
             params.append(document_type)
             idx += 1
 
-        params.append(limit)
-        where = " AND ".join(conditions)
+        async with p.acquire() as conn:
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context=_mcp_caller_context(
+                    'search_by_case', {'case_number': case_number},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, d.domain, d.document_type,
-                   d.created_at, d.source_path,
-                   em.sender, em.date_sent, em.subject,
-                   fm.filing_type, fm.filed_by, fm.date_ingested
-            FROM core.documents d
-            JOIN legal.case_documents cd ON d.id = cd.document_id
-            JOIN legal.cases c ON cd.case_id = c.id
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            LEFT JOIN legal.filing_metadata fm ON d.id = fm.document_id
-            WHERE {where}
-            ORDER BY COALESCE(em.date_sent, d.created_at) DESC
-            LIMIT ${idx}
-        """, *params)
+            params.append(limit)
+            where = " AND ".join(conditions)
+
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.domain, d.document_type,
+                       d.created_at, d.source_path, d.privilege,
+                       em.sender, em.date_sent, em.subject,
+                       fm.filing_type, fm.filed_by, fm.date_ingested
+                FROM core.documents d
+                JOIN legal.case_documents cd ON d.id = cd.document_id
+                JOIN legal.cases c ON cd.case_id = c.id
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                LEFT JOIN legal.filing_metadata fm ON d.id = fm.document_id
+                WHERE {where}
+                ORDER BY COALESCE(em.date_sent, d.created_at) DESC
+                LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         case_info = None
         if case_row:
@@ -3000,25 +3111,38 @@ async def case_timeline(case_number: str, start_date: Optional[str] = None,
             params.append(end_date)
             idx += 1
 
-        params.append(limit)
-        where = " AND ".join(conditions)
+        async with p.acquire() as conn:
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context=_mcp_caller_context(
+                    'case_timeline', {'case_number': case_number},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, d.document_type,
-                   em.sender, em.recipients, em.cc, em.date_sent, em.subject,
-                   em.direction, em.has_attachments,
-                   fm.filing_type, fm.filed_by, fm.docket_number,
-                   LEFT(d.full_content, 400) AS preview,
-                   COALESCE(em.date_sent, d.created_at) AS event_date
-            FROM core.documents d
-            JOIN legal.case_documents cd ON d.id = cd.document_id
-            JOIN legal.cases c ON cd.case_id = c.id
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            LEFT JOIN legal.filing_metadata fm ON d.id = fm.document_id
-            WHERE {where}
-            ORDER BY event_date ASC
-            LIMIT ${idx}
-        """, *params)
+            params.append(limit)
+            where = " AND ".join(conditions)
+
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.document_type, d.privilege,
+                       em.sender, em.recipients, em.cc, em.date_sent, em.subject,
+                       em.direction, em.has_attachments,
+                       fm.filing_type, fm.filed_by, fm.docket_number,
+                       LEFT(d.full_content, 400) AS preview,
+                       COALESCE(em.date_sent, d.created_at) AS event_date
+                FROM core.documents d
+                JOIN legal.case_documents cd ON d.id = cd.document_id
+                JOIN legal.cases c ON cd.case_id = c.id
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                LEFT JOIN legal.filing_metadata fm ON d.id = fm.document_id
+                WHERE {where}
+                ORDER BY event_date ASC
+                LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         events = []
         for r in rows:
@@ -3060,6 +3184,8 @@ async def search_medical(
     end_date: Optional[str] = None,
     provider: Optional[str] = None,
     facility: Optional[str] = None,
+    purpose_of_use: Optional[str] = None,
+    authorization_id: Optional[str] = None,
     limit: int = 20,
 ) -> str:
     """Search medical records with flexible filters.
@@ -3071,6 +3197,13 @@ async def search_medical(
         end_date: Service date end (YYYY-MM-DD)
         provider: Filter by provider name (partial match)
         facility: Filter by facility name (partial match)
+        purpose_of_use: Required to surface PHI records (e.g. 'litigation_support',
+            'clinical_care'). Without it, only de-identified records surface.
+            Sprint A: when set, every PHI record surfaced is logged to
+            medical.disclosures_log per 45 CFR 164.528.
+        authorization_id: UUID of a medical.authorizations row. Required to
+            surface psychotherapy_notes or 42 CFR Part 2 records; the row's
+            scope must match the heightened category.
         limit: Max results (default 20)
     """
     limit = min(max(limit, 1), 50)
@@ -3105,21 +3238,46 @@ async def search_medical(
             params.append(f"%{facility}%")
             idx += 1
 
-        params.append(limit)
-        where = " AND ".join(conditions)
+        async with p.acquire() as conn:
+            # Medical domain filter. purpose_of_use=None → de-identified only.
+            # authorization_id checked for revocation + expiration at call time.
+            try:
+                auth_uuid = (
+                    __import__('uuid').UUID(authorization_id) if authorization_id else None
+                )
+            except (ValueError, AttributeError):
+                return json.dumps({"error": "invalid authorization_id UUID"})
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain='medical',
+                caller_context=_mcp_caller_context(
+                    'search_medical',
+                    {'record_type': record_type, 'provider': provider},
+                ),
+                purpose_of_use=purpose_of_use,
+                authorization_id=auth_uuid,
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, d.document_type, d.created_at,
-                   rm.record_type, rm.date_of_service, rm.facility, rm.section_title,
-                   prov.name AS provider_name,
-                   LEFT(d.full_content, 500) AS preview
-            FROM core.documents d
-            LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
-            LEFT JOIN medical.providers prov ON rm.provider_id = prov.id
-            WHERE {where}
-            ORDER BY rm.date_of_service DESC NULLS LAST
-            LIMIT ${idx}
-        """, *params)
+            params.append(limit)
+            where = " AND ".join(conditions)
+
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.document_type, d.created_at,
+                       d.phi_status, d.phi_categories, d.minor_patient,
+                       rm.record_type, rm.date_of_service, rm.facility, rm.section_title,
+                       prov.name AS provider_name,
+                       LEFT(d.full_content, 500) AS preview
+                FROM core.documents d
+                LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
+                LEFT JOIN medical.providers prov ON rm.provider_id = prov.id
+                WHERE {where}
+                ORDER BY rm.date_of_service DESC NULLS LAST
+                LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         results = [{
             "document_id": str(r["id"]),
@@ -3231,18 +3389,34 @@ async def search_by_date_range(
             params.append(document_type)
             idx += 1
 
-        params.append(limit)
-        where = " AND ".join(conditions)
+        async with p.acquire() as conn:
+            # Cross-domain unless caller narrows to legal/medical explicitly
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain=safety_domain,
+                caller_context=_mcp_caller_context(
+                    'search_by_date_range',
+                    {'query_domain': domain, 'document_type': document_type},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
 
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, d.domain, d.document_type,
-                   d.created_at, d.source_path,
-                   em.sender, em.date_sent, em.subject
-            FROM core.documents d
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE {where}
-            ORDER BY d.created_at DESC LIMIT ${idx}
-        """, *params)
+            params.append(limit)
+            where = " AND ".join(conditions)
+
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.domain, d.document_type,
+                       d.created_at, d.source_path, d.privilege, d.phi_status,
+                       em.sender, em.date_sent, em.subject
+                FROM core.documents d
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                WHERE {where}
+                ORDER BY d.created_at DESC LIMIT ${idx}
+            """, *params)
+            await log_cb(rows)
 
         results = [{
             "document_id": str(r["id"]),
@@ -3267,20 +3441,52 @@ async def search_by_date_range(
 
 @mcp.tool(annotations=READ_ONLY)
 @logged_tool
-async def fetch_document(document_id: str, include_chunks: bool = False) -> str:
+async def fetch_document(
+    document_id: str,
+    include_chunks: bool = False,
+    include_privileged: bool = False,
+    purpose_of_use: Optional[str] = None,
+    authorization_id: Optional[str] = None,
+) -> str:
     """Fetch a document's full content and metadata by ID.
 
     Args:
         document_id: UUID of the document
         include_chunks: Whether to include all chunk texts (default False)
+        include_privileged: If True, attorney_client and work_product_fact
+            documents may be returned. Default False raises a privilege denial
+            for such documents.
+        purpose_of_use: Required to fetch PHI documents (medical domain).
+        authorization_id: UUID of medical.authorizations — required for
+            heightened-protection categories (psychotherapy_notes, 42 CFR Part 2).
     """
     p = await get_pool()
     try:
-        doc = await p.fetchrow(
-            "SELECT * FROM core.documents WHERE id = $1::uuid", document_id
-        )
-        if not doc:
-            return json.dumps({"error": f"Document {document_id} not found"})
+        async with p.acquire() as conn:
+            try:
+                auth_uuid = (
+                    __import__('uuid').UUID(authorization_id) if authorization_id else None
+                )
+            except (ValueError, AttributeError):
+                return json.dumps({"error": "invalid authorization_id UUID"})
+            try:
+                doc = await fetch_safe_document(
+                    document_id, conn=conn,
+                    caller_context=_mcp_caller_context('fetch_document'),
+                    include_privileged=include_privileged,
+                    purpose_of_use=purpose_of_use,
+                    authorization_id=auth_uuid,
+                )
+            except PrivilegeDeniedException:
+                return json.dumps({
+                    "error": "privilege_denied",
+                    "detail": "document is privileged; pass include_privileged=True if authorized",
+                })
+            except PHIAccessDeniedException as e:
+                return json.dumps({
+                    "error": "phi_access_denied",
+                    "detail": str(e),
+                })
 
         result = {
             "document_id": str(doc["id"]),

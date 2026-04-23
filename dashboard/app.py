@@ -39,6 +39,44 @@ import sys
 sys.path.insert(0, '/opt/wdws/dashboard')
 from osint_api import get_osint_routes, get_osint_pool
 
+# Sprint A Task 3: retrieval-safety helper. Propagated to the 8 LLM-exposed
+# chat tools registered in CHAT_TOOLS. HTTP-only endpoints (api_documents,
+# api_document_detail, api_search, api_audit_*, etc.) are tracked in the
+# T3_REVIEW manifest for propagation in a follow-up Sprint A commit before
+# closeout — they require count-only mode for audit surfaces per §5.6.
+sys.path.insert(0, '/opt/wdws')
+from core_safety import (  # noqa: E402
+    build_document_safety_filter,
+    fetch_safe_document,
+    PrivilegeDeniedException,
+    PHIAccessDeniedException,
+)
+
+
+def _dashboard_caller_context(tool_name: str, request=None, extra: Optional[dict] = None) -> dict:
+    """Build caller_context for Sprint A retrieval-safety logging.
+
+    Dashboard calls generally have a session and user. When a request is
+    passed, the user is extracted from Starlette session state; otherwise
+    'dashboard' is the default attribution.
+    """
+    user = 'dashboard'
+    session_id = None
+    if request is not None:
+        try:
+            user = request.session.get('user') or user
+        except Exception:
+            pass
+    ctx = {
+        'tool': f"dashboard.{tool_name}",
+        'agent_id': 'dashboard_chat',
+        'user': user,
+        'session_id': session_id,
+    }
+    if extra:
+        ctx.update(extra)
+    return ctx
+
 # ── Config ────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
 DASHBOARD_USERS = {
@@ -2583,18 +2621,33 @@ async def _tool_semantic_search(args: dict) -> str:
             )
             q_args.append(tag_slug)
             idx += 1
-        q_args.append(limit)
-        where_clause = " AND ".join(where_parts)
-        rows = await p.fetch(f"""
-            SELECT c.id, c.content, c.chunk_index,
-                   d.id AS doc_id, d.title, d.filename, d.domain, d.document_type,
-                   c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS}) AS distance
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            WHERE {where_clause}
-            ORDER BY c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS})
-            LIMIT ${idx}
-        """, *q_args)
+        async with p.acquire() as conn:
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain=safety_domain,
+                caller_context=_dashboard_caller_context(
+                    '_tool_semantic_search', extra={'query_domain': domain},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            q_args.extend(safety_params)
+            where_parts.append(safety_clause)
+
+            q_args.append(limit)
+            where_clause = " AND ".join(where_parts)
+            rows = await conn.fetch(f"""
+                SELECT c.id, c.content, c.chunk_index,
+                       d.id AS doc_id, d.id, d.title, d.filename, d.domain, d.document_type,
+                       d.privilege, d.phi_status,
+                       c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS}) AS distance
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                WHERE {where_clause}
+                ORDER BY c.embedding <=> $1::halfvec({EMBEDDING_DIMENSIONS})
+                LIMIT ${idx}
+            """, *q_args)
+            await log_cb(rows)
         results = []
         for r in rows:
             sim = round(1 - float(r["distance"]), 4)
@@ -2636,17 +2689,31 @@ async def _tool_fulltext_search(args: dict) -> str:
             )
             q_args.append(tag_slug)
             idx += 1
-        q_args.append(limit)
-        where_clause = " AND ".join(where_parts)
-        rows = await p.fetch(f"""
-            SELECT c.id, c.content, d.id AS doc_id, d.title, d.filename,
-                   d.domain, d.document_type,
-                   ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::FLOAT AS rank
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            WHERE {where_clause}
-            ORDER BY rank DESC LIMIT ${idx}
-        """, *q_args)
+        async with p.acquire() as conn:
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain=safety_domain,
+                caller_context=_dashboard_caller_context(
+                    '_tool_fulltext_search', extra={'query_domain': domain},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            q_args.extend(safety_params)
+            where_parts.append(safety_clause)
+
+            q_args.append(limit)
+            where_clause = " AND ".join(where_parts)
+            rows = await conn.fetch(f"""
+                SELECT c.id, c.content, d.id AS doc_id, d.id, d.title, d.filename,
+                       d.domain, d.document_type, d.privilege, d.phi_status,
+                       ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::FLOAT AS rank
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                WHERE {where_clause}
+                ORDER BY rank DESC LIMIT ${idx}
+            """, *q_args)
+            await log_cb(rows)
         results = [{"document_id": str(r["doc_id"]), "title": r["title"] or r["filename"],
                     "filename": r["filename"], "domain": r["domain"], "type": r["document_type"],
                     "rank": round(r["rank"], 4), "excerpt": r["content"][:600]}
@@ -2676,13 +2743,22 @@ async def _tool_lookup_case(args: dict) -> str:
             JOIN legal.parties p ON cp.party_id = p.id
             WHERE cp.case_id = $1
         """, case["id"])
-        docs = await p.fetch("""
-            SELECT d.id, d.title, d.filename, d.document_type, d.created_at
-            FROM legal.case_documents cd
-            JOIN core.documents d ON cd.document_id = d.id
-            WHERE cd.case_id = $1
-            ORDER BY d.created_at DESC LIMIT 20
-        """, case["id"])
+        async with p.acquire() as conn_docs:
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn_docs, domain='legal',
+                caller_context=_dashboard_caller_context(
+                    '_tool_lookup_case', extra={'case': cn},
+                ),
+                table_alias='d', next_param_index=2,
+            )
+            docs = await conn_docs.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.document_type, d.created_at
+                FROM legal.case_documents cd
+                JOIN core.documents d ON cd.document_id = d.id
+                WHERE cd.case_id = $1 AND {safety_clause}
+                ORDER BY d.created_at DESC LIMIT 20
+            """, case["id"], *safety_params)
+            await log_cb(docs)
         return json.dumps({
             "case_number": case["case_number"], "court": case["court"],
             "title": case["case_title"], "type": case["case_type"],
@@ -2700,19 +2776,55 @@ async def _tool_lookup_case(args: dict) -> str:
 
 
 async def _tool_get_document(args: dict) -> str:
-    """Get full document content."""
+    """Get full document content.
+
+    Sprint A: uses fetch_safe_document to enforce privilege and PHI gating.
+    If the document is privileged and include_privileged=False (default),
+    returns a denial response object so the caller knows to ask explicitly.
+    """
     doc_id = args["document_id"]
+    include_privileged = bool(args.get("include_privileged", False))
+    purpose_of_use = args.get("purpose_of_use")
+    authorization_id = args.get("authorization_id")
     p = await get_pool()
     try:
-        doc = await p.fetchrow("""
-            SELECT d.*, em.sender, em.recipients, em.date_sent, em.direction,
-                   em.mailbox
-            FROM core.documents d
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE d.id = $1::uuid
-        """, doc_id)
-        if not doc:
-            return json.dumps({"error": "Document not found"})
+        async with p.acquire() as conn:
+            try:
+                auth_uuid = uuid.UUID(authorization_id) if authorization_id else None
+            except (ValueError, AttributeError):
+                return json.dumps({"error": "invalid authorization_id UUID"})
+            try:
+                doc = await fetch_safe_document(
+                    doc_id, conn=conn,
+                    caller_context=_dashboard_caller_context('_tool_get_document'),
+                    include_privileged=include_privileged,
+                    purpose_of_use=purpose_of_use,
+                    authorization_id=auth_uuid,
+                )
+            except PrivilegeDeniedException:
+                return json.dumps({
+                    "error": "privilege_denied",
+                    "detail": "document is privileged; pass include_privileged=true to request access",
+                })
+            except PHIAccessDeniedException as e:
+                return json.dumps({
+                    "error": "phi_access_denied",
+                    "detail": str(e),
+                })
+            # Augment with email metadata (same join as before)
+            em = await conn.fetchrow("""
+                SELECT sender, recipients, date_sent, direction, mailbox
+                FROM legal.email_metadata WHERE document_id = $1::uuid
+            """, doc_id)
+        # Default email fields to None so downstream code can test them uniformly
+        for k in ('sender', 'recipients', 'date_sent', 'direction', 'mailbox'):
+            doc.setdefault(k, None)
+        if em:
+            doc['sender'] = em['sender']
+            doc['recipients'] = em['recipients']
+            doc['date_sent'] = em['date_sent']
+            doc['direction'] = em['direction']
+            doc['mailbox'] = em['mailbox']
         content = doc["full_content"] or ""
         if len(content) > 4000:
             content = content[:4000] + "\n... [truncated]"
@@ -2750,18 +2862,32 @@ async def _tool_search_emails(args: dict) -> str:
         if mailbox:
             conditions.append(f"em.mailbox ILIKE ${idx}")
             params.append(f"%{mailbox}%"); idx += 1
-        params.append(limit); limit_idx = idx
-        where = " AND ".join(conditions)
-        rows = await p.fetch(f"""
-            SELECT d.id, d.title, d.filename, em.sender, em.recipients,
-                   em.date_sent, em.direction, em.mailbox,
-                   LEFT(d.full_content, 400) AS excerpt
-            FROM core.documents d
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE {where}
-            ORDER BY em.date_sent DESC NULLS LAST
-            LIMIT ${limit_idx}
-        """, *params)
+        async with p.acquire() as conn:
+            safety_clause, safety_params, log_cb = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context=_dashboard_caller_context(
+                    '_tool_search_emails', extra={'sender': sender, 'mailbox': mailbox},
+                ),
+                table_alias='d', next_param_index=idx,
+            )
+            idx += len(safety_params)
+            params.extend(safety_params)
+            conditions.append(safety_clause)
+
+            params.append(limit); limit_idx = idx
+            where = " AND ".join(conditions)
+            rows = await conn.fetch(f"""
+                SELECT d.id, d.title, d.filename, d.privilege,
+                       em.sender, em.recipients,
+                       em.date_sent, em.direction, em.mailbox,
+                       LEFT(d.full_content, 400) AS excerpt
+                FROM core.documents d
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                WHERE {where}
+                ORDER BY em.date_sent DESC NULLS LAST
+                LIMIT ${limit_idx}
+            """, *params)
+            await log_cb(rows)
         results = [{"document_id": str(r["id"]), "subject": r["title"] or r["filename"],
                     "from": r["sender"], "to": r["recipients"],
                     "date": _ser(r["date_sent"]), "direction": r["direction"],
@@ -2824,31 +2950,46 @@ async def _tool_list_case_documents(args: dict) -> str:
       params.append(doc_type)
     where_sql = " AND ".join(where)
 
-    total = await p.fetchval(
-      f"""
-      SELECT COUNT(*)
-      FROM legal.case_documents cd
-      JOIN core.documents d ON cd.document_id = d.id
-      WHERE {where_sql}
-      """,
-      *params,
-    )
+    async with p.acquire() as conn:
+      safety_clause, safety_params, log_cb = await build_document_safety_filter(
+          conn=conn, domain='legal',
+          caller_context=_dashboard_caller_context(
+              '_tool_list_case_documents', extra={'case': case_number, 'doc_type': doc_type},
+          ),
+          table_alias='d', next_param_index=len(params) + 1,
+      )
+      params_with_filter = list(params) + list(safety_params)
+      filter_idx_end = len(params_with_filter)
 
-    limit_idx = len(params) + 1
-    offset_idx = len(params) + 2
-    rows = await p.fetch(
-      f"""
-      SELECT d.id, d.title, d.filename, d.document_type, d.domain, d.created_at
-      FROM legal.case_documents cd
-      JOIN core.documents d ON cd.document_id = d.id
-      WHERE {where_sql}
-      ORDER BY d.created_at ASC
-      LIMIT ${limit_idx} OFFSET ${offset_idx}
-      """,
-      *params,
-      limit,
-      offset,
-    )
+      # Total with safety filter applied — this is the count of docs the caller
+      # is actually allowed to see, not the full case doc count
+      total = await conn.fetchval(
+          f"""
+          SELECT COUNT(*)
+          FROM legal.case_documents cd
+          JOIN core.documents d ON cd.document_id = d.id
+          WHERE {where_sql} AND {safety_clause}
+          """,
+          *params_with_filter,
+      )
+
+      limit_idx = filter_idx_end + 1
+      offset_idx = filter_idx_end + 2
+      rows = await conn.fetch(
+          f"""
+          SELECT d.id, d.title, d.filename, d.document_type, d.domain, d.created_at,
+                 d.privilege
+          FROM legal.case_documents cd
+          JOIN core.documents d ON cd.document_id = d.id
+          WHERE {where_sql} AND {safety_clause}
+          ORDER BY d.created_at ASC
+          LIMIT ${limit_idx} OFFSET ${offset_idx}
+          """,
+          *params_with_filter,
+          limit,
+          offset,
+      )
+      await log_cb(rows)
 
     return json.dumps({
       "case_number": case["case_number"],
@@ -2890,17 +3031,28 @@ async def _tool_get_documents_bulk(args: dict) -> str:
 
   p = await get_pool()
   try:
-    rows = await p.fetch(
-      """
-      SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.created_at,
-           d.full_content, em.sender, em.recipients, em.date_sent,
-           em.direction, em.mailbox
-      FROM core.documents d
-      LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-      WHERE d.id = ANY($1::uuid[])
-      """,
-      doc_ids,
-    )
+    async with p.acquire() as conn:
+      # Cross-domain: each document id may be legal, medical, or out-of-scope.
+      safety_clause, safety_params, log_cb = await build_document_safety_filter(
+          conn=conn, domain=None,
+          caller_context=_dashboard_caller_context(
+              '_tool_get_documents_bulk', extra={'ids_count': len(doc_ids)},
+          ),
+          table_alias='d', next_param_index=2,
+      )
+      rows = await conn.fetch(
+          f"""
+          SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.created_at,
+                 d.privilege, d.phi_status,
+                 d.full_content, em.sender, em.recipients, em.date_sent,
+                 em.direction, em.mailbox
+          FROM core.documents d
+          LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+          WHERE d.id = ANY($1::uuid[]) AND {safety_clause}
+          """,
+          doc_ids, *safety_params,
+      )
+      await log_cb(rows)
     found_ids = {str(r["id"]) for r in rows}
     missing = [doc_id for doc_id in doc_ids if doc_id not in found_ids]
 
