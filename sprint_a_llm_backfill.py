@@ -241,10 +241,15 @@ class DomainClassifier:
                 },
             }
 
-    async def classify(self, doc: asyncpg.Record) -> Optional[dict]:
-        """Return the parsed tool_use input dict, or None on failure."""
+    async def classify(self, doc: asyncpg.Record) -> dict:
+        """Classify a document.
+
+        Returns:
+            {'ok': True, 'proposal': {...}} on success, OR
+            {'ok': False, 'error_detail': str, 'stop_reason': str|None,
+             'partial_output': str} on failure.
+        """
         content = doc["full_content"] or ""
-        # Truncate very long documents to fit reasonable context
         max_chars = 120_000
         if len(content) > max_chars:
             content = content[:max_chars] + "\n\n[...document truncated for classification...]"
@@ -268,17 +273,38 @@ class DomainClassifier:
                 messages=[{"role": "user", "content": user_msg}],
             )
         except Exception as exc:
-            print(f"  [error] {self.domain} classify {doc['id']}: {exc!r}",
-                  file=sys.stderr)
-            return None
+            return {
+                'ok': False,
+                'error_detail': f"Anthropic SDK exception: {type(exc).__name__}: {exc}",
+                'stop_reason': None,
+                'partial_output': '',
+            }
 
         # Extract the tool_use block
         for block in response.content:
             if getattr(block, 'type', None) == 'tool_use' and block.name == self.tool_name:
-                return block.input
-        print(f"  [error] {self.domain} classify {doc['id']}: no tool_use in response",
-              file=sys.stderr)
-        return None
+                return {'ok': True, 'proposal': block.input}
+
+        # No tool_use — capture partial output for diagnostics
+        partial_parts = []
+        for block in response.content:
+            btype = getattr(block, 'type', None)
+            if btype == 'text':
+                partial_parts.append(f"[text]: {block.text[:1000]}")
+            elif btype == 'tool_use':
+                partial_parts.append(
+                    f"[tool_use block with name={block.name!r} "
+                    f"(expected {self.tool_name!r}), input={json.dumps(block.input)[:500]}]"
+                )
+            else:
+                partial_parts.append(f"[{btype}]: (opaque)")
+        return {
+            'ok': False,
+            'error_detail': f"no {self.tool_name!r} tool_use block in response "
+                            f"(stop_reason={response.stop_reason!r})",
+            'stop_reason': response.stop_reason,
+            'partial_output': '\n'.join(partial_parts),
+        }
 
 
 # ============================================================
@@ -442,7 +468,20 @@ async def fetch_next_document(
     conn: asyncpg.Connection, domain: str,
 ) -> Optional[asyncpg.Record]:
     """Return next NULL-privilege (legal) or NULL-phi_status (medical) doc
-    that has no existing pending staging row."""
+    that has no existing pending staging row.
+
+    Uses ORDER BY random() so the sample draws from the full temporal
+    distribution of the corpus — not just the most recent documents.
+    Per Will 2026-04-23 post-launch feedback: the T4_SAMPLE_REVIEW sample
+    must be representative of the bulk run the classifier will later
+    operate on. Temporal clustering (created_at DESC) produces a sample
+    biased toward recent Sprint-A-era documents (thin OCR, auto-generated
+    attachments) that doesn't generalize to the older legal corpus.
+
+    Random ordering is fine for bulk too — any ordering eventually
+    processes every document; only the progression of
+    privilege_classified_at timestamps changes, which is cosmetic.
+    """
     if domain == 'legal':
         cond = "d.privilege IS NULL"
     else:
@@ -458,7 +497,7 @@ async def fetch_next_document(
                SELECT 1 FROM core.documents_backfill_staging s
                 WHERE s.document_id = d.id AND s.status = 'pending'
            )
-         ORDER BY d.created_at DESC
+         ORDER BY random()
          LIMIT 1
     """, domain)
     return row
@@ -471,6 +510,19 @@ async def count_staged_in_batch(
         SELECT COUNT(*) FROM core.documents_backfill_staging
          WHERE batch_id = $1 AND domain = $2
     """, batch_id, domain)
+
+
+async def count_pending_this_classifier(
+    conn: asyncpg.Connection, domain: str,
+) -> int:
+    """Count pending staging rows from the current classifier version,
+    across all batches. Used for sample_batch target-reached detection
+    so that an earlier aborted run's classifications still count."""
+    return await conn.fetchval("""
+        SELECT COUNT(*) FROM core.documents_backfill_staging
+         WHERE domain = $1 AND status = 'pending'
+           AND classifier_version = $2
+    """, domain, CLASSIFIER_VERSION)
 
 
 async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> None:
@@ -493,7 +545,18 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> 
             'medical': DomainClassifier('medical', client),
         }
 
-        classified = {'legal': 0, 'medical': 0}
+        # Count pre-existing 'pending' rows from this classifier version
+        # (e.g. from an earlier aborted run) toward the sample_batch target.
+        # Per Will 2026-04-23: those already-staged rows count regardless of
+        # the ordering that produced them.
+        initial_staged = {
+            d: await count_pending_this_classifier(conn, d)
+            for d in ('legal', 'medical')
+        }
+        print(f"initial staged (carryover from prior runs): "
+              f"legal={initial_staged['legal']}, medical={initial_staged['medical']}")
+        classified = {'legal': initial_staged['legal'],
+                      'medical': initial_staged['medical']}
         failed = {'legal': 0, 'medical': 0}
 
         while True:
@@ -509,20 +572,30 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100) -> 
                 await bucket.acquire()
                 print(f"  [{domain}] classify {str(doc['id'])[:8]}... "
                       f"title={doc['title'][:50] if doc['title'] else '(none)'}")
-                proposal = await classifiers[domain].classify(doc)
-                if proposal is None:
+                result = await classifiers[domain].classify(doc)
+                if not result['ok']:
                     failed[domain] += 1
-                    # Stage a 'rejected' row so we don't keep retrying the same doc
+                    # Stage a 'rejected' row with rich diagnostic error_detail
+                    # so the monitor can surface useful info in anomaly reports.
+                    detail_parts = [result['error_detail']]
+                    if result.get('stop_reason'):
+                        detail_parts.append(f"stop_reason={result['stop_reason']}")
+                    if result.get('partial_output'):
+                        detail_parts.append(f"partial_output:\n{result['partial_output']}")
+                    error_detail = '\n'.join(detail_parts)[:4000]
+                    print(f"  [rejected] {domain} {str(doc['id'])[:8]}... "
+                          f"error={result['error_detail'][:120]}")
                     await conn.execute("""
                         INSERT INTO core.documents_backfill_staging
                             (document_id, batch_id, domain, confidence, rationale,
                              classifier_version, classifier_model, status, error_detail)
-                        VALUES ($1, $2, $3, 0.0, 'classifier returned no tool_use',
-                                $4, $5, 'rejected', 'no tool_use block in response')
+                        VALUES ($1, $2, $3, 0.0, 'classifier did not return valid tool_use',
+                                $4, $5, 'rejected', $6)
                     """, doc['id'], batch_id, domain,
-                         CLASSIFIER_VERSION, CLASSIFIER_MODEL)
+                         CLASSIFIER_VERSION, CLASSIFIER_MODEL, error_detail)
                     continue
 
+                proposal = result['proposal']
                 try:
                     if domain == 'legal':
                         staging_id = await stage_legal_classification(conn, doc, proposal, batch_id)
@@ -573,26 +646,34 @@ async def create_t4_sample_review(
         print("sample_batch completed during quiet hours; deferring "
               "T4_SAMPLE_REVIEW creation until 7am PT", flush=True)
         await _wait_until_quiet_hours_end()
-    # 10 random samples per domain
+    # 10 random samples per domain — draw from all pending rows this
+    # classifier version has produced (across batches), not just this
+    # worker-session's batch_id, so carryover classifications from a
+    # prior aborted run are included in the sample pool.
     samples = {}
     for domain in ('legal', 'medical'):
         rows = await conn.fetch("""
-            SELECT s.id AS staging_id, s.document_id,
+            SELECT s.id AS staging_id, s.document_id, s.batch_id, s.created_at,
                    s.proposed_privilege, s.proposed_confidentiality,
                    s.proposed_phi_status, s.proposed_phi_categories,
                    s.proposed_minor_patient, s.confidence, s.rationale,
-                   d.title, d.filename
+                   d.title, d.filename, d.document_type, d.created_at AS doc_created_at
               FROM core.documents_backfill_staging s
               JOIN core.documents d ON d.id = s.document_id
-             WHERE s.batch_id = $1 AND s.domain = $2 AND s.status = 'pending'
+             WHERE s.domain = $1 AND s.status = 'pending'
+               AND s.classifier_version = $2
              ORDER BY random()
              LIMIT 10
-        """, batch_id, domain)
+        """, domain, CLASSIFIER_VERSION)
         samples[domain] = [
             {
                 'staging_id': str(r['staging_id']),
                 'document_id': str(r['document_id']),
+                'batch_id': str(r['batch_id']),
                 'title': r['title'] or r['filename'],
+                'document_type': r['document_type'],
+                'document_created_at': str(r['doc_created_at']),
+                'classified_at': str(r['created_at']),
                 'confidence': float(r['confidence']),
                 'proposed': {
                     'privilege': r['proposed_privilege'],
