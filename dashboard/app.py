@@ -444,16 +444,46 @@ def _health_status_code(status: str) -> int:
   return 200 if status == "healthy" else (207 if status == "degraded" else 503)
 
 
-async def _resolve_original_document_download(document_id: str) -> Dict[str, Any]:
+async def _resolve_original_document_download(
+    document_id: str,
+    *,
+    request: Optional[Request] = None,
+    include_privileged: bool = False,
+    purpose_of_use: Optional[str] = None,
+    authorization_id: Optional[uuid.UUID] = None,
+) -> Dict[str, Any]:
+    """Resolve the original bytes for a document download.
+
+    Sprint A: gates by privilege + PHI via fetch_safe_document before
+    returning any bytes. Raises RuntimeError on denial (mapped to 403 by
+    the caller). caller_context is derived from request if present.
+    """
     p = await get_pool()
-    doc = await p.fetchrow("""
-        SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.source_path,
-               d.full_content, d.metadata,
-               em.message_id, em.subject, em.mailbox
-        FROM core.documents d
-        LEFT JOIN legal.email_metadata em ON em.document_id = d.id
-        WHERE d.id = $1::uuid
-    """, document_id)
+    async with p.acquire() as conn:
+        try:
+            _ = await fetch_safe_document(
+                document_id, conn=conn,
+                caller_context=_dashboard_caller_context(
+                    '_resolve_original_document_download', request=request,
+                ),
+                include_privileged=include_privileged,
+                purpose_of_use=purpose_of_use,
+                authorization_id=authorization_id,
+            )
+        except PrivilegeDeniedException:
+            raise RuntimeError("privilege_denied: document is privileged; caller not authorized")
+        except PHIAccessDeniedException as e:
+            raise RuntimeError(f"phi_access_denied: {e}")
+
+        # Access authorized; fetch joined metadata for the download path.
+        doc = await conn.fetchrow("""
+            SELECT d.id, d.title, d.filename, d.domain, d.document_type, d.source_path,
+                   d.full_content, d.metadata,
+                   em.message_id, em.subject, em.mailbox
+            FROM core.documents d
+            LEFT JOIN legal.email_metadata em ON em.document_id = d.id
+            WHERE d.id = $1::uuid
+        """, document_id)
 
     if not doc:
         raise RuntimeError(f"Document {document_id} not found")
@@ -658,32 +688,47 @@ async def api_documents(request: Request):
     if tag_slug:
         where.append(f"EXISTS (SELECT 1 FROM core.document_tags dt_f WHERE dt_f.document_id = d.id AND dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx})))")
         args.append(tag_slug); idx += 1
-    wc = " AND ".join(where) if where else "TRUE"
+    async with p.acquire() as conn:
+        safety_domain = domain if domain in ('legal', 'medical') else None
+        safety_clause, safety_params, log_cb = await build_document_safety_filter(
+            conn=conn, domain=safety_domain,
+            caller_context=_dashboard_caller_context(
+                'api_documents', request=request,
+                extra={'query_domain': domain, 'doc_type': doc_type, 'case_number': case_number},
+            ),
+            table_alias='d', next_param_index=idx,
+        )
+        idx += len(safety_params)
+        args.extend(safety_params)
+        where.append(safety_clause)
+        wc = " AND ".join(where)
 
-    total = await p.fetchval(f"""
-        SELECT COUNT(DISTINCT d.id)
-        FROM core.documents d
-        LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
-        LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
-        WHERE {wc}
-    """, *args)
+        total = await conn.fetchval(f"""
+            SELECT COUNT(DISTINCT d.id)
+            FROM core.documents d
+            LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
+            LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
+            WHERE {wc}
+        """, *args)
 
-    rows = await p.fetch(f"""
-        SELECT d.id, d.domain, d.document_type, d.title, d.filename,
-               d.source_path, d.total_chunks, d.content_hash,
-               d.created_at, d.metadata,
-               lc.case_number, lc.case_title,
-               em.sender, em.direction, em.date_sent, em.mailbox,
-               rm.record_type AS medical_type, rm.date_of_service
-        FROM core.documents d
-        LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
-        LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
-        LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-        LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
-        WHERE {wc}
-        ORDER BY d.created_at DESC
-        LIMIT ${idx} OFFSET ${idx + 1}
-    """, *args, limit, offset)
+        rows = await conn.fetch(f"""
+            SELECT d.id, d.domain, d.document_type, d.title, d.filename,
+                   d.source_path, d.total_chunks, d.content_hash,
+                   d.created_at, d.metadata,
+                   d.privilege, d.phi_status,
+                   lc.case_number, lc.case_title,
+                   em.sender, em.direction, em.date_sent, em.mailbox,
+                   rm.record_type AS medical_type, rm.date_of_service
+            FROM core.documents d
+            LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
+            LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
+            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+            LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
+            WHERE {wc}
+            ORDER BY d.created_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """, *args, limit, offset)
+        await log_cb(rows)
 
     docs = []
     for r in rows:
@@ -699,22 +744,45 @@ async def api_document_detail(request: Request):
     if err:
         return err
     doc_id = request.path_params["doc_id"]
+    # Optional query params let authorized viewers request privileged/PHI.
+    include_privileged = request.query_params.get("include_privileged", "").lower() in ("1","true","yes")
+    purpose_of_use = request.query_params.get("purpose_of_use") or None
+    auth_id_str = request.query_params.get("authorization_id")
     p = await get_pool()
-    doc = await p.fetchrow("""
-        SELECT d.*, lc.case_number, lc.case_title, lc.court,
-               em.sender, em.recipients, em.cc, em.date_sent,
-               em.direction, em.mailbox, em.message_id, em.thread_id,
-               rm.record_type, rm.date_of_service, rm.facility,
-               pt.name AS patient_name, pr.name AS provider_name
-        FROM core.documents d
-        LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
-        LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
-        LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-        LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
-        LEFT JOIN medical.patients pt ON rm.patient_id = pt.id
-        LEFT JOIN medical.providers pr ON rm.provider_id = pr.id
-        WHERE d.id = $1
-    """, doc_id)
+    async with p.acquire() as conn:
+        try:
+            auth_uuid = uuid.UUID(auth_id_str) if auth_id_str else None
+        except (ValueError, AttributeError):
+            return JSONResponse({"error": "invalid authorization_id UUID"}, status_code=400)
+        # Gate access first via fetch_safe_document — raises on denial.
+        try:
+            _ = await fetch_safe_document(
+                doc_id, conn=conn,
+                caller_context=_dashboard_caller_context('api_document_detail', request=request),
+                include_privileged=include_privileged,
+                purpose_of_use=purpose_of_use,
+                authorization_id=auth_uuid,
+            )
+        except PrivilegeDeniedException:
+            return JSONResponse({"error": "privilege_denied"}, status_code=403)
+        except PHIAccessDeniedException as e:
+            return JSONResponse({"error": "phi_access_denied", "detail": str(e)}, status_code=403)
+        # Access authorized; fetch the joined metadata view.
+        doc = await conn.fetchrow("""
+            SELECT d.*, lc.case_number, lc.case_title, lc.court,
+                   em.sender, em.recipients, em.cc, em.date_sent,
+                   em.direction, em.mailbox, em.message_id, em.thread_id,
+                   rm.record_type, rm.date_of_service, rm.facility,
+                   pt.name AS patient_name, pr.name AS provider_name
+            FROM core.documents d
+            LEFT JOIN legal.case_documents lcd ON d.id = lcd.document_id
+            LEFT JOIN legal.cases lc ON lcd.case_id = lc.id
+            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+            LEFT JOIN medical.record_metadata rm ON d.id = rm.document_id
+            LEFT JOIN medical.patients pt ON rm.patient_id = pt.id
+            LEFT JOIN medical.providers pr ON rm.provider_id = pr.id
+            WHERE d.id = $1
+        """, doc_id)
     if not doc:
         return JSONResponse({"error": "not found"}, status_code=404)
 
@@ -760,10 +828,25 @@ async def api_document_download(request: Request):
     if disposition not in {"attachment", "inline"}:
         disposition = "attachment"
 
+    # Optional query params let authorized downloaders request privileged/PHI.
+    include_privileged = request.query_params.get("include_privileged", "").lower() in ("1","true","yes")
+    purpose_of_use = request.query_params.get("purpose_of_use") or None
+    auth_id_str = request.query_params.get("authorization_id")
     try:
-        download = await _resolve_original_document_download(doc_id)
+        auth_uuid = uuid.UUID(auth_id_str) if auth_id_str else None
+    except (ValueError, AttributeError):
+        return JSONResponse({"error": "invalid authorization_id UUID"}, status_code=400)
+    try:
+        download = await _resolve_original_document_download(
+            doc_id, request=request,
+            include_privileged=include_privileged,
+            purpose_of_use=purpose_of_use,
+            authorization_id=auth_uuid,
+        )
     except RuntimeError as exc:
         message = str(exc)
+        if message.startswith("privilege_denied") or message.startswith("phi_access_denied"):
+            return JSONResponse({"error": message}, status_code=403)
         status = 404 if "not found" in message.lower() or "no downloadable source" in message.lower() else 502
         return JSONResponse({"error": message}, status_code=status)
     except Exception as exc:
@@ -1433,25 +1516,38 @@ async def api_search(request: Request):
     if tag_slug:
         tag_filter = " AND d.id IN (SELECT dt_f.document_id FROM core.document_tags dt_f WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants($%d)))"
 
-    if domain or tag_slug:
+    async with p.acquire() as conn:
         where_parts = ["c.content_tsv @@ websearch_to_tsquery('english', $1)"]
         args = [query]
         idx = 2
         if domain:
             where_parts.append(f"d.domain = ${idx}")
-            args.append(domain)
-            idx += 1
+            args.append(domain); idx += 1
         if tag_slug:
             where_parts.append(f"d.id IN (SELECT dt_f.document_id FROM core.document_tags dt_f WHERE dt_f.tag_id IN (SELECT tag_id FROM core.get_tag_descendants(${idx})))")
-            args.append(tag_slug)
-            idx += 1
+            args.append(tag_slug); idx += 1
+
+        safety_domain = domain if domain in ('legal', 'medical') else None
+        safety_clause, safety_params, log_cb = await build_document_safety_filter(
+            conn=conn, domain=safety_domain,
+            caller_context=_dashboard_caller_context(
+                'api_search', request=request,
+                extra={'query_domain': domain, 'tag': tag_slug},
+            ),
+            table_alias='d', next_param_index=idx,
+        )
+        idx += len(safety_params)
+        args.extend(safety_params)
+        where_parts.append(safety_clause)
+
         where_clause = " AND ".join(where_parts)
         args.append(limit)
-        rows = await p.fetch(f"""
+        rows = await conn.fetch(f"""
             SELECT c.id AS chunk_id, c.document_id, c.content,
                    ts_rank_cd(c.content_tsv,
                        websearch_to_tsquery('english', $1))::FLOAT AS rank,
-                   d.domain, d.document_type, d.title, d.filename,
+                   d.id, d.domain, d.document_type, d.title, d.filename,
+                   d.privilege, d.phi_status,
                    ts_headline('english', c.content,
                        websearch_to_tsquery('english', $1),
                        'MaxWords=60, MinWords=20, StartSel=<mark>, StopSel=</mark>'
@@ -1461,21 +1557,7 @@ async def api_search(request: Request):
             WHERE {where_clause}
             ORDER BY rank DESC LIMIT ${idx}
         """, *args)
-    else:
-        rows = await p.fetch("""
-            SELECT c.id AS chunk_id, c.document_id, c.content,
-                   ts_rank_cd(c.content_tsv,
-                       websearch_to_tsquery('english', $1))::FLOAT AS rank,
-                   d.domain, d.document_type, d.title, d.filename,
-                   ts_headline('english', c.content,
-                       websearch_to_tsquery('english', $1),
-                       'MaxWords=60, MinWords=20, StartSel=<mark>, StopSel=</mark>'
-                   ) AS headline
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
-            ORDER BY rank DESC LIMIT $2
-        """, query, limit)
+        await log_cb(rows)
 
     dur_ms = (time.monotonic() - t0) * 1000
 
@@ -1573,15 +1655,34 @@ async def api_ada_search(request: Request):
     limit = min(int(request.query_params.get("limit", "50")), 200)
     offset = int(request.query_params.get("offset", "0"))
     p = await get_pool()
-    rows = await p.fetch("""
-        SELECT * FROM core.search_by_tag($1, $2, $3)
-    """, tag_slug, limit, offset)
+    async with p.acquire() as conn:
+        # core.search_by_tag() is a stored function — we can't compose the
+        # safety filter into it. Post-filter via a JOIN against core.documents
+        # with the safety clause. Cross-domain (any domain might be in the
+        # tag's set).
+        safety_clause, safety_params, log_cb = await build_document_safety_filter(
+            conn=conn, domain=None,
+            caller_context=_dashboard_caller_context(
+                'api_ada_search', request=request, extra={'tag': tag_slug},
+            ),
+            table_alias='d', next_param_index=4,  # $1=tag, $2=limit, $3=offset
+        )
+        rows = await conn.fetch(f"""
+            SELECT t.*
+            FROM core.search_by_tag($1, $2, $3) t
+            JOIN core.documents d ON d.id = t.document_id
+            WHERE {safety_clause}
+        """, tag_slug, limit, offset, *safety_params)
+        await log_cb(rows)
 
-    total = await p.fetchval("""
-        SELECT COUNT(DISTINCT dt.document_id)
-        FROM core.document_tags dt
-        WHERE dt.tag_id IN (SELECT tag_id FROM core.get_tag_descendants($1))
-    """, tag_slug)
+        # Total applies the same filter so the caller sees accessible count only.
+        total = await conn.fetchval(f"""
+            SELECT COUNT(DISTINCT dt.document_id)
+            FROM core.document_tags dt
+            JOIN core.documents d ON d.id = dt.document_id
+            WHERE dt.tag_id IN (SELECT tag_id FROM core.get_tag_descendants($1))
+              AND {safety_clause}
+        """, tag_slug, *safety_params)
 
     return JSONResponse({
         "tag": tag_slug,
