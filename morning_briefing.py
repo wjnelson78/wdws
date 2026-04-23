@@ -43,7 +43,15 @@ except ImportError:
 import asyncpg
 import httpx
 
+from core_safety import build_morning_brief_safety_filter
+
 DATABASE_URL = os.environ["DATABASE_URL"]
+
+_BRIEF_CALLER = {
+    'tool': 'morning_briefing',
+    'agent_id': 'morning_briefing',
+    'user': 'will',
+}
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "athena-william")
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh")
 TZ_OFFSET = timedelta(hours=-7)  # PDT
@@ -111,19 +119,37 @@ async def get_pending_tasks(pool: asyncpg.Pool) -> list[dict]:
 
 
 async def get_recent_important_emails(pool: asyncpg.Pool) -> list[dict]:
-    """Get important emails from last 24 hours."""
+    """Get important emails from last 24 hours.
+
+    Metadata-only per §5.5: surfaces sender, subject, date — never email body
+    or attachment content. The brief-specific safety filter applies stricter
+    defaults than interactive retrieval: heightened-protection categories
+    (42 CFR Part 2, psychotherapy notes) and minor-patient documents are
+    hard-excluded regardless of authorization, because the brief is an SMTP
+    surface and those content classes should never reach it.
+    """
     yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    rows = await pool.fetch("""
-        SELECT em.sender, em.subject, em.date_sent,
-               d.document_type
-        FROM legal.email_metadata em
-        JOIN core.documents d ON em.document_id = d.id
-        WHERE em.date_sent >= $1
-          AND em.direction = 'inbound'
-        ORDER BY em.date_sent DESC
-        LIMIT 10
-    """, yesterday)
+    async with pool.acquire() as conn:
+        clause, params, log_cb = await build_morning_brief_safety_filter(
+            conn=conn,
+            domain='legal',
+            caller_context={**_BRIEF_CALLER, 'tool_frame': 'get_recent_important_emails'},
+            table_alias='d',
+            next_param_index=2,  # $1=yesterday, $2+=filter
+        )
+        rows = await conn.fetch(f"""
+            SELECT d.id, em.sender, em.subject, em.date_sent,
+                   d.document_type
+            FROM legal.email_metadata em
+            JOIN core.documents d ON em.document_id = d.id
+            WHERE em.date_sent >= $1
+              AND em.direction = 'inbound'
+              AND {clause}
+            ORDER BY em.date_sent DESC
+            LIMIT 10
+        """, yesterday, *params)
+        await log_cb(rows)
 
     return [{"from": r["sender"],
              "subject": r["subject"],
@@ -131,19 +157,40 @@ async def get_recent_important_emails(pool: asyncpg.Pool) -> list[dict]:
 
 
 async def get_case_summary(pool: asyncpg.Pool) -> list[dict]:
-    """Get active case status overview."""
-    rows = await pool.fetch("""
-        SELECT c.case_number, c.case_title, c.status,
-               COUNT(cd.document_id) as doc_count,
-               MAX(d.created_at) as last_filing
-        FROM legal.cases c
-        LEFT JOIN legal.case_documents cd ON c.id = cd.case_id
-        LEFT JOIN core.documents d ON cd.document_id = d.id
-        WHERE c.status IS NULL OR c.status != 'closed'
-        GROUP BY c.id, c.case_number, c.case_title, c.status
-        ORDER BY last_filing DESC NULLS LAST
-        LIMIT 5
-    """)
+    """Get active case status overview.
+
+    Count-only per §5.6: surfaces case number, title, status, document count,
+    and last filing date — never privileged filing titles or content. The
+    brief's safety filter is applied in count-only mode to the case-document
+    join, so privileged docs are *counted* in doc_count but never surface
+    here as identifiable rows.
+    """
+    async with pool.acquire() as conn:
+        # Count-only clause is "TRUE" — privileged/PHI docs included in the
+        # count but the filter's audit log records aggregate only (no IDs).
+        clause, params, log_cb = await build_morning_brief_safety_filter(
+            conn=conn,
+            domain='legal',
+            caller_context={**_BRIEF_CALLER, 'tool_frame': 'get_case_summary'},
+            mode='count_only',
+            table_alias='d',
+            next_param_index=1,
+        )
+        rows = await conn.fetch(f"""
+            SELECT c.case_number, c.case_title, c.status,
+                   COUNT(cd.document_id) as doc_count,
+                   MAX(d.created_at) as last_filing
+            FROM legal.cases c
+            LEFT JOIN legal.case_documents cd ON c.id = cd.case_id
+            LEFT JOIN core.documents d ON cd.document_id = d.id
+            WHERE (c.status IS NULL OR c.status != 'closed')
+              AND {clause}
+            GROUP BY c.id, c.case_number, c.case_title, c.status
+            ORDER BY last_filing DESC NULLS LAST
+            LIMIT 5
+        """, *params)
+        await log_cb([{'count': sum(r['doc_count'] or 0 for r in rows),
+                       'domain': 'legal'}])
 
     return [{"number": r["case_number"],
              "name": r["case_title"] or r["case_number"],

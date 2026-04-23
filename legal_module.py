@@ -35,6 +35,8 @@ from typing import Any, Optional
 
 import asyncpg
 
+from core_safety import build_document_safety_filter
+
 log = logging.getLogger("athena.legal")
 
 
@@ -133,15 +135,29 @@ class LegalModule:
     async def build_case_context(
         self,
         case_identifier: str,
+        *,
+        caller_context: dict,
         max_filings: int = 10,
         max_entities: int = 20,
+        include_privileged: bool = False,
+        privileged_categories: Optional[list[str]] = None,
     ) -> Optional[CaseContext]:
         """Build structured case context from PostgreSQL.
 
         Args:
             case_identifier: Case number (e.g. "24-2-01031-31") or partial match
+            caller_context: {'tool': str, 'user'|'agent_id': str, 'session_id': str|None}
+                Required so the retrieval-safety filter can attribute and audit
+                the access. Callers propagate their own caller_context here.
             max_filings: Maximum recent filings to include
             max_entities: Maximum entities to include
+            include_privileged: If True, attorney_client and work_product_fact
+                filings appear in the context. Default False — privileged
+                filings are excluded from case context unless the caller has
+                explicit authorization to see them.
+            privileged_categories: Optional extended allow-list
+                (work_product_opinion, joint_defense, common_interest). Requires
+                include_privileged=True. See core_safety.build_document_safety_filter.
         """
         async with self.pool.acquire() as conn:
             # Find the case
@@ -169,16 +185,27 @@ class LegalModule:
                 ORDER BY cp.role
             """, case_id)
 
-            # Get recent filings (documents linked to this case)
-            filings = await conn.fetch("""
-                SELECT d.title, d.document_type, d.filename,
+            # Get recent filings (documents linked to this case).
+            # Composed safety filter applies privilege/PHI gating per Sprint A §5.
+            # Route: legal domain; callers opt into privileged via include_privileged.
+            filings_clause, filings_params, filings_log = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context={**caller_context, 'tool_frame': 'legal_module.build_case_context.filings'},
+                include_privileged=include_privileged,
+                privileged_categories=privileged_categories,
+                table_alias='d',
+                next_param_index=3,  # $1=case_id, $2=max_filings, $3+=filter
+            )
+            filings = await conn.fetch(f"""
+                SELECT d.id, d.title, d.document_type, d.filename,
                        d.created_at, d.metadata
                 FROM legal.case_documents cd
                 JOIN core.documents d ON cd.document_id = d.id
-                WHERE cd.case_id = $1
+                WHERE cd.case_id = $1 AND {filings_clause}
                 ORDER BY d.created_at DESC
                 LIMIT $2
-            """, case_id, max_filings)
+            """, case_id, max_filings, *filings_params)
+            await filings_log(filings)
 
             # Get entities mentioned in case documents
             entities = await conn.fetch("""
@@ -190,8 +217,17 @@ class LegalModule:
                 LIMIT $2
             """, case_id, max_entities)
 
-            # Get stats
-            stats = await conn.fetchrow("""
+            # Stats: count-only mode. Privileged/PHI docs are counted (we want
+            # the TRUE count for statistics), but the logger records aggregates
+            # only — no document IDs in the audit trail per §5.6.
+            stats_clause, stats_params, stats_log = await build_document_safety_filter(
+                conn=conn, domain='legal',
+                caller_context={**caller_context, 'tool_frame': 'legal_module.build_case_context.stats'},
+                mode='count_only',
+                table_alias='d',
+                next_param_index=2,  # $1=case_id; count_only clause uses no params
+            )
+            stats = await conn.fetchrow(f"""
                 SELECT
                     COUNT(DISTINCT cd.document_id) AS total_documents,
                     COUNT(DISTINCT CASE WHEN d.document_type = 'email' THEN d.id END) AS total_emails,
@@ -199,8 +235,12 @@ class LegalModule:
                 FROM legal.case_documents cd
                 JOIN core.documents d ON cd.document_id = d.id
                 LEFT JOIN legal.email_attachments ea ON ea.email_doc_id = d.id
-                WHERE cd.case_id = $1
-            """, case_id)
+                WHERE cd.case_id = $1 AND {stats_clause}
+            """, case_id, *stats_params)
+            await stats_log([{
+                'count': (stats['total_documents'] if stats else 0),
+                'domain': 'legal',
+            }])
 
             # Get deadlines
             deadlines = await conn.fetch("""
