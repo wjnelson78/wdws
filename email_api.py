@@ -42,6 +42,11 @@ from embedding_service import (
     EMBEDDING_DIMENSIONS as EMBEDDING_DIMS,
     EMBEDDING_MODEL,
 )
+from graph_mail import (
+    build_rfc5322_mime,
+    graph_send_raw_mime,
+    graph_fetch_display_name,
+)
 
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
@@ -81,6 +86,17 @@ def _json(data: Any, status: int = 200) -> JSONResponse:
 
 def _json_error(msg: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"error": msg}, status_code=status)
+
+
+def _html_to_text(value: str) -> str:
+    import html as _html
+    text = re.sub(r"<br\s*/?>", "\n", value or "", flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = _html.unescape(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
 
 
 def _row(record: asyncpg.Record) -> dict:
@@ -605,41 +621,57 @@ async def priority_index(request: Request) -> JSONResponse:
 # ══════════════════════════════════════════════════════════════
 
 async def send_email(request: Request) -> JSONResponse:
-    """POST /api/email/send — Send an email via Graph API.
-    
+    """POST /api/email/send — Send an HTML email via Graph API (raw RFC-5322 MIME).
+
+    Builds raw RFC-5322 multipart/alternative MIME in UTF-8 + base64 and sends
+    via Graph /sendMail. Bypasses Exchange's HTML→MIME re-encoding so strict
+    recipient tenants don't strip the body (blank-body symptom).
+
     Body: {
       "mailbox": "william@seattleseahawks.me",
       "to": ["recipient@example.com"],
       "cc": [],
       "subject": "...",
       "body_html": "<p>...</p>",
+      "body_text": "optional plain-text fallback — auto-derived from HTML if omitted",
       "importance": "normal"
     }
     """
     data = await _read_json(request)
     mailbox = data.get("mailbox")
     to_addrs = data.get("to", [])
+    cc_addrs = data.get("cc", []) or []
     subject = data.get("subject", "")
     body_html = data.get("body_html", "")
+    body_text = data.get("body_text") or _html_to_text(body_html)
+    importance = (data.get("importance") or "normal").strip().capitalize()
+    if importance not in {"Low", "Normal", "High"}:
+        importance = "Normal"
 
     if not mailbox or not to_addrs or not subject:
         return _json_error("mailbox, to, and subject required")
 
-    message = {
-        "subject": subject,
-        "body": {"contentType": "HTML", "content": body_html},
-        "toRecipients": [{"emailAddress": {"address": a}} for a in to_addrs],
-        "importance": data.get("importance", "normal"),
-    }
-    if data.get("cc"):
-        message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in data["cc"]]
-
     try:
-        await _graph_post(
-            f"{GRAPH_BASE_URL}/users/{mailbox}/sendMail",
-            {"message": message, "saveToSentItems": True},
+        token = await _get_graph_token()
+        display_name = await graph_fetch_display_name(token, mailbox)
+        mime_bytes = build_rfc5322_mime(
+            sender=mailbox,
+            sender_display_name=display_name,
+            to_recipients=list(to_addrs),
+            cc_recipients=list(cc_addrs),
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            importance=importance,
         )
-        return _json({"sent": True, "to": to_addrs, "subject": subject})
+        await graph_send_raw_mime(token, mailbox, mime_bytes)
+        return _json({
+            "sent": True,
+            "transport": "raw_mime_utf8_base64",
+            "to": to_addrs,
+            "cc": cc_addrs,
+            "subject": subject,
+        })
     except Exception as e:
         return _json_error(f"Send failed: {e}", 500)
 

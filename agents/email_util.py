@@ -4,14 +4,28 @@
 Uses client_credentials flow to send mail as athena@seattleseahawks.me
 via Microsoft Graph API.
 
+HTML sends go out as raw RFC-5322 UTF-8 + base64 multipart/alternative
+(via the shared graph_mail module) so strict recipient mail hygiene
+doesn't strip the body.
+
 Requires Azure AD App Permission: Mail.Send (Application)
 """
+import html as _html
 import json
+import re
+import sys
 import time
 import logging
 from typing import Optional
 
 import httpx
+
+sys.path.insert(0, "/opt/wdws")
+from graph_mail import (
+    build_rfc5322_mime,
+    graph_send_raw_mime,
+    graph_fetch_display_name,
+)
 
 log = logging.getLogger("agents.email")
 
@@ -51,6 +65,16 @@ async def _get_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     return _token_cache["access_token"]
 
 
+def _html_to_text(value: str) -> str:
+    text = re.sub(r"<br\s*/?>", "\n", value or "", flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = _html.unescape(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
+
+
 async def send_email(
     *,
     tenant_id: str,
@@ -63,9 +87,13 @@ async def send_email(
     cc_recipients: list[str] = None,
     importance: str = "normal",
     save_to_sent: bool = True,
+    body_text: Optional[str] = None,
+    sender_display_name: Optional[str] = None,
 ) -> dict:
-    """
-    Send an email via Microsoft Graph API.
+    """Send an HTML email via Graph API using raw RFC-5322 MIME (UTF-8, base64).
+
+    Raw MIME bypasses Exchange's Windows-1252 + quoted-printable re-encoding
+    that strict recipient tenants strip (blank-body delivery).
 
     Args:
         tenant_id: Azure AD tenant ID
@@ -77,51 +105,48 @@ async def send_email(
         body_html: HTML body content
         cc_recipients: Optional CC recipients
         importance: "low", "normal", or "high"
-        save_to_sent: Whether to save in sender's Sent folder
+        save_to_sent: Unused; Graph always saves raw-MIME sends to Sent Items.
+        body_text: Optional plain-text fallback. If omitted, derived from body_html.
+        sender_display_name: Optional display name for From header. If omitted,
+            fetched from Graph /users/{sender}?$select=displayName.
 
     Returns:
-        {"status": "sent", "message_id": "..."} or {"status": "failed", "error": "..."}
+        {"status": "sent", "transport": "raw_mime_utf8_base64", ...}
+        or {"status": "failed", "error": "..."}
     """
     try:
         token = await _get_token(tenant_id, client_id, client_secret)
 
-        # Build message payload
-        message = {
-            "message": {
-                "subject": subject,
-                "body": {
-                    "contentType": "HTML",
-                    "content": body_html,
-                },
-                "toRecipients": [
-                    {"emailAddress": {"address": addr}} for addr in to_recipients
-                ],
-                "importance": importance,
-            },
-            "saveToSentItems": save_to_sent,
+        display_name = sender_display_name
+        if display_name is None:
+            display_name = await graph_fetch_display_name(token, sender)
+
+        imp = (importance or "normal").strip().capitalize()
+        if imp not in {"Low", "Normal", "High"}:
+            imp = "Normal"
+
+        text_fallback = body_text or _html_to_text(body_html)
+
+        mime_bytes = build_rfc5322_mime(
+            sender=sender,
+            sender_display_name=display_name,
+            to_recipients=list(to_recipients),
+            cc_recipients=list(cc_recipients or []),
+            subject=subject,
+            body_html=body_html,
+            body_text=text_fallback,
+            importance=imp,
+        )
+        await graph_send_raw_mime(token, sender, mime_bytes)
+
+        log.info("Email sent successfully: %s → %s", subject, to_recipients)
+        return {
+            "status": "sent",
+            "transport": "raw_mime_utf8_base64",
+            "to": list(to_recipients),
+            "cc": list(cc_recipients or []),
+            "subject": subject,
         }
-
-        if cc_recipients:
-            message["message"]["ccRecipients"] = [
-                {"emailAddress": {"address": addr}} for addr in cc_recipients
-            ]
-
-        url = f"{GRAPH_BASE_URL}/users/{sender}/sendMail"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, headers=headers, json=message)
-
-        if resp.status_code == 202:
-            log.info("Email sent successfully: %s → %s", subject, to_recipients)
-            return {"status": "sent", "message_id": resp.headers.get("request-id", "")}
-        else:
-            error_body = resp.text
-            log.error("Graph API sendMail failed (%d): %s", resp.status_code, error_body[:500])
-            return {"status": "failed", "error": f"HTTP {resp.status_code}: {error_body[:500]}"}
 
     except Exception as e:
         log.error("Email send exception: %s", e)

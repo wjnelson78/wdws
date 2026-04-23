@@ -409,6 +409,33 @@ def _prepare_email_body(body: str, body_content_type: str = "html") -> tuple[str
     return body_html, body_text, "Text"
 
 
+from graph_mail import (
+    build_rfc5322_mime as _build_rfc5322_mime,
+    graph_send_raw_mime as _graph_send_raw_mime_shared,
+)
+
+
+_mailbox_display_name_cache: dict[str, str] = {}
+
+
+async def _get_mailbox_display_name(mailbox: str) -> str:
+    cached = _mailbox_display_name_cache.get(mailbox)
+    if cached is not None:
+        return cached
+    try:
+        info = await _graph_request("GET", f"{GRAPH_BASE_URL}/users/{mailbox}?$select=displayName")
+        name = (info.get("displayName") or "").strip()
+    except Exception:
+        name = ""
+    _mailbox_display_name_cache[mailbox] = name
+    return name
+
+
+async def _graph_send_raw_mime(mailbox: str, mime_bytes: bytes) -> None:
+    token = await _get_graph_access_token()
+    await _graph_send_raw_mime_shared(token, mailbox, mime_bytes)
+
+
 async def _graph_request(
     method: str,
     url: str,
@@ -3556,41 +3583,121 @@ async def send_mail_message(
     request_delivery_receipt: bool = False,
     attachment_document_ids: Optional[str] = None,
 ) -> str:
-    """Create, attach, and send a new email from Athena's mailbox via Graph.
+    """Send a new email from the specified mailbox via Microsoft Graph.
 
-    To attach files Athena creates, pass document IDs returned by create_document or create_document_upload_session.
+    HOW TO USE THIS TOOL — send-format guidance for callers (including Athena):
+
+    • Default to body_content_type="html" and supply a full HTML body when composing
+      new outbound mail. Plain paragraphs wrapped in <p>…</p> render correctly
+      everywhere; a plain-text version is generated automatically as a fallback.
+
+    • When the body contains only plain text and you do NOT want Athena's auto
+      HTML wrapping, pass body_content_type="text".
+
+    • To attach files Athena created, pass attachment_document_ids — comma-separated
+      document IDs returned by create_document / create_document_upload_session.
+
+    • Use cc_recipients / bcc_recipients as comma-separated lists. BCC recipients
+      are not visible to TO/CC recipients.
+
+    TRANSPORT SELECTION (automatic, returned in the response as "transport"):
+
+      raw_mime_utf8_base64 — Used for HTML bodies without attachments. This path
+        sends a raw RFC-5322 multipart/alternative message (UTF-8 + base64 for
+        both text/plain and text/html parts) directly via Graph /sendMail. It
+        bypasses Exchange's default HTML-to-MIME conversion (which produces
+        Windows-1252 + quoted-printable output that some strict recipient
+        tenants — notably Defender-for-Office 365 and some government mail
+        hygiene rules — strip, causing blank-body delivery). USE THIS for any
+        external recipient whose tenant has previously delivered blank bodies.
+
+      draft_attach_send — Used when attachments are present or body is plain
+        text. Creates a draft, uploads attachments, then sends via Graph. Adds
+        extra round-trips for attachment upload but is required for file
+        attachments.
+
+    REPLY FLOWS — reply_to_mail_message and reply_all_mail_message still use
+    the draft+patch+send path in order to preserve References/In-Reply-To and
+    correct reply threading. If a reply also arrives blank at a strict
+    recipient, re-send as a new message (which uses the raw-MIME path) and
+    manually reference the prior subject in the body.
 
     Args:
         to_recipients: Comma-separated recipient email addresses
         subject: Message subject
-        body: Email body text or HTML
+        body: Email body — HTML (with body_content_type="html") or plain text
         mailbox: Mailbox to send from (defaults to Athena's mailbox)
         cc_recipients: Optional comma-separated CC recipients
         bcc_recipients: Optional comma-separated BCC recipients
-        body_content_type: html or text (default html)
+        body_content_type: "html" (default, recommended) or "text"
         importance: low, normal, or high
         request_read_receipt: Request a read receipt
         request_delivery_receipt: Request a delivery receipt
         attachment_document_ids: Optional comma-separated Athena document IDs to attach
+
+    Returns:
+        JSON string with keys: status, transport (see above), mailbox, subject,
+        to_recipients, cc_recipients, bcc_recipients, importance,
+        read_receipt_requested, delivery_receipt_requested, attachments.
     """
     try:
         _require_scope("write")
         mailbox = _normalize_mailbox(mailbox)
-        to_objects = _recipient_objects(to_recipients)
-        if not to_objects:
+        to_list = _split_csv_list(to_recipients)
+        cc_list = _split_csv_list(cc_recipients)
+        bcc_list = _split_csv_list(bcc_recipients)
+        if not to_list:
             raise ValueError("At least one recipient is required")
 
         body_html, body_text, graph_content_type = _prepare_email_body(body, body_content_type)
+        normalized_importance = _normalize_importance(importance)
+        attachment_ids_list = _split_csv_list(attachment_document_ids)
+        subject_clean = subject.strip()
+
+        # Raw-MIME path for HTML without attachments. Exchange's contentType=HTML path
+        # produces Windows-1252 + quoted-printable multipart/alternative, which some
+        # strict recipient tenants strip, delivering a blank body. Raw RFC-5322 UTF-8
+        # base64 survives those rules.
+        if graph_content_type == "HTML" and not attachment_ids_list:
+            display_name = await _get_mailbox_display_name(mailbox)
+            mime_bytes = _build_rfc5322_mime(
+                sender=mailbox,
+                sender_display_name=display_name,
+                to_recipients=to_list,
+                cc_recipients=cc_list,
+                bcc_recipients=bcc_list,
+                subject=subject_clean,
+                body_html=body_html,
+                body_text=body_text,
+                importance=normalized_importance,
+                request_read_receipt=bool(request_read_receipt),
+                request_delivery_receipt=bool(request_delivery_receipt),
+            )
+            await _graph_send_raw_mime(mailbox, mime_bytes)
+            return json.dumps({
+                "status": "sent",
+                "transport": "raw_mime_utf8_base64",
+                "mailbox": mailbox,
+                "subject": subject_clean,
+                "to_recipients": to_list,
+                "cc_recipients": cc_list,
+                "bcc_recipients": bcc_list,
+                "importance": normalized_importance.lower(),
+                "read_receipt_requested": bool(request_read_receipt),
+                "delivery_receipt_requested": bool(request_delivery_receipt),
+                "attachments": [],
+            })
+
         draft_payload = {
-            "subject": subject.strip(),
-            "importance": _normalize_importance(importance),
+            "subject": subject_clean,
+            "importance": normalized_importance,
             "body": {
                 "contentType": graph_content_type,
                 "content": body_html if graph_content_type == "HTML" else body_text,
             },
-            "toRecipients": to_objects,
-            "ccRecipients": _recipient_objects(cc_recipients),
-            "bccRecipients": _recipient_objects(bcc_recipients),
+            "toRecipients": [{"emailAddress": {"address": a}} for a in to_list],
+            "ccRecipients": [{"emailAddress": {"address": a}} for a in cc_list],
+            "bccRecipients": [{"emailAddress": {"address": a}} for a in bcc_list],
             "isReadReceiptRequested": bool(request_read_receipt),
             "isDeliveryReceiptRequested": bool(request_delivery_receipt),
         }
@@ -3606,13 +3713,14 @@ async def send_mail_message(
         await _graph_send_draft(mailbox, draft_id)
         return json.dumps({
             "status": "sent",
+            "transport": "draft_attach_send",
             "mailbox": mailbox,
             "draft_id": draft_id,
-            "subject": subject.strip(),
-            "to_recipients": _split_csv_list(to_recipients),
-            "cc_recipients": _split_csv_list(cc_recipients),
-            "bcc_recipients": _split_csv_list(bcc_recipients),
-            "importance": _normalize_importance(importance).lower(),
+            "subject": subject_clean,
+            "to_recipients": to_list,
+            "cc_recipients": cc_list,
+            "bcc_recipients": bcc_list,
+            "importance": normalized_importance.lower(),
             "read_receipt_requested": bool(request_read_receipt),
             "delivery_receipt_requested": bool(request_delivery_receipt),
             "attachments": uploaded_attachments,
@@ -3637,10 +3745,125 @@ async def _reply_to_mail_message_impl(
     _require_scope("write")
     mailbox = _normalize_mailbox(mailbox)
     body_html, body_text, graph_content_type = _prepare_email_body(body, body_content_type)
+    attachment_ids_list = _split_csv_list(attachment_document_ids)
+    normalized_importance = (
+        _normalize_importance(importance) if importance else "Normal"
+    )
+    rr_flag = bool(request_read_receipt) if request_read_receipt is not None else False
+    dr_flag = bool(request_delivery_receipt) if request_delivery_receipt is not None else False
+
+    # Create the reply draft. createReply/createReplyAll gives us:
+    #   • Correct To/Cc recipient split (especially for reply-all)
+    #   • Subject with "Re: " prefix
+    #   • A pre-built quoted body with the nicely-formatted "From/Sent/To/Subject" divider
     draft = await _create_reply_draft(mailbox, message_id, reply_all=reply_all)
     draft_id = draft.get("id")
     if not draft_id:
         raise RuntimeError("Graph did not return a reply draft ID")
+
+    # Raw-MIME reply path: no attachments and HTML body. We reuse the draft's
+    # recipients/subject/quoted body, fetch the original for In-Reply-To /
+    # References threading, build raw RFC-5322 MIME, delete the orphan draft,
+    # and send via /sendMail. This bypasses Exchange's HTML→MIME re-encoding
+    # that strict recipient tenants strip (blank-body symptom).
+    if graph_content_type == "HTML" and not attachment_ids_list:
+        try:
+            draft_full = await _graph_request(
+                "GET",
+                f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{draft_id}",
+            )
+            reply_subject = (draft_full.get("subject") or "").strip()
+            to_list = [
+                r.get("emailAddress", {}).get("address", "")
+                for r in draft_full.get("toRecipients", [])
+                if r.get("emailAddress", {}).get("address")
+            ]
+            cc_list = [
+                r.get("emailAddress", {}).get("address", "")
+                for r in draft_full.get("ccRecipients", [])
+                if r.get("emailAddress", {}).get("address")
+            ]
+            quoted_html = (draft_full.get("body") or {}).get("content") or ""
+
+            original_graph_id = await _graph_resolve_message_graph_id(mailbox, message_id)
+            original = await _graph_request(
+                "GET",
+                f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{original_graph_id}?$select=internetMessageId,internetMessageHeaders,subject",
+            )
+            original_message_id = (original.get("internetMessageId") or "").strip()
+            original_references = ""
+            for h in original.get("internetMessageHeaders", []) or []:
+                if (h.get("name") or "").lower() == "references":
+                    original_references = (h.get("value") or "").strip()
+                    break
+
+            in_reply_to_header = original_message_id if original_message_id else None
+            references_header: Optional[str]
+            if original_message_id and original_references:
+                references_header = f"{original_references} {original_message_id}"
+            elif original_message_id:
+                references_header = original_message_id
+            elif original_references:
+                references_header = original_references
+            else:
+                references_header = None
+
+            combined_html = body_html
+            if quoted_html:
+                combined_html = (
+                    body_html
+                    + '<br><div style="border-top:1px solid #ccc;margin:1em 0"></div>'
+                    + quoted_html
+                )
+            combined_text = body_text
+            if quoted_html:
+                combined_text = body_text + "\n\n" + _html_to_text(quoted_html)
+
+            display_name = await _get_mailbox_display_name(mailbox)
+            mime_bytes = _build_rfc5322_mime(
+                sender=mailbox,
+                sender_display_name=display_name,
+                to_recipients=to_list,
+                cc_recipients=cc_list,
+                bcc_recipients=[],
+                subject=reply_subject,
+                body_html=combined_html,
+                body_text=combined_text,
+                importance=normalized_importance,
+                request_read_receipt=rr_flag,
+                request_delivery_receipt=dr_flag,
+                in_reply_to=in_reply_to_header,
+                references=references_header,
+            )
+            await _graph_send_raw_mime(mailbox, mime_bytes)
+            try:
+                await _graph_request(
+                    "DELETE",
+                    f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{draft_id}",
+                )
+            except Exception as delete_err:
+                log.warning("Failed to delete orphan reply draft %s: %s", draft_id, delete_err)
+
+            return json.dumps({
+                "status": "sent",
+                "transport": "raw_mime_utf8_base64",
+                "mailbox": mailbox,
+                "reply_all": reply_all,
+                "source_message_id": message_id,
+                "draft_id": draft_id,
+                "subject": reply_subject,
+                "to_recipients": to_list,
+                "cc_recipients": cc_list,
+                "importance": normalized_importance.lower(),
+                "read_receipt_requested": rr_flag,
+                "delivery_receipt_requested": dr_flag,
+                "attachments": [],
+            })
+        except Exception as raw_err:
+            log.warning(
+                "Raw-MIME reply path failed (%s); falling back to draft flow",
+                raw_err,
+            )
 
     patch_payload: dict[str, Any] = {
         "body": {
@@ -3663,6 +3886,7 @@ async def _reply_to_mail_message_impl(
     await _graph_send_draft(mailbox, draft_id)
     return json.dumps({
         "status": "sent",
+        "transport": "draft_attach_send",
         "mailbox": mailbox,
         "reply_all": reply_all,
         "source_message_id": message_id,
@@ -3687,13 +3911,23 @@ async def reply_to_mail_message(
     request_delivery_receipt: Optional[bool] = None,
     attachment_document_ids: Optional[str] = None,
 ) -> str:
-    """Reply to a message from Athena's mailbox using a draft flow.
+    """Reply to a message from Athena's mailbox.
 
-    This flow supports attachment_document_ids, so Athena can attach documents she generated.
+    Transport (automatic, returned as "transport"):
+      raw_mime_utf8_base64 — HTML reply without attachments. Calls createReply
+        to reuse Graph's recipient split, Re: subject, and quoted-prior-body
+        divider, fetches the original for In-Reply-To / References headers,
+        then sends as raw RFC-5322 UTF-8 base64 MIME. Preserves threading AND
+        bypasses Exchange's HTML→MIME re-encoding that strict recipient
+        tenants strip (blank-body).
+      draft_attach_send — Plain-text reply OR reply with attachments. Uses
+        createReply → PATCH body → upload attachments → send via the draft.
+
+    Supports attachment_document_ids, so Athena can attach documents she generated.
 
     Args:
         message_id: Graph message ID or RFC internet message ID to reply to
-        body: Reply body text or HTML
+        body: Reply body — HTML (body_content_type="html") or plain text
         mailbox: Mailbox to send from (defaults to Athena's mailbox)
         body_content_type: html or text (default html)
         importance: Optional low, normal, or high importance override
@@ -3730,15 +3964,20 @@ async def reply_all_mail_message(
     request_delivery_receipt: Optional[bool] = None,
     attachment_document_ids: Optional[str] = None,
 ) -> str:
-    """Reply-all to a message from Athena's mailbox using a draft flow.
+    """Reply-all to a message from Athena's mailbox.
 
-    This flow supports attachment_document_ids, so Athena can attach generated documents.
+    Same transport selection as reply_to_mail_message:
+      raw_mime_utf8_base64 — HTML without attachments; preserves threading and
+        survives strict recipient mail hygiene.
+      draft_attach_send — plain-text or when attachments are present.
+
+    Supports attachment_document_ids, so Athena can attach generated documents.
 
     Args:
         message_id: Graph message ID or RFC internet message ID to reply-all to
-        body: Reply-all body text or HTML
+        body: Reply-all body — HTML (body_content_type="html") or plain text
         mailbox: Mailbox to send from (defaults to Athena's mailbox)
-        body_content_type: html or text (default html)
+        body_content_type: "html" (default) or "text"
         importance: Optional low, normal, or high importance override
         request_read_receipt: Optional read receipt flag for the outgoing reply-all
         request_delivery_receipt: Optional delivery receipt flag for the outgoing reply-all

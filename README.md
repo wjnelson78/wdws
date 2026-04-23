@@ -15,6 +15,18 @@ A comprehensive legal workflow automation system featuring email management, cas
    - Mark messages important / read-unread
    - Request read and delivery receipts
    - Attach documents Athena generates via MCP document IDs
+- **HTML emails ship as raw RFC-5322 MIME (UTF-8 + base64
+  `multipart/alternative`)** via Graph `/sendMail`, bypassing Exchange's
+  default Windows-1252 + quoted-printable re-encoding that some strict
+  recipient mail-hygiene appliances strip (blank-body delivery). The
+  raw-MIME path is used automatically for HTML sends and replies without
+  attachments; sends with attachments and plain-text sends still use the
+  draft + attach + send flow. Reply flows retain `In-Reply-To` /
+  `References` threading and the Exchange-formatted quoted original.
+  Shared implementation lives in [graph_mail.py](graph_mail.py) and is
+  used by [mcp-server/mcp_server_v2.py](mcp-server/mcp_server_v2.py),
+  [email_api.py](email_api.py), and
+  [agents/email_util.py](agents/email_util.py).
 - **SMS alerts on priority mail arrival** — Telnyx SMS to William's mobile
   when a new inbound email matches VIP filters (courts, opposing counsel,
   medical providers, specific contacts, `importance=high`, urgency keywords).
