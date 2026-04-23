@@ -96,8 +96,28 @@ MEDICAL_DEFAULT_ALLOWED = frozenset([
 # Widened to default when purpose_of_use is set
 MEDICAL_WITH_PURPOSE_ADDITIONAL = frozenset(['phi', 'limited_data_set'])
 
-# Heightened-protection categories — blocked by default; auth unlocks by scope
+# Heightened-protection categories for *retrieval-time hard-block* per v2.2 §5.4.
+# These two carry statutory absolute protections (42 CFR Part 2 for SUD records,
+# 45 CFR 164.508(a)(2) for psychotherapy notes) and NEVER surface in retrieval
+# absent an authorization_id with matching scope.
 HEIGHTENED_CATEGORIES = frozenset(['psychotherapy_notes', 'sud_42_cfr_part_2'])
+
+# Categories that require *classification-time human review* per v2.2 §6.3.
+# Broader than HEIGHTENED_CATEGORIES — includes mental_health, genetic_gina, and
+# hiv_aids. These don't carry federal absolute-block protections at retrieval
+# time, but state laws often impose additional process requirements and the
+# classification itself warrants human eyeballs before promotion.
+#
+# v2.2 used "heightened-protection categories" to describe both the retrieval-
+# block set (narrow) and the classifier-review-required set (broad). The
+# two-constant architecture makes the distinction explicit. Closeout note:
+# specification-drafting lesson — when a term describes different operational
+# enforcement mechanisms at different scopes, spell out the scope at each use
+# site rather than assume shared semantics.
+REVIEW_REQUIRED_CATEGORIES = frozenset([
+    'sud_42_cfr_part_2', 'psychotherapy_notes',
+    'genetic_gina', 'mental_health', 'hiv_aids',
+])
 
 
 # ============================================================

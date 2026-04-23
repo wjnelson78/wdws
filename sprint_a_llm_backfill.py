@@ -72,7 +72,7 @@ except ImportError:
     PT_TZ = pytz.timezone("America/Los_Angeles")
 
 sys.path.insert(0, "/opt/wdws")
-from core_safety import HEIGHTENED_CATEGORIES  # noqa: E402
+from core_safety import HEIGHTENED_CATEGORIES, REVIEW_REQUIRED_CATEGORIES  # noqa: E402
 
 
 # ============================================================
@@ -338,10 +338,17 @@ def _route_legal(proposal: dict, protective_order_active: bool) -> tuple[str, st
     return privilege, confidentiality
 
 
-def _has_heightened_category(proposal: dict) -> list[str]:
-    """Return the list of heightened categories in the proposal."""
+def _review_required_categories(proposal: dict) -> list[str]:
+    """Return the list of review-required categories in the proposal.
+
+    Per v2.2 §6.3, ALL FIVE categories (42 CFR Part 2, psychotherapy notes,
+    mental health, HIV/AIDS, genetic) require human review at classification
+    time, not just the two retrieval-time hard-block categories defined in
+    §5.4. See core_safety.REVIEW_REQUIRED_CATEGORIES vs HEIGHTENED_CATEGORIES
+    for the distinction.
+    """
     cats = proposal.get('phi_categories') or []
-    return [c for c in cats if c in HEIGHTENED_CATEGORIES]
+    return [c for c in cats if c in REVIEW_REQUIRED_CATEGORIES]
 
 
 async def stage_legal_classification(
@@ -433,8 +440,10 @@ async def stage_medical_classification(
             proposal['rationale'],
         )
 
-    # Heightened categories → per-category review (regardless of confidence)
-    heightened = _has_heightened_category(proposal)
+    # Review-required categories → per-category review (regardless of confidence).
+    # Uses the v2.2 §6.3 broad set (all 5 categories), not the §5.4 narrow
+    # retrieval-block set. See core_safety.REVIEW_REQUIRED_CATEGORIES.
+    heightened = _review_required_categories(proposal)
     for cat in heightened:
         await conn.execute("""
             INSERT INTO ops.pending_approvals
