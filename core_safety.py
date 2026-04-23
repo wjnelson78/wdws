@@ -363,6 +363,13 @@ async def build_document_safety_filter(
         clause = " AND ".join(med_parts) if med_parts else "TRUE"
 
     else:  # domain is None — cross-domain
+        # Per v2.2 §5.4 headline intent + checkpoint clarification: apply BOTH
+        # filters to every row. Legal-domain rows get privilege filter; medical
+        # rows get phi filter; non-scope domains (web, business, personal,
+        # paperless, coding, general, research, ...) require privilege to be
+        # NULL or 'none' AND phi_status to be NULL or not in (phi, lds). This
+        # catches mis-domained privileged/PHI content without requiring the
+        # caller to enumerate every non-scope domain.
         allowed = sorted(_resolve_legal_allowed(include_privileged, privileged_categories))
         legal_expr = f"{a}.privilege = ANY(${p}::text[])"
         params.append(allowed)
@@ -370,10 +377,15 @@ async def build_document_safety_filter(
         med_parts, med_params, p = _build_medical_parts(a, p, purpose_of_use, auth_state)
         params.extend(med_params)
         medical_expr = " AND ".join(med_parts) if med_parts else "TRUE"
+        # Non-scope: strict default-safe. Mis-classified privileged content stays blocked.
+        nonscope_expr = (
+            f"({a}.privilege IS NULL OR {a}.privilege = 'none') "
+            f"AND ({a}.phi_status IS NULL OR {a}.phi_status NOT IN ('phi', 'limited_data_set'))"
+        )
         clause = (
             f"(({a}.domain = 'legal' AND {legal_expr}) "
             f"OR ({a}.domain = 'medical' AND ({medical_expr})) "
-            f"OR ({a}.domain NOT IN ('legal', 'medical')))"
+            f"OR ({a}.domain NOT IN ('legal', 'medical') AND ({nonscope_expr})))"
         )
 
     # Closure capturing the parameters for logging

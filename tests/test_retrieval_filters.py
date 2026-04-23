@@ -162,9 +162,14 @@ async def setup_fixture(conn: asyncpg.Connection) -> Fixture:
         ('web_1', 'web', 'article', None, None, [], False),
         ('general_1', 'general', 'note', None, None, [], False),
         ('coding_1', 'coding', 'snippet', None, None, [], False),
-        # Add 2 more to round to 30 — more legal non-privileged for volume testing
+        # Additional legal non-privileged for volume
         ('legal_none_3', 'legal', 'email', 'none', None, [], False),
         ('legal_none_4', 'legal', 'email', 'none', None, [], False),
+        # Cross-domain safety cases (t22, t23) — NULL-classified personal
+        # doc surfaces under cross-domain; mis-domained privileged business
+        # doc does NOT.
+        ('personal_unclass_1', 'personal', 'note', None, None, [], False),
+        ('business_misdomained_ac_1', 'business', 'email', 'attorney_client', None, [], False),
     ]
 
     for (name, domain, dtype, priv, phi_status, phi_cats, minor) in specs:
@@ -652,6 +657,82 @@ async def t21(conn, fx):
     assert gained == phi_count, \
         f"disclosures_log should gain {phi_count} rows (one per PHI doc), got {gained}"
     assert disc == gained  # delta returned by run_filter_and_fetch matches
+
+
+# --- Cross-domain safety + denial-logging correctness (22-24) ---
+
+@test("t22: domain=None surfaces unclassified non-scope-domain doc (personal, NULL/NULL)")
+async def t22(conn, fx):
+    rows, _, _ = await run_filter_and_fetch(
+        conn, fx, domain=None,
+        caller_context={'tool': 't22'},
+    )
+    assert 'personal_unclass_1' in titles(rows), \
+        "NULL-classified personal-domain doc should surface under cross-domain default"
+    # Sanity: also surfaces web/general/coding NULL-classified docs
+    assert 'web_1' in titles(rows)
+    assert 'general_1' in titles(rows)
+    assert 'coding_1' in titles(rows)
+
+
+@test("t23: domain=None excludes mis-domained business doc tagged attorney_client")
+async def t23(conn, fx):
+    rows, _, _ = await run_filter_and_fetch(
+        conn, fx, domain=None,
+        caller_context={'tool': 't23'},
+    )
+    assert 'business_misdomained_ac_1' not in titles(rows), \
+        "business-domain doc with privilege='attorney_client' must NOT surface under cross-domain default"
+    # Confirm the doc actually exists in fixture (defensive)
+    exists = await conn.fetchval(
+        "SELECT COUNT(*) FROM test_safety.documents WHERE title = 'business_misdomained_ac_1'")
+    assert exists == 1, "fixture sanity: business_misdomained_ac_1 missing from fixture"
+
+    # With include_privileged=True, the mis-domained AC doc DOES surface
+    # (treated as legal-privilege under the filter, since cross-domain applies
+    # the legal filter to non-scope domains now? No — non-scope domains have
+    # their own strict rule. Re-check: non-scope surfaces only if
+    # privilege IS NULL or 'none'. include_privileged widens the legal branch,
+    # not the non-scope branch. So this still stays blocked.)
+    rows2, _, _ = await run_filter_and_fetch(
+        conn, fx, domain=None,
+        caller_context={'tool': 't23b'},
+        include_privileged=True,
+    )
+    assert 'business_misdomained_ac_1' not in titles(rows2), \
+        "Even with include_privileged=True, non-scope domains stay strict (surface only NULL/'none')"
+
+
+@test("t24: denied PHI fetch writes access_log outcome=denied_phi but NOT disclosures_log")
+async def t24(conn, fx):
+    access_before = await conn.fetchval("SELECT COUNT(*) FROM test_safety.access_log")
+    disc_before = await conn.fetchval("SELECT COUNT(*) FROM test_safety.disclosures_log")
+
+    try:
+        await fetch_safe_document(
+            fx.docs['med_phi_1'], conn=conn,
+            caller_context={'tool': 't24', 'user': 'will'},
+            logger=make_logger(conn),
+            documents_table='test_safety.documents',
+            authorizations_table='test_safety.authorizations',
+        )
+        raise AssertionError("should have raised PHIAccessDeniedException")
+    except PHIAccessDeniedException:
+        pass
+
+    access_after = await conn.fetchval("SELECT COUNT(*) FROM test_safety.access_log")
+    disc_after = await conn.fetchval("SELECT COUNT(*) FROM test_safety.disclosures_log")
+
+    assert access_after == access_before + 1, \
+        f"denied fetch should add exactly 1 access_log row; got {access_after - access_before}"
+    assert disc_after == disc_before, \
+        f"denied fetch MUST NOT add to disclosures_log; got {disc_after - disc_before} new rows"
+
+    latest = await conn.fetchrow(
+        "SELECT metadata FROM test_safety.access_log ORDER BY id DESC LIMIT 1")
+    meta = json.loads(latest['metadata'])
+    assert meta['outcome'] == 'denied_phi', \
+        f"expected outcome=denied_phi, got {meta['outcome']!r}"
 
 
 # ============================================================
