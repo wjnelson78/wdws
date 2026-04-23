@@ -103,22 +103,179 @@ HEIGHTENED_CATEGORIES = frozenset(['psychotherapy_notes', 'sud_42_cfr_part_2'])
 # ============================================================
 # Task 4 keyword-auto-classification pattern set (§6.2)
 # ============================================================
+#
+# Refined after the first sanity-check round identified two failure modes in
+# the naive patterns:
+#
+#   1. `ATTORNEY-CLIENT PRIVILEGED` without position anchoring caught
+#      law-firm email-footer disclaimer boilerplate ("this email may contain
+#      attorney-client privileged information") — factually wrong to
+#      auto-tag as privileged since it's a reflexive disclaimer, not an
+#      author-asserted designation. Opposing-counsel routine emails would
+#      have been mis-classified as our own privileged documents.
+#
+#   2. `PRIVILEGED AND CONFIDENTIAL` with proximity-to-counsel produced zero
+#      matches in the actual corpus — the phrase appears (on insurance
+#      correspondence, NDAs, etc.) but not in proximity to "attorney" or
+#      "counsel." Zero contribution with cognitive overhead; dropped.
+#
+# Refinements applied:
+#   (a) Position anchor: match must occur within the first 500 chars of the
+#       document. Header assertions pass; body/footer disclaimers fail.
+#   (b) Qualifier disqualification: match context (±50 chars) must not
+#       contain "may contain" / "may be" / "may include" — the hedging
+#       language of a disclaimer versus the affirmative language of a
+#       designation.
+#
+# Both patterns implied privilege='attorney_client' per §6.2. Work-product
+# assertions are tagged the same — a finer-grained distinction (work_product_
+# opinion vs fact) is the LLM classifier's job, not keyword pass.
 
 KEYWORD_PATTERNS = {
-    # Literal header strings: case-insensitive full-text match
+    # Literal header assertion: "ATTORNEY-CLIENT PRIVILEGED" or "ATTORNEY CLIENT
+    # PRIVILEGED" in the first 500 chars of the document.
     'attorney_client_literal': re.compile(
-        r'ATTORNEY[-\s]CLIENT\s+PRIVILEGED', re.IGNORECASE,
-    ),
-    # "PRIVILEGED AND CONFIDENTIAL" within 200 chars of "attorney" or "counsel"
-    'privileged_confidential_with_context': re.compile(
-        r'PRIVILEGED\s+AND\s+CONFIDENTIAL.{0,200}?(?:\battorney\b|\bcounsel\b)',
+        r'\A.{0,500}?ATTORNEY[-\s]CLIENT\s+PRIVILEGED',
         re.IGNORECASE | re.DOTALL,
     ),
-    # "WORK PRODUCT" as a document-header assertion (first 500 chars)
+    # "WORK PRODUCT" as a document-header assertion (first 500 chars).
     'work_product_header': re.compile(
-        r'\A.{0,500}?\bWORK\s+PRODUCT\b', re.IGNORECASE | re.DOTALL,
+        r'\A.{0,500}?\bWORK\s+PRODUCT\b',
+        re.IGNORECASE | re.DOTALL,
     ),
 }
+
+# Pattern → privilege classification mapping for the Task 4 mechanical pass.
+#
+# Per Will 2026-04-23: work_product_header → 'work_product_opinion'. Documents
+# with a "WORK PRODUCT" header assertion in the first 500 chars are typically
+# author-prepared analyses, memoranda, and master references — which are
+# opinion work product by nature (containing mental impressions, conclusions,
+# legal theories). Tagging these as 'work_product_fact' would under-classify:
+# fact work product is discoverable on substantial-need showing, whereas
+# opinion work product carries near-absolute protection. Under-classification
+# of opinion-WP as fact-WP is not a safe failure — it would silently degrade
+# the document's protection posture in every downstream workflow.
+#
+# Factual work product (witness-statement compilations, investigation
+# materials without legal analysis) is the LLM-assisted phase's job to
+# distinguish. The mechanical pass is high-precision header-assertion
+# classification only.
+PATTERN_TO_PRIVILEGE = {
+    'attorney_client_literal': 'attorney_client',
+    'work_product_header': 'work_product_opinion',
+}
+
+# Disqualifier: a privilege-ish phrase in proximity to one of these hedges is
+# a disclaimer or a conditional assertion, not a designation. Applied to a
+# ±50-char window around each candidate match.
+#
+# Three categories of disqualifiers:
+#
+#   1. Hedging disclaimers (may-contain class):
+#        "may contain", "may be", "may include" — the language of email-
+#        footer boilerplate that hedges because the sender doesn't know
+#        whether any given outbound message actually contains privileged
+#        content.
+#
+#   2. Conditional assertions (if/when class), added 2026-04-23 after the
+#      FASA breach report surfaced a false positive with "Attorney-Client
+#      Privileged IF REVIEWED BY COUNSEL" as a conditional header:
+#        "if reviewed", "if shared", "if routed", "if sent", "if disclosed",
+#        "if forwarded", "if produced" — the author is flagging that
+#        privilege *could* attach downstream, not asserting that it
+#        currently applies.
+#        "when reviewed", "when shared" — same semantics, different
+#        conjunction.
+#
+#   3. Subjunctive framings (should class):
+#        "should this document", "should this communication", "should the
+#        recipient" — conditional-subjunctive phrasings that hedge the
+#        privilege assertion.
+#
+# Design principle captured in the closeout: false positives in the keyword
+# pass are not recoverable by downstream processing — the LLM-assisted phase
+# operates on NULL-privilege rows only and does not revisit keyword-
+# classified documents. Pattern refinements must be evaluated against that
+# standard.
+_QUALIFIER_DISQUALIFIERS = re.compile(
+    r'may\s+(?:contain|be|include)'
+    r'|\bif\s+(?:reviewed|shared|routed|sent|disclosed|forwarded|produced)'
+    r'|\bwhen\s+(?:reviewed|shared)'
+    r'|\bif/when\b'
+    r'|should\s+th(?:is|e)\s+(?:document|communication|recipient)',
+    re.IGNORECASE,
+)
+
+_KEYWORD_CONTEXT_WINDOW = 50  # chars either side of match for disqualifier check
+
+
+def classify_by_keywords(content: Optional[str]) -> Optional[dict]:
+    """Deterministic keyword classifier for Task 4 §6.2 pre-pass.
+
+    Returns None if no pattern matches (or all matches disqualified), or a
+    dict with {privilege, pattern_matched, match_span, context_preview}
+    describing the classification.
+
+    Implementation:
+      1. For each KEYWORD_PATTERNS entry, search in the document content.
+      2. If a pattern matches, extract a ±50-char context window around the
+         match; if that window contains a disqualifier phrase ('may contain'
+         / 'may be' / 'may include'), the match is treated as a disclaimer,
+         not a designation — skip to the next pattern.
+      3. First non-disqualified match wins. Returns immediately.
+      4. All keyword matches imply privilege='attorney_client' per §6.2.
+    """
+    if not content:
+        return None
+    for pattern_name, pattern in KEYWORD_PATTERNS.items():
+        m = pattern.search(content)
+        if not m:
+            continue
+        # Disqualifier check in a window around the match
+        win_start = max(0, m.start() - _KEYWORD_CONTEXT_WINDOW)
+        win_end = min(len(content), m.end() + _KEYWORD_CONTEXT_WINDOW)
+        window = content[win_start:win_end]
+        if _QUALIFIER_DISQUALIFIERS.search(window):
+            continue  # disclaimer-shape; not a designation
+        # Return the first non-disqualified match
+        preview_start = max(0, m.start() - 200)
+        preview_end = min(len(content), m.end() + 200)
+        return {
+            'privilege': PATTERN_TO_PRIVILEGE[pattern_name],
+            'pattern_matched': pattern_name,
+            'match_span': (m.start(), m.end()),
+            'matched_text': m.group(0)[-80:] if len(m.group(0)) > 80 else m.group(0),
+            'context_preview': content[preview_start:preview_end],
+        }
+    return None
+
+
+def scan_corpus_for_match_delta(
+    content: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """Pre-refinement vs post-refinement classifier for delta reporting.
+
+    Returns (old_pattern_name_or_None, new_pattern_name_or_None) describing
+    which pattern caught this content under the permissive (pre-refinement)
+    versus the strict (post-refinement) pass. Used by the sanity-check
+    reporter to identify documents removed by the refinement.
+    """
+    if not content:
+        return None, None
+    # OLD permissive patterns (the v1 set from first sanity check)
+    old_attorney_client = re.compile(
+        r'ATTORNEY[-\s]CLIENT\s+PRIVILEGED', re.IGNORECASE,
+    )
+    old_work_product = KEYWORD_PATTERNS['work_product_header']  # unchanged
+    old_hit = None
+    if old_attorney_client.search(content):
+        old_hit = 'attorney_client_literal'
+    elif old_work_product.search(content):
+        old_hit = 'work_product_header'
+    new = classify_by_keywords(content)
+    new_hit = new['pattern_matched'] if new else None
+    return old_hit, new_hit
 
 
 # ============================================================
