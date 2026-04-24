@@ -204,11 +204,21 @@ Sprint B's audit-gate work (§7a.5) must rely on framework-level enforcement —
 **Observation on "LLM-gated self-convergence" (refinement of §7a.2):** During this incident, code-doctor was observed iterating on `agent_orchestrator.py` every 10 minutes as the scheduled orchestrator run re-fired the "Stale agents: Code Doctor" finding. The iterations proceeded:
 
 - Iteration 1 (18:50:26): added `STALENESS_EXCLUDE_LIST = frozenset({"code-doctor"})` attribute only
-- Iteration 2 (19:00:21): added the attribute AND modified the check at line 151 to use it — structurally complete fix
-- Iteration 3 (19:10:40): added `"code_doctor"` (underscore variant) to the set
-- Iteration 4 (19:20:31): added `"Code Doctor"` (display-name variant) to the set
+- Iteration 2 (19:00:21): added the attribute AND modified the check at line 151 to use it — **structurally complete fix**
+- Iteration 3 (19:10:40): added `"code_doctor"` (underscore variant) to the set — drift
+- Iteration 4 (19:20:31): added `"Code Doctor"` (display-name variant) to the set — drift
+- **Iteration 5 (19:30:33): refactored line 151 to `not self._is_staleness_excluded(agent)` — but did NOT define the method. The file is now semantically broken on disk: any service restart would AttributeError on the first orchestrator fleet-health run.** — regression
 
-The initial convergence (1→2) was genuine refinement; everything afterward is drift within a constrained area. The LLM continues adding defensive synonym variants to the exclusion set with no bounded stopping point. The "convergence as soft safety mechanism" intuition does not hold — LLM-gated iteration is self-limiting in behavioral domain but not in content, and can drift indefinitely within a constrained scope without triggering a higher-level stop. This reinforces the need for framework-level iteration caps or idempotency checks alongside the path-whitelist and review-gate work.
+The trajectory is **non-monotonic**: iterations 1→2 were genuine refinement toward a working fix; 3→4 were drift within a constrained behavioral area; **iteration 5 was regression — the LLM produced syntactically valid code that references an undefined method, actively breaking the file.** The "convergence as soft safety mechanism" intuition is definitively refuted: LLM-gated iteration does not monotonically converge toward correctness, even within a constrained behavioral area. It can oscillate, drift, and regress.
+
+**Implications for Sprint B prerequisite work (revision to §7a.5):**
+
+1. Path whitelist on `write_file`/`patch_file` remains load-bearing, but is not sufficient on its own. An agent with whitelisted write access can still regress correctness within its allowed scope.
+2. **Semantic pre-write validation.** `write_file`'s existing Python-syntax check (`compile(content, path, "exec")`) caught none of this: iteration 5's broken reference is syntactically valid, it just calls an undefined method. A semantic validation step — load the proposed new module in a sandbox and verify each called method/attribute is resolvable — would have caught iteration 5. Materially more work than syntax check but proportionate to the risk.
+3. **No-progress check.** Iterations 3-5 all write distinct content against the same motivating finding, so hash-equality doesn't catch them. But "this agent has attempted to fix this specific finding-signature N times in the last M hours" would have blocked iteration 3 onward. Framework should track per-(agent, finding-signature) fix attempts and deny-by-default after N > 2.
+4. **Finding-closure semantics.** This entire loop was driven by the orchestrator's "Stale agents: Code Doctor" finding firing every 5 minutes and never being resolved. An agent's fix should implicitly close the finding that motivated it. Framework's `write_file` wrapper should accept a `closes_finding_ids=[...]` parameter and close those findings on successful write, so autonomous fixes don't re-trigger their own motivating findings.
+
+**Pause mechanism applied during this incident (temporary):** The 16 open "Stale agents: Code Doctor" findings in `ops.agent_findings` were closed to status='resolved' at 19:32 PDT, dropping code-doctor's per-signature fire_count below the `>= 3` trigger threshold (`agent_code_doctor.py:329`). This is a one-cycle reprieve, not a durable pause — orchestrator re-fires the finding every 5 minutes from its in-memory class (which doesn't have the on-disk fix loaded), so the count rebuilds to ≥3 in ~15 minutes. A durable pause would require either removing `CodeDoctorAgent()` from `run.py:52`'s `ALL_AGENTS` (requires service restart that would load the broken `agent_orchestrator.py`) or making the registry's `is_active` column a framework-enforced skip-gate (it is currently written by the runner but never read as a gate). Neither is in-scope for this incident. **The current close-and-wait arrangement is sufficient for the remainder of Sprint A; Sprint B prerequisites must include a durable agent-level pause mechanism as part of the review-gate infrastructure.**
 
 ## 8. Observations that don't fit cleanly elsewhere
 
