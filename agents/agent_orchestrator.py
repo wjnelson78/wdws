@@ -43,6 +43,12 @@ class OrchestratorAgent(BaseAgent):
     # peg the rate above the threshold until enough successful runs accumulate).
     FLEET_HEALTH_EXCLUDE_LIST: frozenset = frozenset({"quality-eval"})
 
+    # Reactive / on-demand agents that only run when triggered by specific
+    # conditions (e.g. code-doctor runs only when another agent errors).
+    # These legitimately go long periods without running and should not be
+    # flagged as stale.
+    STALENESS_EXCLUDE_LIST: frozenset = frozenset({"code-doctor", "code_doctor", "code doctor"})
+
     instructions = """You are the Orchestrator — the Manager of all agents in the Athena Cognitive Engine.
 
 YOUR ROLE:
@@ -142,7 +148,7 @@ NEVER:
                 continue
 
             # Check staleness (hasn't run in 2x expected interval)
-            if agent["last_run_at"]:
+            if agent["last_run_at"] and not self._is_staleness_excluded(agent):
                 since_last = (datetime.now(timezone.utc) - agent["last_run_at"]).total_seconds()
 
                 # Estimate expected interval from cron schedule; default to 24h
