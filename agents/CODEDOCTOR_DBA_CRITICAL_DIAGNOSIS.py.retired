@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# ============================================================
+# RETIRED — 2026-04-23
+# ============================================================
+# Code-doctor-adjacent diagnostic helper, retired per work
+# order RETIRE_CODE_DOCTOR. Preserved for reference.
+# See /opt/wdws/reports/retire_code_doctor_closeout.md
+# ============================================================
 """
 Emergency diagnostic for agent_dba cascading failures.
 Checks: instantiation, database connectivity, schema issues.
