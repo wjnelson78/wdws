@@ -106,6 +106,78 @@ This is the more important of the three latent issues — the single-point-of-fa
 
 The cascade handler (lines ~682–732 of the fixed file) contains four levels of nested `try/except` — error logging wrapped in try, finding-log wrapped in try, return-dict construction wrapped in try, all wrapped in another try for "absolute last resort." Reads like the author was chasing ghost failures by adding another try around each one. Might be worth a simplification pass if the file is revisited, but it's stylistic — not broken, not a bug, not in scope for this incident. Lowest priority of the three.
 
+## 7a. Sprint-B-prerequisite findings: autonomous-modification surface
+
+This section is larger than the others in §7 because it's a different shape: §7.1–§7.3 are cleanups that prevent recurrence of *this* incident class. §7a is an architectural finding surfaced *by* the recovery from this incident that reveals a risk class the system wasn't set up to handle. Sprint B's medical_module expansion increases the autonomous footprint; these findings should be resolved before that expansion begins, not after.
+
+### 7a.1 Detection gap — "fleet monitors the fleet" (consolidation of §7.2)
+
+Watchdog, Self-Healing, and DBA agents exist partly to detect fleet-level failures. They run *inside* the fleet. When the fleet is down, they cannot run, and the failure is invisible. 4 days of `wdws-agents.service` crashlooping accumulated with no alert. Fix shape (from §7.2): external systemd timer running `systemctl is-active wdws-agents.service` every N minutes, paging/emailing on non-active. External to the agent framework so it remains functional when the framework is down.
+
+### 7a.2 Action gap — the fleet autonomously modifies its own source code
+
+Capability survey of the 13-agent fleet (grep for `ctx.write_file`, `ctx.patch_file`, `subprocess.run` with mutating commands, and `ops.code_fixes` audit entries):
+
+| Agent | Primitive | Design intent | Audit trail |
+|---|---|---|---|
+| **code-doctor** | `ctx.write_file`, `ctx.patch_file` | Documented: "AI-powered auto-remediation" | `ops.code_fixes` (broken — see §7a.3) |
+| **athena** | `ctx.patch_file` (3 call sites + instruction reference) | **Not documented.** Accumulated cruft from prior development. Removed in adjacent commit — see §9. | None ever existed |
+| **watchdog** | `subprocess.run(["systemctl", "restart", name])` | Documented: service health recovery | `restart_counts` memory, no audit table |
+| All other 10 agents | No file-mutation or service-mutation primitives found | N/A | N/A |
+
+The framework primitives `write_file` and `patch_file` (defined in `framework.py:1187,1219`) have **no path whitelist**. They will write to any path the service process has filesystem permission for. The service runs as root.
+
+**Concrete incident during this recovery:** code-doctor wrote to `/opt/wdws/agents/agent_orchestrator.py` three times in 20 minutes (18:50:26, 19:00:21, 19:10:40), making an uncommitted autonomous source-code modification, with no review gate available to interrupt the process even if we'd wanted to. The iterations showed both convergence (iterations 1→2 progressively completed a structurally sound fix) and embellishment beyond functional completeness (iteration 3 added a non-essential `"code_doctor"` underscore variant to an exclusion set that already contained `"code-doctor"`). The LLM-gated diagnostic check is a *soft* convergence mechanism — it doesn't reliably stop once the fix is functional.
+
+**Fix shape:** Path whitelist on `framework.write_file` / `patch_file`. Permitted paths: `/opt/wdws/reports/*`, `/opt/wdws/logs/*`, designated scratch directories. Everything under `/opt/wdws/agents/*`, `framework.py`, `run.py`, `core_safety.py`, migrations, and config files require a review gate parallel to the `ops.pending_approvals` mechanism used for Sprint A migrations.
+
+### 7a.3 Audit gap — audit is opt-in-by-agent, not framework-enforced, and broken by schema-alias misconfiguration
+
+`ops.code_fixes` exists as code-doctor's audit table (51 historical rows, schema: `agent_id`, `run_id`, `target_file`, `patch`, `applied`, `verified`, `rollback_patch`, `model_used`). But:
+
+1. **The most recent `ops.code_fixes` row is from 2026-04-05.** The three writes during this recovery (18:50:26, 19:00:21, 19:10:40) are NOT in that table. Code-doctor's audit path is structurally broken.
+
+2. **Root cause of the audit break:** [agents/schema_aliases.py:98-103](agents/schema_aliases.py#L98-L103) declares `created_at` as the canonical timestamp column for `ops.agent_runs` and maps `started_at` and `begun_at` to it:
+
+   ```python
+   "ops.agent_runs": {
+       # created_at is canonical
+       "created_at":  "created_at",
+       "started_at":  "created_at",
+       "begun_at":    "created_at",
+   },
+   ```
+
+   **The live schema has `started_at`, not `created_at`.** The alias is forward-compat for a schema-normalization migration that was planned but never executed. The result: any agent SQL that correctly references `r.started_at` on `ops.agent_runs` is silently rewritten to `r.created_at` — a column that doesn't exist — and the query fails. Code-doctor's audit INSERT is one victim; the DBA agent, watchdog, orchestrator fleet-health check, and anything else querying `ops.agent_runs` via alias may also be silently failing.
+
+3. **Four ops tables still use `started_at`:** `ops.agent_runs`, `ops.agent_sessions`, `ops.ingestion_jobs`, `ops.sync_runs`. 25+ others use `created_at`. The migration was partial-planned, never executed, and the alias layer assumes completion.
+
+4. **Introduced by commit `f512216`** — the same Apr 19 +637/-263 "Commit pending platform, dashboard, and agent updates" rewrite that broke `agent_dba.py`. Two time bombs from one unchecked commit: the parse error that caused the outage, and the schema-alias backward-mapping that breaks the audit path now that the service is back up.
+
+5. **Secondary audit failure:** even code-doctor's error-logging fallback is broken — it writes `error_msg` to `ops.agent_runs` where the column is `error`. Both failure paths are schema-drift bugs of the same family.
+
+**Fix shapes:**
+- **Immediate:** remove the backward alias (delete [agents/schema_aliases.py:98-103](agents/schema_aliases.py#L98-L103)). Restores correct SQL routing for agents querying `ops.agent_runs`. Scope: 6-line deletion plus regression check on any query that depended on the alias.
+- **Structural:** move audit from opt-in-by-agent to framework-enforced. The `framework.write_file` and `patch_file` functions themselves should insert audit rows into a canonical `ops.agent_code_modifications` table (or extended `ops.code_fixes`), so audit is not something an agent can accidentally bypass by crashing before its own INSERT.
+
+### 7a.4 Restoration-also-restores-modification-capability
+
+Service restoration after an outage is also restoration of autonomous-modification capability. During the 4-day `wdws-agents.service` crashloop, code-doctor could not write to the filesystem — the outage was functioning, inadvertently, as a modification-suppression mechanism. The moment the service came back at 18:25:38 PDT, the first orchestrator fleet-health check fired a "Stale agents: Code Doctor" finding, code-doctor responded with an autonomous file modification, and a loop began.
+
+This is not an argument for keeping the service down. It is an argument that **review-gate infrastructure should be in place before the service is brought back up after any future outage.** If the review gate had existed, code-doctor's exclusion-list write at 18:50:26 would have surfaced as a pending modification for human approval rather than landing silently in the working tree where it took active inspection to notice. The gap between "service is healthy" and "fleet is operating safely" is exactly the gap that needs explicit infrastructure.
+
+### 7a.5 Sprint B prerequisite shape
+
+Before Sprint B's `medical_module` build expands the autonomous footprint:
+
+1. **Path whitelist on `framework.write_file` / `patch_file`.** Permitted paths are reports, logs, scratch. Anything under `/opt/wdws/agents/*`, `framework.py`, `run.py`, `core_safety.py`, and migrations requires a review gate.
+2. **`ops.agent_code_modifications` table** (or extended `ops.code_fixes`) with framework-enforced audit insertion — every `write_file`/`patch_file` call writes its own audit row. Agent cannot bypass by crashing.
+3. **Review-gate mechanism** parallel to `ops.pending_approvals`: code modifications to whitelisted-restricted paths land in pending state, requiring human approval before being applied.
+4. **Schema-alias audit** — enumerate all entries in `schema_aliases.py` and verify each maps from a name that live SQL still produces *to* a name that exists in the live schema. Backward or incomplete-migration aliases should be removed or flipped.
+5. **External health monitor** (from §7a.1) in place before re-enabling autonomous modification. Outage without external monitor + autonomous modification without review gate is the composition of risks that produced the silent-4-day-outage-followed-by-silent-autonomous-edits sequence of this incident.
+
+The scope is substantial (multi-day, not half-day), but the Sprint A execution discipline proves the pattern works: write-ahead audit rows, approval gates, rollback-capable changes. The autonomous-modification surface needs the same treatment that the data-modification surface already has.
+
 ## 8. Observations that don't fit cleanly elsewhere
 
 ### 8.1 Sprint A workers exited at 18:11 PDT — before my incident work
