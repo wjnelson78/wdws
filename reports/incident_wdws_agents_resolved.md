@@ -130,11 +130,17 @@ Three entries appear at 18:24:19 PDT (athena, code-doctor, orchestrator) — 79 
 
 Most likely explanation: the agents have an alternate invocation path (direct Python call, or a different systemd unit, or a manually-triggered worker) that writes to `ops.agent_runs` independently of `wdws-agents.service`. This is surprising and slightly concerning because it means "the state of the fleet" is not fully captured by "the state of the service," but it's not broken — just not what I'd predicted. Noting for the record.
 
+### 8.3 Process lesson: chained git commands collapse intermediate failure visibility
+
+During the merge-to-master step I chained `git checkout master && git merge incident-wdws-agents-syntax` (implicitly, via a batched Bash call that ran them as a sequence under one command invocation). The checkout aborted because uncommitted Sprint A working-tree changes conflicted with master's version of those files, but the merge ran anyway against the still-current branch (`sprint-a-privilege-phi`), producing a merge commit on the wrong branch. The aborting `error: Your local changes...` line was visible in the combined output but I read past it on first pass, catching the mistake only when reviewing the resulting `git log`. The merge was undone via `git reset --merge HEAD~1` (safe because the commit was local, two minutes old, unpushed), and master was subsequently merged correctly via a clean fast-forward.
+
+**Guidance for future work (Sprint A remainder and Sprint B):** any sequence involving `checkout`, `reset`, `merge`, `rebase`, `cherry-pick`, or `push --force` runs as separate commands with explicit output verification between them. Not "I'll watch for errors" — explicit verification as its own step. Chained commands make the intermediate failure invisible unless every step's exit status is enforced (e.g., via `&&`, though even that doesn't help if later commands don't depend on earlier succeeding in a way the shell sees). The discipline is structural: destructive-adjacent operations never batch.
+
 ## 9. Post-work state
 
-- **Fix:** committed at `3283c43` on branch `incident-wdws-agents-syntax`.
-- **Master:** unchanged. Merge decision belongs to Will.
-- **Sprint A branch:** returned to; stash popped cleanly; no conflicts; in-flight work intact.
+- **Fix:** merged to `master` as a clean fast-forward: `3283c43` (fix) and `ba8732c` (closeout) as direct descendants of `e63f886`. No merge commit.
+- **Branch `incident-wdws-agents-syntax`:** still exists locally, harmless, can be deleted at leisure.
+- **Sprint A branch:** restored to its pre-incident-work state after a separate reset-and-recover operation (see §8.3). In-flight modifications and untracked files intact.
 - **Service:** healthy, all agents firing.
 - **Sprint A workers:** not running (pre-existing condition, see §8.1).
 
