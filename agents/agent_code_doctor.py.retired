@@ -1,3 +1,41 @@
+# ============================================================
+# RETIRED — 2026-04-23
+# ============================================================
+# This file represents the code-doctor agent, retired on
+# 2026-04-23 per work order RETIRE_CODE_DOCTOR.
+#
+# Reason: Five months of operational evidence demonstrated
+# that the auto-remediation pattern produced more risk than
+# value. Specifically: 51 historical autonomous code edits
+# (30 against explicit instructions forbidding framework.py
+# modification), structurally broken audit trail due to a
+# schema-alias misconfiguration, and demonstrated capacity
+# to regress code correctness during LLM-gated iteration
+# (on 2026-04-23, iterations 1-6 against agent_orchestrator.py
+# culminated in iteration 5 introducing a broken reference to
+# an undefined method).
+#
+# This file is preserved for forensic and reference purposes.
+# It is NOT loaded by the agent runner — run.py's ALL_AGENTS
+# list no longer imports CodeDoctorAgent (see commit 520e52e).
+# The ops.agent_registry row is marked is_active=false with a
+# config-field tombstone recording the retirement.
+#
+# Do not re-enable without deliberate architectural review.
+# If the auto-remediation pattern is worth rebuilding, it
+# should be rebuilt as a proposal-only agent (writes to
+# ops.pending_approvals, never applies autonomously) with
+# framework-level path whitelisting on write_file/patch_file.
+#
+# Historical evidence preserved:
+#   - ops.code_fixes: 51 audit rows (table comment added)
+#   - agents/*.bak: on-disk backups of files code-doctor wrote
+#   - 21 CODEDOCTOR_*.md analysis files in this directory
+#   - Git history: no rewrites
+#
+# See /opt/wdws/reports/retire_code_doctor_closeout.md
+# ============================================================
+
 """
 🩺 Code Doctor Agent — AI-Powered Auto-Remediation
 ═══════════════════════════════════════════════════

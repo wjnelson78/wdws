@@ -133,7 +133,6 @@ YOUR TOOLS (used via RunContext):
 - ctx.query(sql) / ctx.execute(sql)  — read/write the DB
 - ctx.shell(cmd)                      — run shell commands
 - ctx.read_file(path)                 — read any file
-- ctx.patch_file(path, old, new)      — patch a file (validates Python syntax)
 - ctx.remember(key, value)            — store in your own memory
 - ctx.recall(key)                     — retrieve from your memory
 - ctx.remember_for(agent_id, k, v)    — update another agent's runtime config
@@ -1561,11 +1560,10 @@ Do not repeat mitigations that appear in retry_guardrails unless the evidence ha
             outcome = await self._apply_migration(ctx, task, metrics, needs_approval)
 
         elif t_type == "source_patch":
-            if needs_approval or risk in ("high", "critical"):
-                await self._queue_approval(ctx, task, metrics)
-                outcome["result"] = "queued_for_approval"
-            else:
-                outcome = await self._apply_source_patch(ctx, task, metrics)
+            # Source patches always queue for approval — direct-apply branch
+            # removed 2026-04-23 (INCIDENT_WDWS_AGENTS_SYNTAX §7a/§9 hardening).
+            await self._queue_approval(ctx, task, metrics)
+            outcome["result"] = "queued_for_approval"
 
         elif t_type == "delegation":
             outcome = await self._delegate(ctx, task, metrics)

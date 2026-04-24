@@ -39,7 +39,6 @@ from agent_case_strategy import CaseStrategyAgent
 from agent_retention import RetentionAgent
 from agent_query_insight import QueryInsightAgent
 from agent_athena import AthenaAgent
-from agent_code_doctor import CodeDoctorAgent
 from agent_quality_eval import QualityEvalAgent
 from agent_dba import DBAAgent
 from agent_daily_digest import DailyDigestAgent
@@ -52,7 +51,7 @@ log = logging.getLogger("agent-runner")
 ALL_AGENTS = [
     OrchestratorAgent(),     # P0 — fleet manager
     AthenaAgent(),           # P1 — autonomous reasoning + self-management
-    CodeDoctorAgent(),       # P1 — auto-remediation with Athena AI
+    # CodeDoctorAgent retired 2026-04-23 — see RETIRE_CODE_DOCTOR work order
     WatchdogAgent(),         # P1 — health
     DailyDigestAgent(),      # P2 — 7 AM daily digest email (includes weekly scorecard)
     SecuritySentinelAgent(), # P2 — security
