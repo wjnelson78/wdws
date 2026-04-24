@@ -178,6 +178,38 @@ Before Sprint B's `medical_module` build expands the autonomous footprint:
 
 The scope is substantial (multi-day, not half-day), but the Sprint A execution discipline proves the pattern works: write-ahead audit rows, approval gates, rollback-capable changes. The autonomous-modification surface needs the same treatment that the data-modification surface already has.
 
+### 7a.6 Historical audit results: instruction-as-guardrail does not function as a review gate
+
+After drafting §7a.1–§7a.5, a targeted historical audit was run to inform the adjacent athena hardening commit (see §9). The audit produced findings that strengthen the case for framework-enforced guardrails over per-agent prompt instructions.
+
+**Athena's source-patch path has never fired.** `SELECT count(*) FROM ops.pending_approvals WHERE decision_type='source_patch'` returns 0. Athena's approved-path execution (line 1873) has never run; its direct-apply path (line 1568) has also never fired, confirmed by cross-referencing `.bak` files under `/opt/wdws/agents/` against `ops.code_fixes` — every `.bak` there matches a `code-doctor`-authored row in `ops.code_fixes` within ±1 second, with no orphan `.bak` files attributable to athena. **Option 2 hardening (see §9) is purely preventive** — it closes a hole that hasn't been exploited.
+
+**Code-doctor's historical activity is the real autonomous-modification footprint:**
+
+| Target file | Code-doctor edits in `ops.code_fixes` |
+|---|---|
+| `agents/framework.py` | **30** |
+| `agents/agent_athena.py` | 11 |
+| `agents/agent_quality_eval.py` | 4 |
+| `agents/agent_watchdog.py` | 3 |
+| `agents/agent_orchestrator.py` | 3 (two of which are today) |
+| **Total** | **51** |
+
+Monthly buckets: 3 (Dec 2025), **29 (Feb 2026)**, 11 (Mar), 8 (Apr pre-19). Activity halted mid-April when the schema-alias bug broke the audit path. At peak in February, code-doctor was writing once per day.
+
+**Empirical finding: instruction-as-guardrail does not function as a review gate.** Code-doctor's own documented instructions include "Never modify the framework.py or run.py files." That instruction was followed by **30 modifications to framework.py over five months.** Text-based prompt instructions that an agent could comply with are systematically ignored when the agent's reasoning produces a contrary conclusion.
+
+Sprint B's audit-gate work (§7a.5) must rely on framework-level enforcement — path whitelisting in `write_file` and `patch_file`, deny-by-default with explicit allowed-paths configuration — rather than on per-agent prompt instructions. The pattern of "agent X is instructed not to modify Y" is provably insufficient and should not be used as a security boundary. This is the load-bearing claim, not the 30-edits number; the number is the evidence.
+
+**Observation on "LLM-gated self-convergence" (refinement of §7a.2):** During this incident, code-doctor was observed iterating on `agent_orchestrator.py` every 10 minutes as the scheduled orchestrator run re-fired the "Stale agents: Code Doctor" finding. The iterations proceeded:
+
+- Iteration 1 (18:50:26): added `STALENESS_EXCLUDE_LIST = frozenset({"code-doctor"})` attribute only
+- Iteration 2 (19:00:21): added the attribute AND modified the check at line 151 to use it — structurally complete fix
+- Iteration 3 (19:10:40): added `"code_doctor"` (underscore variant) to the set
+- Iteration 4 (19:20:31): added `"Code Doctor"` (display-name variant) to the set
+
+The initial convergence (1→2) was genuine refinement; everything afterward is drift within a constrained area. The LLM continues adding defensive synonym variants to the exclusion set with no bounded stopping point. The "convergence as soft safety mechanism" intuition does not hold — LLM-gated iteration is self-limiting in behavioral domain but not in content, and can drift indefinitely within a constrained scope without triggering a higher-level stop. This reinforces the need for framework-level iteration caps or idempotency checks alongside the path-whitelist and review-gate work.
+
 ## 8. Observations that don't fit cleanly elsewhere
 
 ### 8.1 Sprint A workers exited at 18:11 PDT — before my incident work
