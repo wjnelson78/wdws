@@ -1,23 +1,41 @@
-#!/usr/bin/env python3
+# ============================================================
+# RETIRED — 2026-04-29
+# ============================================================
+# This file is the legacy Athena Cognitive Engine MCP server
+# (pre-v2 surface). It was superseded by `mcp_server_v2.py` in
+# the same directory; v2 is the file served at klunky.12432.net
+# on port 9200 by wdws-mcp.service.
+#
+# Why retired now: on 2026-04-29 the running surface (v2) had
+# its base64 `download_original_document` tool removed so that
+# all document upload/download goes over raw HTTP (PUT to
+# upload_url + GET download_url with Range support). This
+# legacy file still defines that base64 tool, plus several
+# pre-rename tool names (lookup_case, search_medical_records).
+# Leaving it in place risked a future operator running the
+# wrong file and re-exposing the base64 transfer path.
+#
+# This file is preserved for forensic and reference purposes.
+# It is NOT loaded by any running service:
+#   • wdws-mcp.service runs mcp_server_v2.py exclusively
+#   • acp-mcp.service runs /opt/acp/api/mcp_server.py — a
+#     different file at a different path, unaffected
+#
+# Do not re-enable without deliberate architectural review.
+# The OAuth surface, tool list, and document-transfer wire
+# format have all evolved in v2.
+#
+# Historical evidence preserved:
+#   • This file (renamed mcp_server.py.retired) — full source
+#   • mcp_server_v1_backup.py — earlier snapshot, untouched
+#   • mcp_server_v2.py.pre_logging_backup — untouched
+#   • test_mcp.py — retired alongside; it imported pre-rename
+#     tool names that no longer exist in v2
+# ============================================================
+
 """
-Athena Cognitive Engine MCP Server v2.0 — PostgreSQL-native with OAuth 2.0.
-
-Single MCP server consolidating all domains:
-  • Legal cases (court filings, emails, attachments)
-  • Medical records (clinical notes, lab results, imaging)
-  • Paperless-ngx documents
-  • Write operations (notes, tags, documents, relationships)
-
-OAuth 2.0 with per-client credentials:
-  • Claude Desktop  → client_id: claude-desktop
-  • Athena AI       → client_id: chatgpt-connector
-
-Connects directly to PostgreSQL + pgvector on localhost.
-Supports both stdio (Claude Desktop) and SSE/Streamable HTTP transport.
-
-Run:
-  stdio:  /opt/wdws/venv/bin/python3 /opt/wdws/mcp-server/mcp_server.py
-  http:   /opt/wdws/venv/bin/python3 /opt/wdws/mcp-server/mcp_server.py --http --port 9200
+Legacy Athena Cognitive Engine MCP Server — RETIRED 2026-04-29.
+Superseded by mcp_server_v2.py. See retirement notice above.
 """
 
 import os
@@ -2407,6 +2425,256 @@ async def list_mailboxes() -> str:
         } for r in rows]})
     except Exception as e:
         log.error("list_mailboxes error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                      SMS / TELNYX TOOLS                      ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+_E164_RE = re.compile(r"^\+[1-9][0-9]{1,14}$")
+
+
+async def _sms_find_or_create_thread(
+    p, peer: str, ours: str, subject: Optional[str]
+) -> int:
+    """Find the open thread matching (peer, ours, subject) or create one."""
+    row = await p.fetchrow(
+        """
+        SELECT id FROM core.sms_threads
+         WHERE peer_number = $1 AND our_number = $2
+           AND COALESCE(subject, '') = COALESCE($3, '')
+           AND closed_at IS NULL
+         LIMIT 1
+        """,
+        peer,
+        ours,
+        subject,
+    )
+    if row:
+        return row["id"]
+    row = await p.fetchrow(
+        """
+        INSERT INTO core.sms_threads (peer_number, our_number, subject)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        peer,
+        ours,
+        subject,
+    )
+    return row["id"]
+
+
+@mcp.tool()
+async def send_sms_message(
+    to: str,
+    text: str,
+    subject: Optional[str] = None,
+) -> str:
+    """Send an SMS via Telnyx and log it to the threaded conversation store.
+
+    Args:
+        to: Recipient phone number in E.164 format (e.g. +14255551212)
+        text: Message body. Telnyx handles concatenation for long messages.
+        subject: Optional thread subject to scope this conversation.
+                 If omitted, attaches to the existing open unsubjected
+                 thread with this recipient (or opens one).
+
+    Returns JSON with thread_id, telnyx message_id, parts, cost_usd, and ok.
+    """
+    if not _E164_RE.match(to):
+        return json.dumps({"error": f"'to' must be E.164 (e.g. +14255551212); got {to!r}"})
+    if not text:
+        return json.dumps({"error": "text must not be empty"})
+
+    from telnyx_sms import send_sms  # lazy import keeps MCP import surface clean
+    ours = os.environ.get("TELNYX_SMS_FROM", "")
+    if not ours:
+        return json.dumps({"error": "TELNYX_SMS_FROM not configured"})
+
+    p = await get_pool()
+    try:
+        thread_id = await _sms_find_or_create_thread(p, to, ours, subject)
+
+        result = send_sms(to, text)
+
+        cost = None
+        if result.cost_usd is not None:
+            try:
+                cost = float(result.cost_usd)
+            except (TypeError, ValueError):
+                cost = None
+
+        await p.execute(
+            """
+            INSERT INTO core.sms_messages
+                (thread_id, direction, body, telnyx_message_id, parts,
+                 cost_usd, error_title, error_detail)
+            VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7)
+            """,
+            thread_id,
+            text,
+            result.message_id,
+            result.parts,
+            cost,
+            None if result.ok else result.error_title,
+            None if result.ok else result.error_detail,
+        )
+        await p.execute(
+            "UPDATE core.sms_threads SET last_message_at = now() WHERE id = $1",
+            thread_id,
+        )
+
+        await _log_access("send_sms_message", to, 1)
+        return json.dumps({
+            "ok": result.ok,
+            "thread_id": thread_id,
+            "to": to,
+            "from": ours,
+            "message_id": result.message_id,
+            "parts": result.parts,
+            "cost_usd": result.cost_usd,
+            "error_title": result.error_title,
+            "error_detail": result.error_detail,
+        })
+    except Exception as e:
+        log.error("send_sms_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def check_sms_replies(number: str, since_minutes: int = 60) -> str:
+    """Return inbound SMS replies received from a number within the lookback window.
+
+    Args:
+        number: Peer number in E.164 format (e.g. +14255551212)
+        since_minutes: Lookback window in minutes (default 60)
+    """
+    if not _E164_RE.match(number):
+        return json.dumps({"error": f"number must be E.164; got {number!r}"})
+    if since_minutes <= 0:
+        return json.dumps({"error": "since_minutes must be positive"})
+
+    p = await get_pool()
+    try:
+        rows = await p.fetch(
+            """
+            SELECT m.id, m.thread_id, m.body, m.telnyx_message_id, m.created_at,
+                   t.subject
+              FROM core.sms_messages m
+              JOIN core.sms_threads t ON t.id = m.thread_id
+             WHERE m.direction = 'inbound'
+               AND t.peer_number = $1
+               AND m.created_at >= now() - ($2::int || ' minutes')::interval
+             ORDER BY m.created_at DESC
+            """,
+            number,
+            since_minutes,
+        )
+        await _log_access("check_sms_replies", number, len(rows))
+        return json.dumps({
+            "number": number,
+            "since_minutes": since_minutes,
+            "count": len(rows),
+            "replies": [{
+                "id": r["id"],
+                "thread_id": r["thread_id"],
+                "subject": r["subject"],
+                "body": r["body"],
+                "message_id": r["telnyx_message_id"],
+                "received_at": _ser(r["created_at"]),
+            } for r in rows],
+        })
+    except Exception as e:
+        log.error("check_sms_replies error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_sms_conversation(number: str, limit: int = 50) -> str:
+    """Return the threaded SMS conversation (both directions) with a number, newest first.
+
+    Args:
+        number: Peer number in E.164 format
+        limit: Max messages to return (default 50)
+    """
+    if not _E164_RE.match(number):
+        return json.dumps({"error": f"number must be E.164; got {number!r}"})
+    if limit <= 0 or limit > 1000:
+        return json.dumps({"error": "limit must be between 1 and 1000"})
+
+    p = await get_pool()
+    try:
+        rows = await p.fetch(
+            """
+            SELECT m.id, m.thread_id, m.direction, m.body, m.parts, m.cost_usd,
+                   m.error_title, m.telnyx_message_id, m.created_at,
+                   t.subject, t.opened_at, t.closed_at, t.our_number
+              FROM core.sms_messages m
+              JOIN core.sms_threads t ON t.id = m.thread_id
+             WHERE t.peer_number = $1
+             ORDER BY m.created_at DESC
+             LIMIT $2
+            """,
+            number,
+            limit,
+        )
+        await _log_access("list_sms_conversation", number, len(rows))
+        return json.dumps({
+            "peer_number": number,
+            "count": len(rows),
+            "messages": [{
+                "id": r["id"],
+                "thread_id": r["thread_id"],
+                "subject": r["subject"],
+                "direction": r["direction"],
+                "body": r["body"],
+                "parts": r["parts"],
+                "cost_usd": str(r["cost_usd"]) if r["cost_usd"] is not None else None,
+                "error_title": r["error_title"],
+                "message_id": r["telnyx_message_id"],
+                "created_at": _ser(r["created_at"]),
+                "thread_opened_at": _ser(r["opened_at"]),
+                "thread_closed_at": _ser(r["closed_at"]),
+                "our_number": r["our_number"],
+            } for r in rows],
+        })
+    except Exception as e:
+        log.error("list_sms_conversation error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def close_sms_thread(thread_id: int) -> str:
+    """Close an SMS thread. Future inbound replies from the peer start a new thread.
+
+    Args:
+        thread_id: ID of the thread to close
+    """
+    p = await get_pool()
+    try:
+        row = await p.fetchrow(
+            """
+            UPDATE core.sms_threads
+               SET closed_at = now()
+             WHERE id = $1 AND closed_at IS NULL
+            RETURNING id, peer_number, our_number, subject
+            """,
+            thread_id,
+        )
+        if not row:
+            return json.dumps({"error": f"thread {thread_id} not found or already closed"})
+        await _log_access("close_sms_thread", str(thread_id), 1)
+        return json.dumps({
+            "ok": True,
+            "thread_id": row["id"],
+            "peer_number": row["peer_number"],
+            "our_number": row["our_number"],
+            "subject": row["subject"],
+        })
+    except Exception as e:
+        log.error("close_sms_thread error: %s", e)
         return json.dumps({"error": str(e)})
 
 

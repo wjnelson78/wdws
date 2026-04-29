@@ -223,14 +223,13 @@ sudo systemctl start wdws-mcp
 # Or: cd mcp-server && python mcp_server_v2.py --http --port 9200
 ```
 
-### Raw document transfer (preferred for binary files)
+### Raw document transfer
 
-For larger documents and attachments, prefer the Graph-style raw HTTP transfer flow instead of base64 payloads.
+All document upload and download goes over raw HTTP. There is no base64-chunked tool path.
 
 Control plane via Athena MCP tools:
 - `create_document_upload_session(...)` returns an `upload_url`
 - `create_document_download_session(document_id=...)` returns a `download_url`
-- `download_original_document(...)` remains available as a base64 fallback for reads
 
 Data plane via raw HTTP:
 - Upload with `PUT` to `upload_url` and a `Content-Range` header

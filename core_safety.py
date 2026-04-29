@@ -530,7 +530,10 @@ async def build_document_safety_filter(
 
     if domain == 'legal':
         allowed = sorted(_resolve_legal_allowed(include_privileged, privileged_categories))
-        clause = f"{a}.privilege = ANY(${p}::text[])"
+        # NULL = unclassified, not privileged-by-default. Mirrors the non-scope
+        # branch below and the medical PHI handling — NULL is treated as safe;
+        # only positively-classified privilege values gate retrieval.
+        clause = f"({a}.privilege IS NULL OR {a}.privilege = ANY(${p}::text[]))"
         params.append(allowed)
         p += 1
 
@@ -548,7 +551,7 @@ async def build_document_safety_filter(
         # catches mis-domained privileged/PHI content without requiring the
         # caller to enumerate every non-scope domain.
         allowed = sorted(_resolve_legal_allowed(include_privileged, privileged_categories))
-        legal_expr = f"{a}.privilege = ANY(${p}::text[])"
+        legal_expr = f"({a}.privilege IS NULL OR {a}.privilege = ANY(${p}::text[]))"
         params.append(allowed)
         p += 1
         med_parts, med_params, p = _build_medical_parts(a, p, purpose_of_use, auth_state)
@@ -689,7 +692,10 @@ async def fetch_safe_document(
     if doc['domain'] == 'legal':
         allowed = _resolve_legal_allowed(include_privileged, privileged_categories)
         priv = doc['privilege']
-        if priv not in allowed:
+        # NULL = unclassified; treat as not-privileged so unclassified docs
+        # remain retrievable while Sprint A Task 4 keeps classifying. Once Task 4
+        # tags a doc privileged, that positive value gates this check.
+        if priv is not None and priv not in allowed:
             await _log('denied_privilege', 'legal')
             raise PrivilegeDeniedException(
                 f"document {doc_id} has privilege={priv!r}, not in allowed set "

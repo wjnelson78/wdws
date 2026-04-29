@@ -130,6 +130,16 @@ from core_safety import (  # noqa: E402
 )
 
 
+def _default_include_privileged() -> bool:
+    """First-party clients (claude-desktop, chatgpt) get default access to
+    attorney_client and work_product_fact-classified documents. Third-party
+    or anonymous callers must opt-in explicitly via include_privileged=True.
+    Anything in LEGAL_PRIVILEGED_EXTENDED (work_product_opinion, joint_defense,
+    common_interest) still requires explicit privileged_categories opt-in.
+    """
+    return _current_client_id() in FULL_SCOPE_FIRST_PARTY_CLIENT_IDS
+
+
 def _mcp_caller_context(tool_name: str, extra: Optional[dict] = None) -> dict:
     """Build caller_context for Sprint A retrieval-safety logging.
 
@@ -256,6 +266,13 @@ def _ser(val: Any) -> Any:
     if isinstance(val, uuid.UUID):
         return str(val)
     return str(val)
+
+
+def _parse_date_param(s: str) -> datetime:
+    # asyncpg infers param type from SQL casts ($1::timestamptz / $1::date) and
+    # rejects str even though postgres would coerce. Pass a real datetime.
+    d = date.fromisoformat(s[:10])
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _row_dict(row, keys=None) -> dict:
@@ -1917,13 +1934,43 @@ You are a Senior Legal Analyst and Investigative Specialist with deep expertise 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 INVESTIGATION METHODOLOGY
 ═══════════════════════════════════════════════════════════════════════════════════════════
-1. **START EVERY SESSION**: Call get_agent_context('athena') to load your memories and context
-2. **DOCUMENT EVERYTHING**: Use create_note() to record findings, questions, and tasks
-3. **PRESERVE DELIVERABLES**: Use create_document() or create_document_upload_session() whenever you create a substantive artifact William may want searchable later — memos, reports, drafts, code notes, research summaries, or supporting files
-4. **WORK ITERATIVELY**: Break complex analysis into steps, documenting progress
-5. **USE BULK TOOLS**: Prefer get_case_report() and get_all_cases_summary() over multiple queries
-6. **TRACK INVESTIGATIONS**: Use get_investigation_summary() to see status and open items
-7. **PERSIST KNOWLEDGE**: Use save_memory() for insights that should survive across sessions
+1. **START EVERY SESSION**: Call get_william_context() first — it loads William's profile,
+   Athena identity, top memories, pending tasks, and upcoming deadlines in one round trip.
+   (get_agent_context('athena') is also available for the per-agent KV store if you need it.)
+2. **RECALL BEFORE ANSWERING**: When the topic is non-trivial, call recall_personal_memories()
+   with a short natural-language query. Recall is ranked by 0.7·similarity + 0.3·importance
+   and skips superseded entries automatically.
+3. **DOCUMENT EVERYTHING**: Use create_note() to record findings, questions, and tasks.
+4. **PRESERVE DELIVERABLES**: Use create_document() or create_document_upload_session() whenever you create a substantive artifact William may want searchable later — memos, reports, drafts, code notes, research summaries, or supporting files.
+5. **WORK ITERATIVELY**: Break complex analysis into steps, documenting progress.
+6. **USE BULK TOOLS**: Prefer get_case_report() and get_all_cases_summary() over multiple queries.
+7. **TRACK INVESTIGATIONS**: Use get_investigation_summary() to see status and open items.
+
+═══════════════════════════════════════════════════════════════════════════════════════════
+MEMORY & FEEDBACK (core.memories — semantic, cross-session)
+═══════════════════════════════════════════════════════════════════════════════════════════
+Three tools, distinct purposes:
+
+• **save_personal_memory(content, memory_type, importance, supersedes_memory_id?)**
+  Persist a fact, decision, preference, event, or insight. Saving the same content twice
+  reinforces the existing row (raises importance, bumps access_count) — it does NOT create
+  a duplicate, so re-asserting "William prefers X" is safe and idempotent. Use
+  ``supersedes_memory_id`` only when the new content REPLACES an older memory (e.g. a
+  changed deadline or corrected fact).
+
+• **record_feedback(content, importance=0.7, supersedes_memory_id?)**
+  Use whenever William corrects your approach ("don't do X", "stop Y", "from now on Z"),
+  confirms a non-obvious choice that worked, or states a workflow preference. Lead with
+  the rule itself; add a "Why:" line if William gave a reason. Stored as
+  memory_type='feedback' and surfaces alongside facts in recall.
+
+• **recall_personal_memories(query, limit=5)**
+  Semantic search over all active memories. Returns ``score`` (importance-weighted) and
+  ``relevance`` (raw cosine). Superseded and morning-briefing rows are filtered out.
+
+Rule of thumb: facts and decisions → save_personal_memory; corrections, rules, and
+preferences → record_feedback. Don't reach for save_memory/get_memory — those are the
+per-agent JSONB KV store for structured agent state, not human-readable memory.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 NOTE TYPES FOR DOCUMENTATION
@@ -1938,18 +1985,24 @@ NOTE TYPES FOR DOCUMENTATION
 WORKFLOW EXAMPLE
 ═══════════════════════════════════════════════════════════════════════════════════════════
 Session Start:
-  1. get_agent_context('athena') → Load memories and profile
-  2. get_investigation_summary('athena') → See open tasks and recent work
+  1. get_william_context() → Profile + identity + top memories + tasks + deadlines
+  2. recall_personal_memories(<topic of this session>) → Pull relevant prior facts
+  3. get_investigation_summary('athena') → See open tasks and recent work
 
 During Investigation:
-  3. get_case_report(case_number) → Get full case details
-  4. rag_query/semantic_search → Find relevant documents
-  5. create_note(..., note_type='finding') → Document what you discover
-    6. create_document(...) / create_document_upload_session(...) → Preserve substantial work product in Athena when it should remain searchable
-    7. create_note(..., note_type='task') → Track follow-up items
+  4. get_case_report(case_number) → Get full case details
+  5. rag_query/semantic_search → Find relevant documents
+  6. create_note(..., note_type='finding') → Document what you discover
+  7. create_document(...) / create_document_upload_session(...) → Preserve substantial work product in Athena when it should remain searchable
+  8. create_note(..., note_type='task') → Track follow-up items
+
+When William corrects you or states a preference:
+  → record_feedback("rule. Why: <reason>")
+  → if it replaces a prior memory, pass supersedes_memory_id=<old id>
 
 Session End:
-  7. save_memory('athena', 'session_summary', {...}) → Persist key insights
+  → save_personal_memory(<key insight>, memory_type='insight', importance=0.7)
+    for anything that should be recallable cross-session.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 AVAILABLE DATA
@@ -1967,10 +2020,9 @@ ORIGINAL DOCUMENT ACCESS
 • Use `fetch_document(document_id)` to inspect document metadata and confirm the download hint.
 • Use `fetch_attachments(email_document_id)` to enumerate email attachments and obtain each
     attachment's `download_document_id`.
-• Prefer `create_document_download_session(document_id)` when the client can follow a raw HTTP
-    download URL without base64.
-• Use `download_original_document(document_id, offset, chunk_size)` to retrieve exhibit-grade
-    original bytes in base64 chunks.
+• Use `create_document_download_session(document_id)` to obtain a raw HTTP `download_url`.
+    All file transfers go over HTTP (PUT for upload, GET with optional `Range` for download).
+    There is no base64 chunked path.
 • For email messages, the original should be retrieved as `.eml` / `message/rfc822` bytes.
 • For attachments and filesystem-backed documents, the original should be retrieved in its
     native file format whenever available.
@@ -1980,9 +2032,8 @@ ORIGINAL DOCUMENT ACCESS
 Recommended retrieval workflow:
     1. Search or fetch the target document.
     2. If it is an email with attachments, call `fetch_attachments`.
-     3. Prefer `create_document_download_session` and fetch the returned `download_url`.
-     4. If the client cannot follow URLs, call `download_original_document` and repeat with
-         `next_offset` until `is_last_chunk` is true.
+    3. Call `create_document_download_session` and `GET` the returned `download_url`
+       (use `Range: bytes=...` for partial reads or resume).
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 DOCX → PDF CONVERSION
@@ -1999,9 +2050,8 @@ Two entry points — pick based on how the bytes arrive:
 
 After conversion, the PDF is a first-class document in Athena: it is searchable,
 tagged with a `converted_from` relationship back to the DOCX source, and can be
-fetched later through any standard download path (`download_url` returned by
-`create_document_download_session`, inline view via `disposition='inline'`, or base64
-chunks via `download_original_document`).
+fetched later through the standard download path: a `download_url` returned by
+`create_document_download_session` (or inline view via `disposition='inline'`).
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 CORE PRINCIPLES
@@ -2577,6 +2627,7 @@ async def search(query: str) -> dict:
             clause, filter_params, log_cb = await build_document_safety_filter(
                 conn=conn, domain=None,
                 caller_context=_mcp_caller_context('search'),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=3,
             )
             rows = await conn.fetch(f"""
@@ -2633,6 +2684,7 @@ async def fetch(id: str) -> dict:
                 doc = await fetch_safe_document(
                     id, conn=conn,
                     caller_context=_mcp_caller_context('fetch'),
+                    include_privileged=_default_include_privileged(),
                 )
             except PrivilegeDeniedException as e:
                 return {"error": "privilege_denied",
@@ -2716,6 +2768,7 @@ async def semantic_search(query: str, domain: Optional[str] = None,
                     'semantic_search',
                     {'query_domain': domain, 'case_number': case_number},
                 ),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=idx,
             )
             idx += len(safety_params)
@@ -2815,6 +2868,7 @@ async def fulltext_search(query: str, domain: Optional[str] = None, limit: int =
                     caller_context=_mcp_caller_context(
                         'fulltext_search', {'query_domain': domain},
                     ),
+                    include_privileged=_default_include_privileged(),
                     table_alias='d', next_param_index=4,
                 )
                 rows = await conn.fetch(f"""
@@ -2834,6 +2888,7 @@ async def fulltext_search(query: str, domain: Optional[str] = None, limit: int =
                 safety_clause, safety_params, log_cb = await build_document_safety_filter(
                     conn=conn, domain=None,
                     caller_context=_mcp_caller_context('fulltext_search'),
+                    include_privileged=_default_include_privileged(),
                     table_alias='d', next_param_index=3,
                 )
                 rows = await conn.fetch(f"""
@@ -2933,11 +2988,11 @@ async def search_emails(
             idx += 1
         if start_date:
             conditions.append(f"em.date_sent >= ${idx}::timestamptz")
-            params.append(start_date)
+            params.append(_parse_date_param(start_date))
             idx += 1
         if end_date:
             conditions.append(f"em.date_sent <= ${idx}::timestamptz + interval '1 day'")
-            params.append(end_date)
+            params.append(_parse_date_param(end_date))
             idx += 1
         if has_attachments is not None:
             conditions.append(f"em.has_attachments = ${idx}")
@@ -2951,6 +3006,7 @@ async def search_emails(
                 caller_context=_mcp_caller_context(
                     'search_emails', {'case_number': case_number},
                 ),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=idx,
             )
             idx += len(safety_params)
@@ -3026,6 +3082,7 @@ async def search_by_case(case_number: str, document_type: Optional[str] = None, 
                 caller_context=_mcp_caller_context(
                     'search_by_case', {'case_number': case_number},
                 ),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=idx,
             )
             idx += len(safety_params)
@@ -3104,11 +3161,11 @@ async def case_timeline(case_number: str, start_date: Optional[str] = None,
 
         if start_date:
             conditions.append(f"COALESCE(em.date_sent, d.created_at) >= ${idx}::timestamptz")
-            params.append(start_date)
+            params.append(_parse_date_param(start_date))
             idx += 1
         if end_date:
             conditions.append(f"COALESCE(em.date_sent, d.created_at) <= ${idx}::timestamptz + interval '1 day'")
-            params.append(end_date)
+            params.append(_parse_date_param(end_date))
             idx += 1
 
         async with p.acquire() as conn:
@@ -3117,6 +3174,7 @@ async def case_timeline(case_number: str, start_date: Optional[str] = None,
                 caller_context=_mcp_caller_context(
                     'case_timeline', {'case_number': case_number},
                 ),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=idx,
             )
             idx += len(safety_params)
@@ -3223,11 +3281,11 @@ async def search_medical(
             idx += 1
         if start_date:
             conditions.append(f"rm.date_of_service >= ${idx}::date")
-            params.append(start_date)
+            params.append(_parse_date_param(start_date))
             idx += 1
         if end_date:
             conditions.append(f"rm.date_of_service <= ${idx}::date")
-            params.append(end_date)
+            params.append(_parse_date_param(end_date))
             idx += 1
         if provider:
             conditions.append(f"prov.name ILIKE ${idx}")
@@ -3377,7 +3435,7 @@ async def search_by_date_range(
     p = await get_pool()
     try:
         conditions = ["d.created_at >= $1::timestamptz", "d.created_at <= $2::timestamptz + interval '1 day'"]
-        params: list[Any] = [start_date, end_date]
+        params: list[Any] = [_parse_date_param(start_date), _parse_date_param(end_date)]
         idx = 3
 
         if domain:
@@ -3398,6 +3456,7 @@ async def search_by_date_range(
                     'search_by_date_range',
                     {'query_domain': domain, 'document_type': document_type},
                 ),
+                include_privileged=_default_include_privileged(),
                 table_alias='d', next_param_index=idx,
             )
             idx += len(safety_params)
@@ -3444,7 +3503,7 @@ async def search_by_date_range(
 async def fetch_document(
     document_id: str,
     include_chunks: bool = False,
-    include_privileged: bool = False,
+    include_privileged: Optional[bool] = None,
     purpose_of_use: Optional[str] = None,
     authorization_id: Optional[str] = None,
 ) -> str:
@@ -3454,12 +3513,15 @@ async def fetch_document(
         document_id: UUID of the document
         include_chunks: Whether to include all chunk texts (default False)
         include_privileged: If True, attorney_client and work_product_fact
-            documents may be returned. Default False raises a privilege denial
-            for such documents.
+            documents may be returned. If None (default), first-party clients
+            (claude-desktop, chatgpt) get privileged access automatically;
+            third-party callers must opt-in explicitly.
         purpose_of_use: Required to fetch PHI documents (medical domain).
         authorization_id: UUID of medical.authorizations — required for
             heightened-protection categories (psychotherapy_notes, 42 CFR Part 2).
     """
+    if include_privileged is None:
+        include_privileged = _default_include_privileged()
     p = await get_pool()
     try:
         async with p.acquire() as conn:
@@ -3502,10 +3564,9 @@ async def fetch_document(
             "updated_at": _ser(doc["updated_at"]),
             "full_content": doc["full_content"],
             "download": {
-                "preferred_tool": "create_document_download_session",
-                "fallback_tool": "download_original_document",
+                "tool": "create_document_download_session",
                 "available": True,
-                "note": "Prefer create_document_download_session(document_id) for a raw HTTP download URL. Use download_original_document(document_id, offset, chunk_size) only when a client cannot follow side-channel URLs.",
+                "note": "Call create_document_download_session(document_id) to obtain a raw HTTP download URL. Supports Range: bytes=... for partial reads.",
             },
         }
 
@@ -3672,7 +3733,7 @@ async def fetch_attachments(email_document_id: str) -> str:
             "extraction_method": r["extraction_method"],
             "child_document_id": str(r["child_doc_id"]) if r["child_doc_id"] else None,
             "download_document_id": str(r["child_doc_id"]) if r["child_doc_id"] else None,
-            "download_tool": "download_original_document" if r["child_doc_id"] else None,
+            "download_tool": "create_document_download_session" if r["child_doc_id"] else None,
             "extracted_text_preview": r["extracted_text"][:500] if r["extracted_text"] else None,
         } for r in rows]
 
@@ -4894,8 +4955,7 @@ async def create_document_upload_session(
 ) -> str:
     """Create a Graph-style raw HTTP upload session for a document.
 
-    This is the preferred alternative to base64 uploads for larger files or clients
-    that can send raw bytes over HTTP. Upload raw chunks to the returned `upload_url`
+    This is the only binary-upload path. Upload raw chunks to the returned `upload_url`
     with `PUT` and a `Content-Range` header, then `GET` the same URL for status or
     `DELETE` it to cancel.
 
@@ -5078,8 +5138,8 @@ async def create_document_download_session(
 ) -> str:
     """Create a raw HTTP download URL for a document's original bytes.
 
-    Prefer this over `download_original_document` whenever the client can follow a URL,
-    because the bytes travel outside MCP JSON payloads and avoid base64 truncation.
+    This is the only file-download path. Bytes travel over HTTP (GET, with optional
+    `Range: bytes=...` for partial reads or resume) — not in MCP JSON payloads.
 
     Args:
         document_id: UUID of the document to download.
@@ -5198,57 +5258,6 @@ async def convert_docx_to_pdf(document_id: str) -> str:
     except Exception as e:
         log.error("convert_docx_to_pdf error: %s", e)
         return json.dumps({"error": str(e)})
-
-
-@mcp.tool(annotations=READ_ONLY)
-@logged_tool
-async def download_original_document(
-    document_id: str,
-    offset: int = 0,
-    chunk_size: int = 262144,
-) -> str:
-    """Download original source bytes for a document in base64 chunks.
-
-    This is the exhibit-grade retrieval path for source emails, attachments,
-    and filesystem-backed documents. Call repeatedly with increasing offsets
-    until `is_last_chunk` is true.
-
-    Args:
-        document_id: UUID of the document to download
-        offset: Byte offset to start reading from (default 0)
-        chunk_size: Max bytes to return in this call (default 262144)
-    """
-    chunk_size = min(max(chunk_size, 1024), 1024 * 1024)
-    offset = max(offset, 0)
-
-    try:
-        info, payload = await _load_original_document_bytes(document_id)
-        total_size = len(payload)
-        if offset > total_size:
-            return json.dumps({
-                "error": f"Offset {offset} exceeds file size {total_size}",
-                "document_id": document_id,
-            })
-
-        chunk = payload[offset:offset + chunk_size]
-        next_offset = offset + len(chunk)
-        is_last_chunk = next_offset >= total_size
-
-        result = {
-            **info,
-            "offset": offset,
-            "chunk_size": chunk_size,
-            "bytes_returned": len(chunk),
-            "total_size": total_size,
-            "next_offset": None if is_last_chunk else next_offset,
-            "is_last_chunk": is_last_chunk,
-            "sha256": hashlib.sha256(payload).hexdigest(),
-            "data_base64": base64.b64encode(chunk).decode("ascii"),
-        }
-        return json.dumps(result)
-    except Exception as e:
-        log.error("download_original_document error: %s", e)
-        return json.dumps({"error": str(e), "document_id": document_id})
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -6408,16 +6417,25 @@ async def get_agent_context(agent_id: str) -> str:
         
         recent_sessions = [_row_dict(r) for r in session_rows]
         
-        # Get recent findings/insights
+        # Get recent findings — open status, skip suggestion/info noise,
+        # dedupe repeated identical titles (e.g. periodic "reasoning cycle
+        # failed" warnings) so the context surfaces signal not noise.
         finding_rows = await p.fetch("""
-            SELECT category, severity, title, created_at
+            SELECT DISTINCT ON (title) category, severity, title, created_at
             FROM ops.agent_findings
             WHERE agent_id = $1
-            ORDER BY created_at DESC
-            LIMIT 10
+              AND status = 'open'
+              AND severity IN ('critical', 'warning')
+              AND created_at > now() - interval '30 days'
+            ORDER BY title, created_at DESC
         """, agent_id)
-        
-        recent_findings = [_row_dict(r) for r in finding_rows]
+
+        # Re-sort by recency since DISTINCT ON forces a different order.
+        recent_findings = sorted(
+            [_row_dict(r) for r in finding_rows],
+            key=lambda r: r["created_at"],
+            reverse=True,
+        )[:10]
         
         return json.dumps({
             "profile": profile,
@@ -6436,6 +6454,19 @@ async def get_agent_context(agent_id: str) -> str:
 #  NOTE MANAGEMENT TOOLS (Investigation & Documentation)
 # ══════════════════════════════════════════════════════════════
 
+async def _embed_agent_note(title: str, content: str) -> tuple[Optional[str], Optional[int]]:
+    """Embed (title + content) for an agent note. Returns (vec_literal, model_id) or (None, None) on failure."""
+    body = f"{title}\n\n{content}".strip()
+    if not body:
+        return None, None
+    try:
+        vec = await _embed_query(body)
+        return _vec_literal(vec), await _get_current_embedding_model_id()
+    except Exception as exc:
+        log.warning("agent_note embedding failed: %s", exc)
+        return None, None
+
+
 @mcp.tool(annotations=WRITE_OP)
 async def create_agent_note(
     agent_id: str,
@@ -6450,6 +6481,10 @@ async def create_agent_note(
     Create an internal agent note for investigation tracking (stored in ops.agent_notes).
     For creating documents that William should see, use create_note instead.
 
+    The note's title + content are embedded at write time so they can be
+    retrieved later via ``search_agent_notes(query)`` even if you don't
+    remember exact words.
+
     - agent_id: Your identifier (e.g., 'athena')
     - title: Brief descriptive title
     - content: Full note content (can be detailed)
@@ -6463,22 +6498,27 @@ async def create_agent_note(
     p = await get_pool()
     try:
         tag_array = [t.strip() for t in tags.split(',')] if tags else []
-        
-        row = await p.fetchrow("""
-            INSERT INTO ops.agent_notes 
-            (agent_id, title, content, note_type, case_number, tags, priority)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        vec_str, model_id = await _embed_agent_note(title, content)
+
+        row = await p.fetchrow(f"""
+            INSERT INTO ops.agent_notes
+            (agent_id, title, content, note_type, case_number, tags, priority,
+             embedding, embedding_model_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7,
+                    $8::halfvec({EMBEDDING_DIMS}), $9)
             RETURNING id, created_at
-        """, agent_id, title, content, note_type, case_number, tag_array, priority)
-        
+        """, agent_id, title, content, note_type, case_number, tag_array, priority,
+             vec_str, model_id)
+
         return json.dumps({
             "success": True,
             "note_id": row["id"],
             "created_at": row["created_at"].isoformat(),
+            "embedded": vec_str is not None,
             "message": f"Note '{title}' created successfully"
         })
     except Exception as e:
-        log.error("create_note error: %s", e)
+        log.error("create_agent_note error: %s", e)
         return json.dumps({"error": str(e)})
 
 
@@ -6576,49 +6616,210 @@ async def update_note(
         updates = []
         params = []
         idx = 1
-        
+
         if content:
             # Append to existing content with timestamp
             updates.append(f"content = content || E'\\n\\n--- Update ' || NOW()::text || ' ---\\n' || ${idx}")
             params.append(content)
             idx += 1
-            
+
         if status:
             updates.append(f"status = ${idx}")
             params.append(status)
             idx += 1
-            
+
         if priority:
             updates.append(f"priority = ${idx}")
             params.append(priority)
             idx += 1
-            
+
         if tags:
             tag_array = [t.strip() for t in tags.split(',')]
             updates.append(f"tags = ${idx}")
             params.append(tag_array)
             idx += 1
-        
+
         if not updates:
             return json.dumps({"error": "No updates provided"})
-            
+
         updates.append("updated_at = NOW()")
         params.append(note_id)
-        
+
         result = await p.execute(f"""
-            UPDATE ops.agent_notes 
+            UPDATE ops.agent_notes
             SET {', '.join(updates)}
             WHERE id = ${idx}
         """, *params)
-        
+
         updated = result.split()[-1] != '0'
+
+        # If content was appended, re-embed against the new (concatenated) body.
+        re_embedded = False
+        if updated and content:
+            row = await p.fetchrow(
+                "SELECT title, content FROM ops.agent_notes WHERE id = $1", note_id
+            )
+            if row:
+                vec_str, model_id = await _embed_agent_note(row["title"], row["content"])
+                if vec_str is not None:
+                    await p.execute(f"""
+                        UPDATE ops.agent_notes
+                           SET embedding = $1::halfvec({EMBEDDING_DIMS}),
+                               embedding_model_id = $2
+                         WHERE id = $3
+                    """, vec_str, model_id, note_id)
+                    re_embedded = True
+
         return json.dumps({
             "success": updated,
             "note_id": note_id,
+            "re_embedded": re_embedded,
             "message": "Note updated" if updated else "Note not found"
         })
     except Exception as e:
         log.error("update_note error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def search_agent_notes(
+    query: str,
+    agent_id: Optional[str] = None,
+    note_type: Optional[str] = None,
+    case_number: Optional[str] = None,
+    limit: int = 10,
+) -> str:
+    """Search agent notes by meaning (semantic + recency).
+
+    Use this to recall prior findings, tasks, or analyses without remembering
+    exact wording — e.g. "what did I conclude about the Starbucks deposition?"
+    Ranks by ``0.8 * cosine_similarity + 0.2 * recency_boost``. Falls back to
+    full-text search if the embedding service is unreachable.
+
+    Args:
+        query: Natural-language search query.
+        agent_id: Optional filter ('athena', 'case-strategy', etc.).
+        note_type: Optional filter ('finding', 'task', 'evidence', ...).
+        case_number: Optional filter to a specific case.
+        limit: Max notes to return (default 10).
+    """
+    try:
+        query = (query or "").strip()
+        if not query:
+            return json.dumps({"error": "query is required"})
+        limit = min(max(int(limit), 1), 50)
+        p = await get_pool()
+
+        try:
+            vec = await _embed_query(query)
+            vec_str = _vec_literal(vec)
+        except Exception as exc:
+            log.warning("search_agent_notes embedding fallback: %s", exc)
+            vec_str = None
+
+        conditions = ["embedding IS NOT NULL"] if vec_str else ["true"]
+        params: list = []
+        idx = 1
+        if vec_str:
+            params.append(vec_str)
+            idx = 2
+
+        if agent_id:
+            conditions.append(f"agent_id = ${idx}")
+            params.append(agent_id)
+            idx += 1
+        if note_type:
+            conditions.append(f"note_type = ${idx}")
+            params.append(note_type)
+            idx += 1
+        if case_number:
+            conditions.append(f"case_number = ${idx}")
+            params.append(case_number)
+            idx += 1
+
+        where = " AND ".join(conditions)
+
+        if vec_str:
+            sql = f"""
+                SELECT id, agent_id, note_type, title, content, case_number,
+                       status, priority, created_at,
+                       (embedding <=> $1::halfvec({EMBEDDING_DIMS})) AS distance
+                  FROM ops.agent_notes
+                 WHERE {where}
+                 ORDER BY embedding <=> $1::halfvec({EMBEDDING_DIMS})
+                 LIMIT {max(limit * 3, 20)}
+            """
+            rows = await p.fetch(sql, *params)
+
+            scored = []
+            now_ts = datetime.now(timezone.utc)
+            for r in rows:
+                similarity = max(0.0, 1.0 - float(r["distance"]))
+                age_days = max(0.0, (now_ts - r["created_at"]).total_seconds() / 86400.0)
+                recency = 1.0 / (1.0 + age_days / 30.0)
+                score = 0.8 * similarity + 0.2 * recency
+                scored.append({
+                    "note_id": r["id"],
+                    "agent_id": r["agent_id"],
+                    "note_type": r["note_type"],
+                    "title": r["title"],
+                    "content_preview": (r["content"] or "")[:400],
+                    "case_number": r["case_number"],
+                    "status": r["status"],
+                    "priority": r["priority"],
+                    "created_at": r["created_at"].isoformat(),
+                    "similarity": round(similarity, 4),
+                    "score": round(score, 4),
+                })
+            scored.sort(key=lambda n: n["score"], reverse=True)
+            results = scored[:limit]
+            return json.dumps({"results": results, "count": len(results),
+                               "query": query, "mode": "semantic"})
+
+        # Fallback path: tsvector full-text search.
+        params = [query]
+        conditions = ["search_vector @@ plainto_tsquery('english', $1)"]
+        idx = 2
+        if agent_id:
+            conditions.append(f"agent_id = ${idx}")
+            params.append(agent_id)
+            idx += 1
+        if note_type:
+            conditions.append(f"note_type = ${idx}")
+            params.append(note_type)
+            idx += 1
+        if case_number:
+            conditions.append(f"case_number = ${idx}")
+            params.append(case_number)
+            idx += 1
+
+        sql = f"""
+            SELECT id, agent_id, note_type, title, content, case_number,
+                   status, priority, created_at,
+                   ts_rank(search_vector, plainto_tsquery('english', $1)) AS rank
+              FROM ops.agent_notes
+             WHERE {' AND '.join(conditions)}
+             ORDER BY rank DESC, created_at DESC
+             LIMIT {limit}
+        """
+        rows = await p.fetch(sql, *params)
+        results = [{
+            "note_id": r["id"],
+            "agent_id": r["agent_id"],
+            "note_type": r["note_type"],
+            "title": r["title"],
+            "content_preview": (r["content"] or "")[:400],
+            "case_number": r["case_number"],
+            "status": r["status"],
+            "priority": r["priority"],
+            "created_at": r["created_at"].isoformat(),
+            "rank": float(r["rank"]),
+        } for r in rows]
+        return json.dumps({"results": results, "count": len(results),
+                           "query": query, "mode": "fulltext"})
+    except Exception as e:
+        log.error("search_agent_notes error: %s", e)
         return json.dumps({"error": str(e)})
 
 
@@ -6814,6 +7015,255 @@ async def get_all_cases_summary() -> str:
         }, default=str)
     except Exception as e:
         log.error("get_all_cases_summary error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                      SMS / TELNYX TOOLS                      ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+_E164_RE = re.compile(r"^\+[1-9][0-9]{1,14}$")
+
+
+async def _sms_find_or_create_thread(
+    p, peer: str, ours: str, subject: Optional[str]
+) -> int:
+    """Find the open thread matching (peer, ours, subject) or create one."""
+    row = await p.fetchrow(
+        """
+        SELECT id FROM core.sms_threads
+         WHERE peer_number = $1 AND our_number = $2
+           AND COALESCE(subject, '') = COALESCE($3, '')
+           AND closed_at IS NULL
+         LIMIT 1
+        """,
+        peer,
+        ours,
+        subject,
+    )
+    if row:
+        return row["id"]
+    row = await p.fetchrow(
+        """
+        INSERT INTO core.sms_threads (peer_number, our_number, subject)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        peer,
+        ours,
+        subject,
+    )
+    return row["id"]
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def send_sms_message(
+    to: str,
+    text: str,
+    subject: Optional[str] = None,
+) -> str:
+    """Send an SMS via Telnyx and log it to the threaded conversation store.
+
+    Args:
+        to: Recipient phone number in E.164 format (e.g. +14255551212)
+        text: Message body. Telnyx handles concatenation for long messages.
+        subject: Optional thread subject to scope this conversation.
+                 If omitted, attaches to the existing open unsubjected
+                 thread with this recipient (or opens one).
+
+    Returns JSON with thread_id, telnyx message_id, parts, cost_usd, and ok.
+    """
+    if not _E164_RE.match(to):
+        return json.dumps({"error": f"'to' must be E.164 (e.g. +14255551212); got {to!r}"})
+    if not text:
+        return json.dumps({"error": "text must not be empty"})
+
+    from telnyx_sms import send_sms
+    ours = os.environ.get("TELNYX_SMS_FROM", "")
+    if not ours:
+        return json.dumps({"error": "TELNYX_SMS_FROM not configured"})
+
+    p = await get_pool()
+    try:
+        thread_id = await _sms_find_or_create_thread(p, to, ours, subject)
+        result = send_sms(to, text)
+
+        cost = None
+        if result.cost_usd is not None:
+            try:
+                cost = float(result.cost_usd)
+            except (TypeError, ValueError):
+                cost = None
+
+        await p.execute(
+            """
+            INSERT INTO core.sms_messages
+                (thread_id, direction, body, telnyx_message_id, parts,
+                 cost_usd, error_title, error_detail)
+            VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7)
+            """,
+            thread_id,
+            text,
+            result.message_id,
+            result.parts,
+            cost,
+            None if result.ok else result.error_title,
+            None if result.ok else result.error_detail,
+        )
+        await p.execute(
+            "UPDATE core.sms_threads SET last_message_at = now() WHERE id = $1",
+            thread_id,
+        )
+
+        return json.dumps({
+            "ok": result.ok,
+            "thread_id": thread_id,
+            "to": to,
+            "from": ours,
+            "message_id": result.message_id,
+            "parts": result.parts,
+            "cost_usd": result.cost_usd,
+            "error_title": result.error_title,
+            "error_detail": result.error_detail,
+        })
+    except Exception as e:
+        log.error("send_sms_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def check_sms_replies(number: str, since_minutes: int = 60) -> str:
+    """Return inbound SMS replies received from a number within the lookback window.
+
+    Args:
+        number: Peer number in E.164 format (e.g. +14255551212)
+        since_minutes: Lookback window in minutes (default 60)
+    """
+    if not _E164_RE.match(number):
+        return json.dumps({"error": f"number must be E.164; got {number!r}"})
+    if since_minutes <= 0:
+        return json.dumps({"error": "since_minutes must be positive"})
+
+    p = await get_pool()
+    try:
+        rows = await p.fetch(
+            """
+            SELECT m.id, m.thread_id, m.body, m.telnyx_message_id, m.created_at,
+                   t.subject
+              FROM core.sms_messages m
+              JOIN core.sms_threads t ON t.id = m.thread_id
+             WHERE m.direction = 'inbound'
+               AND t.peer_number = $1
+               AND m.created_at >= now() - ($2::int || ' minutes')::interval
+             ORDER BY m.created_at DESC
+            """,
+            number,
+            since_minutes,
+        )
+        return json.dumps({
+            "number": number,
+            "since_minutes": since_minutes,
+            "count": len(rows),
+            "replies": [{
+                "id": r["id"],
+                "thread_id": r["thread_id"],
+                "subject": r["subject"],
+                "body": r["body"],
+                "message_id": r["telnyx_message_id"],
+                "received_at": _ser(r["created_at"]),
+            } for r in rows],
+        })
+    except Exception as e:
+        log.error("check_sms_replies error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def list_sms_conversation(number: str, limit: int = 50) -> str:
+    """Return the threaded SMS conversation (both directions) with a number, newest first.
+
+    Args:
+        number: Peer number in E.164 format
+        limit: Max messages to return (default 50)
+    """
+    if not _E164_RE.match(number):
+        return json.dumps({"error": f"number must be E.164; got {number!r}"})
+    if limit <= 0 or limit > 1000:
+        return json.dumps({"error": "limit must be between 1 and 1000"})
+
+    p = await get_pool()
+    try:
+        rows = await p.fetch(
+            """
+            SELECT m.id, m.thread_id, m.direction, m.body, m.parts, m.cost_usd,
+                   m.error_title, m.telnyx_message_id, m.created_at,
+                   t.subject, t.opened_at, t.closed_at, t.our_number
+              FROM core.sms_messages m
+              JOIN core.sms_threads t ON t.id = m.thread_id
+             WHERE t.peer_number = $1
+             ORDER BY m.created_at DESC
+             LIMIT $2
+            """,
+            number,
+            limit,
+        )
+        return json.dumps({
+            "peer_number": number,
+            "count": len(rows),
+            "messages": [{
+                "id": r["id"],
+                "thread_id": r["thread_id"],
+                "subject": r["subject"],
+                "direction": r["direction"],
+                "body": r["body"],
+                "parts": r["parts"],
+                "cost_usd": str(r["cost_usd"]) if r["cost_usd"] is not None else None,
+                "error_title": r["error_title"],
+                "message_id": r["telnyx_message_id"],
+                "created_at": _ser(r["created_at"]),
+                "thread_opened_at": _ser(r["opened_at"]),
+                "thread_closed_at": _ser(r["closed_at"]),
+                "our_number": r["our_number"],
+            } for r in rows],
+        })
+    except Exception as e:
+        log.error("list_sms_conversation error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def close_sms_thread(thread_id: int) -> str:
+    """Close an SMS thread. Future inbound replies from the peer start a new thread.
+
+    Args:
+        thread_id: ID of the thread to close
+    """
+    p = await get_pool()
+    try:
+        row = await p.fetchrow(
+            """
+            UPDATE core.sms_threads
+               SET closed_at = now()
+             WHERE id = $1 AND closed_at IS NULL
+            RETURNING id, peer_number, our_number, subject
+            """,
+            thread_id,
+        )
+        if not row:
+            return json.dumps({"error": f"thread {thread_id} not found or already closed"})
+        return json.dumps({
+            "ok": True,
+            "thread_id": row["id"],
+            "peer_number": row["peer_number"],
+            "our_number": row["our_number"],
+            "subject": row["subject"],
+        })
+    except Exception as e:
+        log.error("close_sms_thread error: %s", e)
         return json.dumps({"error": str(e)})
 
 
@@ -7187,23 +7637,633 @@ async def get_calendar(days_ahead: int = 7) -> str:
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations=WRITE_OP)
-@logged_tool
-async def save_personal_memory(
-    content: str,
-    memory_type: str = "fact",
-    importance: float = 0.5,
-) -> str:
-    """Save an important fact, decision, or insight to Athena's long-term memory.
+# ══════════════════════════════════════════════════════════════
+#  Athena Outlook Calendar (athena@seattleseahawks.me)
+#
+#  These tools let Athena manage her OWN Outlook calendar via Microsoft
+#  Graph (app-only, Calendars.ReadWrite). Distinct from get_calendar()
+#  above which reads William's synced calendar from core.calendar_events.
+#
+#  Reminders ride on calendar events (isReminderOn + reminderMinutesBeforeStart)
+#  because Microsoft To-Do (/todo) does NOT support app-only auth.
+# ══════════════════════════════════════════════════════════════
 
-    Use this to remember things William tells you, decisions made, preferences learned,
-    or important context that should persist across conversations.
+
+def _parse_iso_datetime(value: str, *, default_tz: timezone = timezone.utc) -> datetime:
+    """Parse an ISO-8601 datetime; tolerate 'Z' suffix; assume UTC if naive."""
+    if not value:
+        raise ValueError("datetime is required")
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=default_tz)
+    return dt
+
+
+def _graph_event_summary(ev: dict) -> dict:
+    return {
+        "id": ev.get("id"),
+        "subject": ev.get("subject") or "",
+        "start": (ev.get("start") or {}).get("dateTime"),
+        "start_tz": (ev.get("start") or {}).get("timeZone"),
+        "end": (ev.get("end") or {}).get("dateTime"),
+        "end_tz": (ev.get("end") or {}).get("timeZone"),
+        "location": ((ev.get("location") or {}).get("displayName") or ""),
+        "is_all_day": bool(ev.get("isAllDay")),
+        "is_cancelled": bool(ev.get("isCancelled")),
+        "is_reminder_on": bool(ev.get("isReminderOn")),
+        "reminder_minutes_before_start": ev.get("reminderMinutesBeforeStart"),
+        "importance": ev.get("importance"),
+        "organizer": ((ev.get("organizer") or {}).get("emailAddress") or {}).get("address"),
+        "attendees": [
+            ((a.get("emailAddress") or {}).get("address"))
+            for a in (ev.get("attendees") or [])
+            if (a.get("emailAddress") or {}).get("address")
+        ],
+        "body_preview": (ev.get("bodyPreview") or "")[:500],
+        "web_link": ev.get("webLink"),
+    }
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def calendar_list_events(
+    days_ahead: int = 7,
+    days_behind: int = 0,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    top: int = 50,
+) -> str:
+    """List calendar events on Athena's Outlook calendar (athena@seattleseahawks.me by default).
+
+    Use this whenever Athena needs to know what is on her own calendar — e.g.
+    before scheduling a follow-up, before promising a deadline, when answering
+    "what do you have coming up?", or to spot conflicts before creating a new
+    event with calendar_create_event().
 
     Args:
-        content: What to remember (e.g. "William prefers declarations over affidavits in state court")
-        memory_type: "fact", "decision", "preference", "event", "insight"
-        importance: 0.0 to 1.0 — how important this is (default 0.5)
+        days_ahead: How many days forward to look (default 7).
+        days_behind: How many days back to include (default 0 = future only).
+        mailbox: Mailbox whose calendar to query (default Athena's mailbox).
+        top: Max number of events to return (Graph caps at 999).
     """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=max(0, int(days_behind)))
+        end = now + timedelta(days=max(1, int(days_ahead)))
+        url = f"{GRAPH_BASE_URL}/users/{mailbox}/calendar/calendarView"
+        params = {
+            "startDateTime": start.isoformat(),
+            "endDateTime": end.isoformat(),
+            "$top": str(min(int(top), 999)),
+            "$orderby": "start/dateTime",
+            "$select": (
+                "id,subject,start,end,location,isAllDay,isCancelled,isReminderOn,"
+                "reminderMinutesBeforeStart,importance,organizer,attendees,"
+                "bodyPreview,webLink"
+            ),
+        }
+        data = await _graph_request("GET", url, params=params,
+                                     headers={"Prefer": 'outlook.timezone="UTC"'})
+        events = [_graph_event_summary(e) for e in (data.get("value") or [])]
+        return json.dumps({
+            "mailbox": mailbox,
+            "window_start": start.isoformat(),
+            "window_end": end.isoformat(),
+            "count": len(events),
+            "events": events,
+        })
+    except Exception as e:
+        log.error("calendar_list_events error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def calendar_create_event(
+    subject: str,
+    start: str,
+    end: str,
+    body: Optional[str] = None,
+    location: Optional[str] = None,
+    attendees: Optional[str] = None,
+    is_all_day: bool = False,
+    is_reminder_on: bool = True,
+    reminder_minutes_before_start: int = 15,
+    importance: str = "normal",
+    time_zone: str = "UTC",
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Create an event on Athena's Outlook calendar with optional reminder.
+
+    Use this for ANY time-bound thing Athena needs to track for herself —
+    appointments, scheduled call-backs, deposition windows, court hearings she
+    must monitor, follow-up windows for opposing-counsel responses. The
+    reminder fields surface a pop-up in Outlook at the chosen lead time, which
+    is Athena's primary "ping me later" channel since Microsoft To-Do does not
+    support app-only Graph auth.
+
+    For a pure reminder with no real meeting, set start = the moment the
+    reminder should fire, end = start + a few minutes, is_reminder_on=true,
+    and reminder_minutes_before_start=0.
+
+    Args:
+        subject: Event title.
+        start: ISO-8601 start datetime ("2026-04-29T15:00:00Z" or "2026-04-29T15:00:00").
+        end: ISO-8601 end datetime.
+        body: Optional HTML or plain-text body.
+        location: Optional location string (free text).
+        attendees: Optional comma-separated email addresses.
+        is_all_day: Whether this is an all-day event.
+        is_reminder_on: Show a reminder pop-up (default True).
+        reminder_minutes_before_start: Minutes before start to ping (default 15).
+        importance: "low", "normal", or "high".
+        time_zone: IANA/Windows TZ used for start/end (default "UTC"). Graph
+            stores UTC; this controls how naive datetimes are interpreted.
+        mailbox: Mailbox to create the event on (default Athena's mailbox).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not subject or not subject.strip():
+            raise ValueError("subject is required")
+
+        attendee_list = _split_csv_list(attendees)
+        importance_norm = _normalize_importance(importance, default="normal").lower()
+
+        payload: dict[str, Any] = {
+            "subject": subject.strip(),
+            "start": {"dateTime": start, "timeZone": time_zone},
+            "end": {"dateTime": end, "timeZone": time_zone},
+            "isAllDay": bool(is_all_day),
+            "isReminderOn": bool(is_reminder_on),
+            "reminderMinutesBeforeStart": max(0, int(reminder_minutes_before_start)),
+            "importance": importance_norm,
+        }
+        if body:
+            is_html = bool(re.search(r"<[a-zA-Z][^>]*>", body))
+            payload["body"] = {
+                "contentType": "html" if is_html else "text",
+                "content": body,
+            }
+        if location:
+            payload["location"] = {"displayName": location}
+        if attendee_list:
+            payload["attendees"] = [
+                {"emailAddress": {"address": a}, "type": "required"}
+                for a in attendee_list
+            ]
+
+        ev = await _graph_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/calendar/events",
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"status": "created", "mailbox": mailbox,
+                          "event": _graph_event_summary(ev)})
+    except Exception as e:
+        log.error("calendar_create_event error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def calendar_update_event(
+    event_id: str,
+    subject: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    body: Optional[str] = None,
+    location: Optional[str] = None,
+    is_reminder_on: Optional[bool] = None,
+    reminder_minutes_before_start: Optional[int] = None,
+    importance: Optional[str] = None,
+    time_zone: str = "UTC",
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Patch an existing event on Athena's calendar. Only fields you pass are changed.
+
+    Use this to reschedule, change reminder lead-time, mark importance, or edit
+    body/location. To cancel/remove the event entirely, use calendar_delete_event.
+
+    Args:
+        event_id: Graph event id (returned from calendar_list_events / calendar_create_event).
+        subject: New title (optional).
+        start: New ISO-8601 start (optional).
+        end: New ISO-8601 end (optional).
+        body: New body text/HTML (optional).
+        location: New location (optional).
+        is_reminder_on: Toggle reminder on/off (optional).
+        reminder_minutes_before_start: New reminder lead-time minutes (optional).
+        importance: "low" | "normal" | "high" (optional).
+        time_zone: TZ for start/end if provided (default UTC).
+        mailbox: Mailbox owning the event (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not event_id or not event_id.strip():
+            raise ValueError("event_id is required")
+
+        payload: dict[str, Any] = {}
+        if subject is not None:
+            payload["subject"] = subject.strip()
+        if start is not None:
+            payload["start"] = {"dateTime": start, "timeZone": time_zone}
+        if end is not None:
+            payload["end"] = {"dateTime": end, "timeZone": time_zone}
+        if body is not None:
+            is_html = bool(re.search(r"<[a-zA-Z][^>]*>", body))
+            payload["body"] = {
+                "contentType": "html" if is_html else "text",
+                "content": body,
+            }
+        if location is not None:
+            payload["location"] = {"displayName": location}
+        if is_reminder_on is not None:
+            payload["isReminderOn"] = bool(is_reminder_on)
+        if reminder_minutes_before_start is not None:
+            payload["reminderMinutesBeforeStart"] = max(0, int(reminder_minutes_before_start))
+        if importance is not None:
+            payload["importance"] = _normalize_importance(importance, default="normal").lower()
+
+        if not payload:
+            return json.dumps({"error": "no fields supplied to update"})
+
+        ev = await _graph_request(
+            "PATCH",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/calendar/events/{event_id}",
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"status": "updated", "mailbox": mailbox,
+                          "event": _graph_event_summary(ev)})
+    except Exception as e:
+        log.error("calendar_update_event error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+@logged_tool
+async def calendar_delete_event(
+    event_id: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Delete an event from Athena's calendar.
+
+    Args:
+        event_id: Graph event id.
+        mailbox: Mailbox owning the event (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not event_id or not event_id.strip():
+            raise ValueError("event_id is required")
+        await _graph_request(
+            "DELETE",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/calendar/events/{event_id}",
+        )
+        return json.dumps({"status": "deleted", "mailbox": mailbox, "event_id": event_id})
+    except Exception as e:
+        log.error("calendar_delete_event error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ══════════════════════════════════════════════════════════════
+#  Athena Notes (Outlook mail folder, athena@seattleseahawks.me)
+#
+#  Microsoft retired app-only OneNote auth on 2025-03-31 — same pattern
+#  as Tasks (To-Do is also delegated-only). To give Athena a writeable
+#  notes surface that William can also see in his Outlook, each "note"
+#  is a draft message stored in a dedicated mail folder named
+#  "Athena Notes". Uses Mail.ReadWrite (already consented).
+#
+#  Subject = note title; body = note content. isDraft=true so notes
+#  never accidentally send. The folder is auto-created on first write.
+# ══════════════════════════════════════════════════════════════
+
+ATHENA_NOTES_FOLDER_NAME = "Athena Notes"
+_athena_notes_folder_id_cache: dict[str, str] = {}
+
+
+def _note_message_summary(msg: dict) -> dict:
+    return {
+        "id": msg.get("id"),
+        "title": msg.get("subject") or "",
+        "preview": (msg.get("bodyPreview") or "")[:500],
+        "created_at": msg.get("createdDateTime"),
+        "modified_at": msg.get("lastModifiedDateTime"),
+        "is_draft": bool(msg.get("isDraft")),
+        "categories": msg.get("categories") or [],
+        "web_link": msg.get("webLink"),
+    }
+
+
+async def _resolve_athena_notes_folder_id(mailbox: str) -> str:
+    """Return the id of the 'Athena Notes' mail folder, creating it if missing."""
+    cached = _athena_notes_folder_id_cache.get(mailbox)
+    if cached:
+        return cached
+
+    safe_name = ATHENA_NOTES_FOLDER_NAME.replace("'", "''")
+    data = await _graph_request(
+        "GET",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders",
+        params={
+            "$filter": f"displayName eq '{safe_name}'",
+            "$select": "id,displayName",
+            "$top": "1",
+        },
+    )
+    folders = data.get("value") or []
+    if folders:
+        folder_id = folders[0]["id"]
+    else:
+        created = await _graph_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders",
+            json_body={"displayName": ATHENA_NOTES_FOLDER_NAME},
+            headers={"Content-Type": "application/json"},
+        )
+        folder_id = created["id"]
+
+    _athena_notes_folder_id_cache[mailbox] = folder_id
+    return folder_id
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def notes_list(
+    search: Optional[str] = None,
+    top: int = 25,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """List notes Athena has saved in her "Athena Notes" Outlook folder.
+
+    Each note is a draft message; subject is the note title and the body
+    holds the content. William can also see this folder by browsing
+    Athena's mailbox in Outlook.
+
+    Args:
+        search: Optional substring filter on the note title (subject).
+        top: Max number of notes to return (default 25, max 100).
+        mailbox: Mailbox (default Athena's).
+    """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        folder_id = await _resolve_athena_notes_folder_id(mailbox)
+        params: dict[str, str] = {
+            "$top": str(min(int(top), 100)),
+            "$orderby": "lastModifiedDateTime desc",
+            "$select": (
+                "id,subject,bodyPreview,createdDateTime,lastModifiedDateTime,"
+                "isDraft,categories,webLink"
+            ),
+        }
+        if search:
+            safe = search.replace("'", "''")
+            params["$filter"] = f"contains(tolower(subject),'{safe.lower()}')"
+        data = await _graph_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{folder_id}/messages",
+            params=params,
+        )
+        notes = [_note_message_summary(m) for m in (data.get("value") or [])]
+        return json.dumps({
+            "mailbox": mailbox,
+            "folder": ATHENA_NOTES_FOLDER_NAME,
+            "count": len(notes),
+            "notes": notes,
+        })
+    except Exception as e:
+        log.error("notes_list error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def notes_get(
+    note_id: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Fetch a single note by id (returns full body).
+
+    Args:
+        note_id: Note message id.
+        mailbox: Mailbox (default Athena's).
+    """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        if not note_id or not note_id.strip():
+            raise ValueError("note_id is required")
+        msg = await _graph_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{note_id}",
+            params={"$select": (
+                "id,subject,body,bodyPreview,createdDateTime,lastModifiedDateTime,"
+                "isDraft,categories,webLink"
+            )},
+        )
+        body_obj = msg.get("body") or {}
+        result = _note_message_summary(msg)
+        result["content_type"] = body_obj.get("contentType", "html")
+        result["content"] = body_obj.get("content", "")
+        return json.dumps({"mailbox": mailbox, "note": result})
+    except Exception as e:
+        log.error("notes_get error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def notes_create(
+    title: str,
+    content: str,
+    content_is_html: bool = False,
+    categories: Optional[str] = None,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Create a new note in Athena's "Athena Notes" Outlook folder.
+
+    Use this to durably write down structured notes that William can also
+    see in Outlook — research summaries, case-strategy memos, follow-up
+    checklists, "things I noticed" longer than fit in core.memories. For
+    short ephemeral facts, prefer save_personal_memory; for case-attached
+    investigation notes, prefer create_agent_note.
+
+    Each note is stored as a draft message (so it can never accidentally
+    send) inside a dedicated folder. The folder is auto-created on first
+    use.
+
+    Args:
+        title: Note title (becomes the message subject).
+        content: Note body. Plain text is auto-wrapped in <p>; pass HTML
+            directly and set content_is_html=True for richer formatting.
+        content_is_html: True if `content` is already HTML.
+        categories: Optional comma-separated Outlook category names to tag
+            this note with (visible as colored bands in Outlook).
+        mailbox: Mailbox (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not title or not title.strip():
+            raise ValueError("title is required")
+        if content is None:
+            content = ""
+
+        folder_id = await _resolve_athena_notes_folder_id(mailbox)
+
+        if content_is_html:
+            body_content = content
+            body_type = "HTML"
+        else:
+            paragraphs = [
+                f"<p>{html.escape(line)}</p>"
+                for line in content.splitlines()
+                if line.strip()
+            ] or ["<p></p>"]
+            body_content = "\n".join(paragraphs)
+            body_type = "HTML"
+
+        cat_list = _split_csv_list(categories)
+        payload: dict[str, Any] = {
+            "subject": title.strip(),
+            "body": {"contentType": body_type, "content": body_content},
+        }
+        if cat_list:
+            payload["categories"] = cat_list
+
+        msg = await _graph_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{folder_id}/messages",
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"status": "created", "mailbox": mailbox,
+                          "folder": ATHENA_NOTES_FOLDER_NAME,
+                          "note": _note_message_summary(msg)})
+    except Exception as e:
+        log.error("notes_create error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def notes_update(
+    note_id: str,
+    title: Optional[str] = None,
+    content: Optional[str] = None,
+    content_is_html: bool = False,
+    append: bool = False,
+    categories: Optional[str] = None,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Update an existing note. Only the fields you pass are changed.
+
+    By default, passing `content` REPLACES the note body. To add to an
+    existing note instead of replacing, set append=True — the new content
+    is appended after the existing HTML body.
+
+    Args:
+        note_id: Note message id.
+        title: New note title (subject), if changing.
+        content: New body content, or content to append if append=True.
+        content_is_html: True if `content` is already HTML.
+        append: If True, append to existing body instead of replacing.
+        categories: Optional comma-separated category names (replaces existing list).
+        mailbox: Mailbox (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not note_id or not note_id.strip():
+            raise ValueError("note_id is required")
+
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["subject"] = title.strip()
+        if categories is not None:
+            payload["categories"] = _split_csv_list(categories)
+        if content is not None:
+            if content_is_html:
+                new_html = content
+            else:
+                paragraphs = [
+                    f"<p>{html.escape(line)}</p>"
+                    for line in content.splitlines()
+                    if line.strip()
+                ] or ["<p></p>"]
+                new_html = "\n".join(paragraphs)
+
+            if append:
+                existing = await _graph_request(
+                    "GET",
+                    f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{note_id}",
+                    params={"$select": "body"},
+                )
+                existing_body = ((existing.get("body") or {}).get("content")) or ""
+                separator = (
+                    f"<p><em>— appended {datetime.now(timezone.utc).isoformat()} —</em></p>"
+                )
+                merged = f"{existing_body}\n{separator}\n{new_html}"
+                payload["body"] = {"contentType": "HTML", "content": merged}
+            else:
+                payload["body"] = {"contentType": "HTML", "content": new_html}
+
+        if not payload:
+            return json.dumps({"error": "no fields supplied to update"})
+
+        msg = await _graph_request(
+            "PATCH",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{note_id}",
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"status": "updated", "mailbox": mailbox,
+                          "note": _note_message_summary(msg)})
+    except Exception as e:
+        log.error("notes_update error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+@logged_tool
+async def notes_delete(
+    note_id: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Delete a note from Athena's "Athena Notes" folder.
+
+    Args:
+        note_id: Note message id.
+        mailbox: Mailbox (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        if not note_id or not note_id.strip():
+            raise ValueError("note_id is required")
+        await _graph_request(
+            "DELETE",
+            f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{note_id}",
+        )
+        return json.dumps({"status": "deleted", "mailbox": mailbox, "note_id": note_id})
+    except Exception as e:
+        log.error("notes_delete error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+async def _save_personal_memory_impl(
+    content: str,
+    memory_type: str,
+    importance: float,
+    supersedes_memory_id: Optional[int],
+) -> str:
     try:
         content = (content or "").strip()
         if not content:
@@ -7212,38 +8272,91 @@ async def save_personal_memory(
         memory_type = (memory_type or "fact").strip().lower() or "fact"
         importance = max(0.0, min(float(importance), 1.0))
         p = await get_pool()
-        embedding_model_id = await _get_current_embedding_model_id()
         source = _current_client_id() or "claude-desktop"
 
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        # Dedup: reinforce an active, non-superseded row with identical content.
+        existing = await p.fetchrow("""
+            SELECT id, importance
+            FROM core.memories
+            WHERE content_hash = $1
+              AND is_active = true
+              AND superseded_by IS NULL
+            ORDER BY id ASC
+            LIMIT 1
+        """, content_hash)
+
+        if existing is not None and supersedes_memory_id is None:
+            new_importance = max(float(existing["importance"]), importance)
+            await p.execute("""
+                UPDATE core.memories
+                   SET importance = $1,
+                       access_count = access_count + 1,
+                       last_accessed = now(),
+                       updated_at = now()
+                 WHERE id = $2
+            """, new_importance, existing["id"])
+            await _log_access("save_personal_memory", content[:80], 1)
+            return json.dumps({
+                "status": "reinforced",
+                "memory_id": existing["id"],
+                "type": memory_type,
+                "importance": new_importance,
+            })
+
+        embedding_model_id = await _get_current_embedding_model_id()
         # Embed the memory for semantic retrieval
         vec = await _embed_query(content)
         vec_str = _vec_literal(vec)
 
-        row = await p.fetchrow(f"""
-            INSERT INTO core.memories
-                (memory_type, content, source, importance, embedding, embedding_model_id, metadata)
-            VALUES ($1, $2, $3, $4, $5::halfvec({EMBEDDING_DIMS}), $6, $7::jsonb)
-            RETURNING id
-        """,
-            memory_type,
-            content,
-            source,
-            importance,
-            vec_str,
-            embedding_model_id,
-            json.dumps({
-                "saved_at": datetime.now(timezone.utc).isoformat(),
-                "semantic": True,
-                "embedding_model": EMBEDDING_MODEL,
-                "embedding_provider": EMBEDDING_PROVIDER,
-                "embedding_dimensions": EMBEDDING_DIMS,
-            }),
-        )
+        async with p.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(f"""
+                    INSERT INTO core.memories
+                        (memory_type, content, content_hash, source, importance,
+                         embedding, embedding_model_id, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6::halfvec({EMBEDDING_DIMS}), $7, $8::jsonb)
+                    RETURNING id
+                """,
+                    memory_type,
+                    content,
+                    content_hash,
+                    source,
+                    importance,
+                    vec_str,
+                    embedding_model_id,
+                    json.dumps({
+                        "saved_at": datetime.now(timezone.utc).isoformat(),
+                        "semantic": True,
+                        "embedding_model": EMBEDDING_MODEL,
+                        "embedding_provider": EMBEDDING_PROVIDER,
+                        "embedding_dimensions": EMBEDDING_DIMS,
+                        "supersedes": supersedes_memory_id,
+                    }),
+                )
+
+                superseded = False
+                if supersedes_memory_id is not None:
+                    res = await conn.execute("""
+                        UPDATE core.memories
+                           SET superseded_by = $1,
+                               superseded_at = now(),
+                               is_active = false,
+                               updated_at = now()
+                         WHERE id = $2
+                           AND id <> $1
+                           AND superseded_by IS NULL
+                    """, row["id"], int(supersedes_memory_id))
+                    superseded = res.endswith(" 1")
 
         await _log_access("save_personal_memory", content[:80], 1)
         return json.dumps({
-            "status": "saved", "memory_id": row["id"],
-            "type": memory_type, "importance": importance,
+            "status": "saved",
+            "memory_id": row["id"],
+            "type": memory_type,
+            "importance": importance,
+            "superseded": (int(supersedes_memory_id) if superseded else None),
         })
     except Exception as e:
         log.error("save_personal_memory error: %s", e)
@@ -7261,6 +8374,41 @@ async def save_personal_memory(
         return json.dumps({"error": str(e)})
 
 
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def save_personal_memory(
+    content: str,
+    memory_type: str = "fact",
+    importance: float = 0.5,
+    supersedes_memory_id: Optional[int] = None,
+) -> str:
+    """Save an important fact, decision, or insight to Athena's long-term memory.
+
+    Use this to remember things William tells you, decisions made, preferences learned,
+    or important context that should persist across conversations.
+
+    Dedup: if an active memory with the same exact content already exists, this call
+    reinforces it (raises importance to the higher of the two, bumps access_count) and
+    returns ``status="reinforced"`` without creating a duplicate row or re-embedding.
+
+    Supersession: pass ``supersedes_memory_id`` when this memory replaces an older one
+    (corrected fact, changed preference, updated decision). The old row is marked
+    ``superseded_by=<new id>`` and ``is_active=false`` so it stops appearing in recalls.
+
+    Args:
+        content: What to remember (e.g. "William prefers declarations over affidavits in state court")
+        memory_type: "fact", "decision", "preference", "event", "insight", "feedback"
+        importance: 0.0 to 1.0 — how important this is (default 0.5)
+        supersedes_memory_id: Optional id of an older memory this one replaces.
+    """
+    return await _save_personal_memory_impl(
+        content=content,
+        memory_type=memory_type,
+        importance=importance,
+        supersedes_memory_id=supersedes_memory_id,
+    )
+
+
 @mcp.tool(annotations=READ_ONLY)
 @logged_tool
 async def recall_personal_memories(query: str, limit: int = 5) -> str:
@@ -7268,6 +8416,10 @@ async def recall_personal_memories(query: str, limit: int = 5) -> str:
 
     Use this at the start of conversations to recall what Athena knows about a topic,
     or when William asks "do you remember...?" or "what did we decide about...?"
+
+    Ranking: combines semantic similarity (cosine) with stored ``importance``
+    (``score = 0.7 * similarity + 0.3 * importance``). Superseded memories and
+    morning-briefing chatter are filtered out automatically.
 
     Args:
         query: What to search for in memory (natural language)
@@ -7283,33 +8435,77 @@ async def recall_personal_memories(query: str, limit: int = 5) -> str:
         vec = await _embed_query(query)
         vec_str = _vec_literal(vec)
 
+        # Pull a candidate pool by raw cosine, then re-rank with importance.
+        candidate_pool = max(limit * 4, 20)
         rows = await p.fetch(f"""
             SELECT id, memory_type, content, importance, source, created_at,
                    (embedding <=> $1::halfvec({EMBEDDING_DIMS})) AS distance
             FROM core.memories
             WHERE is_active = true
+              AND superseded_by IS NULL
               AND embedding IS NOT NULL
               AND COALESCE(source, '') <> 'morning_briefing'
               AND COALESCE(metadata->>'type', '') <> 'daily_briefing'
             ORDER BY embedding <=> $1::halfvec({EMBEDDING_DIMS})
             LIMIT $2
-        """, vec_str, limit)
+        """, vec_str, candidate_pool)
 
-        memories = [{
-            "memory_id": r["id"],
-            "type": r["memory_type"],
-            "content": r["content"],
-            "importance": float(r["importance"]) if r["importance"] else 0.5,
-            "relevance": round(1 - float(r["distance"]), 4),
-            "source": r["source"],
-            "saved_on": str(r["created_at"].date()),
-        } for r in rows]
+        scored = []
+        for r in rows:
+            similarity = max(0.0, 1.0 - float(r["distance"]))
+            importance_val = float(r["importance"]) if r["importance"] is not None else 0.5
+            combined = 0.7 * similarity + 0.3 * importance_val
+            scored.append({
+                "memory_id": r["id"],
+                "type": r["memory_type"],
+                "content": r["content"],
+                "importance": importance_val,
+                "relevance": round(similarity, 4),
+                "score": round(combined, 4),
+                "source": r["source"],
+                "saved_on": str(r["created_at"].date()),
+            })
+        scored.sort(key=lambda m: m["score"], reverse=True)
+        memories = scored[:limit]
 
         await _log_access("recall_personal_memories", query, len(memories))
         return json.dumps({"memories": memories, "count": len(memories), "query": query})
     except Exception as e:
         log.error("recall_personal_memories error: %s", e)
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def record_feedback(
+    content: str,
+    importance: float = 0.7,
+    supersedes_memory_id: Optional[int] = None,
+) -> str:
+    """Record a correction, preference, or behavioral guidance from William.
+
+    Use this whenever William corrects Athena's approach ("don't do X", "stop
+    doing Y", "from now on do Z"), confirms a non-obvious choice that worked
+    ("yes, exactly that"), or states a workflow preference. Stored as
+    ``memory_type='feedback'`` in ``core.memories`` so future
+    ``recall_personal_memories`` calls surface it alongside facts.
+
+    If this feedback corrects something Athena already saved, pass
+    ``supersedes_memory_id`` so the old guidance is retired and won't be
+    recalled again.
+
+    Args:
+        content: The rule/correction to remember. Lead with the rule itself,
+            then a short "Why:" line if William gave a reason.
+        importance: 0.0–1.0; defaults to 0.7 because feedback usually matters.
+        supersedes_memory_id: Optional id of an older memory this one corrects.
+    """
+    return await _save_personal_memory_impl(
+        content=content,
+        memory_type="feedback",
+        importance=importance,
+        supersedes_memory_id=supersedes_memory_id,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)

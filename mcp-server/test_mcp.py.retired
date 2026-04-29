@@ -1,8 +1,17 @@
-#!/usr/bin/env python3
-"""Quick test of the unified MCP server tools."""
+# ============================================================
+# RETIRED — 2026-04-29
+# ============================================================
+# This was a smoke-test script for the legacy mcp_server.py
+# tool surface. It imports pre-rename tool names that no longer
+# exist in mcp_server_v2.py (e.g. `lookup_case`,
+# `search_medical_records`). Retired alongside mcp_server.py;
+# preserved for reference only. Not run by any service or CI.
+# ============================================================
+
+"""Legacy smoke test for retired mcp_server.py — RETIRED 2026-04-29."""
 import asyncio, json, sys
 sys.path.insert(0, '/opt/wdws/mcp-server')
-from mcp_server import (
+from mcp_server import (  # noqa: F401  (legacy import, module retired)
     search_emails, semantic_search, lookup_case,
     get_database_stats, search_medical_records, close_pool
 )
