@@ -1,28 +1,36 @@
-"""Promote Sonnet OCR to primary for the existing corpus.
+"""[RETIRED 2026-04-30] Sonnet OCR backfill worker — DO NOT RUN.
 
-Two candidate classes:
+This worker re-ran the extraction tree (pdftotext → Sonnet 4.6 → Falcon →
+Tesseract) over already-ingested documents. Last invoked 2026-04-22/23,
+processing 2,228 docs — of which 1,819 already had clean pdftotext_native
+text and did not need re-OCR. The Sonnet 4.6 API spend on those docs was
+not necessary because the documents were already extracted at ingest time.
 
-  1. Sidecar-promote: doc already has metadata.claude_sonnet_ocr_v1.text
-     (from the pilot). Move that text into full_content, regenerate chunks,
-     re-embed. Zero Sonnet API cost.
+Retired because:
+  - Documents are already extracted via the live ingest path (pdftotext +
+    OCR fallback). Re-running the tree on existing corpus produces
+    duplicate work at Sonnet 4.6 prices.
+  - The intended sidecar-promote path (free, zero API cost) had only
+    91 sidecar docs to promote total — not worth keeping a paid worker
+    on disk for it.
+  - Idempotency stamp `metadata.ocr_version='sonnet-v1'` is preserved on
+    the 2,228 docs already processed, so live ingest skips them.
 
-  2. OCR-fresh: doc has storage_uri + PDF/image but no Sonnet sidecar. Run
-     the same extraction tree as live ingest (pdftotext → Sonnet → Falcon →
-     Tesseract) via email_sync.extract_text_from_binary, write full_content,
-     regenerate chunks, re-embed.
+If a future need arises to OCR a specific doc, use:
+    python claude_sonnet_ocr_pilot.py --doc-id <uuid>
+  or the live ingest path with email_sync.extract_text_from_binary.
 
-Marks each doc with metadata.ocr_version='sonnet-v1' so runs are idempotent.
-
-Safe against the existing Falcon reprocess worker (hardened earlier to skip
-claude_sonnet_ocr_v1 entries) and the live delta worker (writes to fresh
-docs, ignores already-sonnet'd).
-
-Usage:
-    python sonnet_backfill_worker.py --limit 5 --dry-run
-    python sonnet_backfill_worker.py --limit 100 --concurrency 3
-    python sonnet_backfill_worker.py --all --concurrency 3
-    python sonnet_backfill_worker.py --report
+The body of this file is preserved as historical reference. The
+__main__ guard exits immediately to prevent accidental invocation.
 """
+import sys
+sys.stderr.write(
+    "sonnet_backfill_worker.py is RETIRED (2026-04-30). "
+    "It was running redundant Sonnet 4.6 OCR over already-extracted documents. "
+    "If you genuinely need to re-run, copy a fresh script from git history "
+    "and review the retirement notice in this file's docstring.\n"
+)
+sys.exit(2)
 from __future__ import annotations
 
 import argparse
