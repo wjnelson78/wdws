@@ -111,8 +111,12 @@ def get_llm() -> AsyncOpenAI:
     return _llm
 
 def _is_reasoning_model(model: str) -> bool:
-    """Check if model is an o-series reasoning model (o1, o3, etc.)."""
-    return bool(model and re.match(r"^o[0-9]", model))
+    """Check if model uses the reasoning-style API (max_completion_tokens, no response_format)."""
+    if not model:
+        return False
+    # o-series (o1, o3, o4) and gpt-5 family all require max_completion_tokens
+    # instead of max_tokens, and reject the chat-completions response_format param.
+    return bool(re.match(r"^o[0-9]", model) or model.startswith("gpt-5"))
 
 def _is_codex_model(model: str) -> bool:
     """Check if model uses the Responses API (gpt-5.x-codex variants)."""
@@ -335,7 +339,18 @@ async def codex_json(system: str, user: str, model: str = None,
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\n?", "", text)
         text = re.sub(r"\n?```$", "", text)
-    return json.loads(text)
+
+    # Reasoning models can return empty output_text when all tokens are
+    # consumed by reasoning. Fall back to model_router in that case.
+    if not text.strip():
+        log.warning("codex_json got empty response — routing to fallback")
+        return await _fallback_llm_json(json_instruction, user)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        log.warning("codex_json JSON parse failed (%s) — routing to fallback", e)
+        return await _fallback_llm_json(json_instruction, user)
 
 
 # ═══════════════════════════════════════════════════════════════

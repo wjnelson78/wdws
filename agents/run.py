@@ -33,7 +33,6 @@ from framework import get_pool, close_pool
 from agent_orchestrator import OrchestratorAgent
 from agent_watchdog import WatchdogAgent
 from agent_security import SecuritySentinelAgent
-from agent_self_healing import SelfHealingAgent
 from agent_data_quality import DataQualityAgent
 from agent_case_strategy import CaseStrategyAgent
 from agent_retention import RetentionAgent
@@ -55,7 +54,8 @@ ALL_AGENTS = [
     WatchdogAgent(),         # P1 — health
     DailyDigestAgent(),      # P2 — 7 AM daily digest email (includes weekly scorecard)
     SecuritySentinelAgent(), # P2 — security
-    SelfHealingAgent(),      # P2 — auto-repair
+    # SelfHealingAgent retired 2026-04-27 — daily-only schedule was too slow to be useful;
+    # watchdog issues now route to "operator" for human handling
     DBAAgent(),              # P2 — database administration
     DataQualityAgent(),      # P3 — data integrity
     CaseStrategyAgent(),     # P4 — legal brief

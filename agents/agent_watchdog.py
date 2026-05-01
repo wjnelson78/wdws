@@ -88,9 +88,9 @@ LATENCY_REGRESSION_HUMAN_P95_MS = float(os.getenv("LATENCY_REGRESSION_HUMAN_P95_
 # produces false positives in p95 regression detection.
 LATENCY_REGRESSION_AGENT_EXCLUDE = {
     # Heavy reasoning / infrequent agents
-    "athena", "daily-digest",
+    "athena", "orchestrator", "daily-digest",
     # Hourly / weekly / on-demand agents
-    "self-healing", "dba",
+    "dba",
     "case-strategy", "retention", "quality-eval",
     "query-insight", "data-quality",
 }
@@ -111,7 +111,7 @@ ISSUE_ROUTING = {
     "security":    "security",
     "data":        "data-quality",
     "code":        "code-doctor",
-    "recovery":    "self-healing",
+    "recovery":    "operator",
     "legal":       "case-strategy",
     "performance": "dba",
 }
@@ -125,7 +125,7 @@ class WatchdogAgent(BaseAgent):
         "human escalation via email/chat"
     )
     version = "3.0.0"
-    schedule = "*/2 * * * *"
+    schedule = "0 * * * *"
     priority = 1
     capabilities = [
         "health-monitoring", "service-restart", "alerting",
@@ -239,7 +239,7 @@ WHEN TO ESCALATE TO HUMAN:
             if status != "active":
                 issue = {"severity": "critical", "category": "service",
                          "title": f"Service {svc} is {status}",
-                         "route_to": "self-healing"}
+                         "route_to": "operator"}
                 issues.append(issue)
                 # Auto-restart
                 restarted = await self._restart_service(ctx, svc)
@@ -254,7 +254,7 @@ WHEN TO ESCALATE TO HUMAN:
                 issues.append({"severity": "warning", "category": "timer",
                                "title": f"Timer {timer} is stale — "
                                         f"last ran {info.get('last_trigger', 'never')}",
-                               "route_to": "self-healing"})
+                               "route_to": "operator"})
 
         # ── 4. journalctl Log Analysis ───────────────────────
         log_issues = await self._scan_journalctl(ctx)
@@ -288,7 +288,7 @@ WHEN TO ESCALATE TO HUMAN:
         if not tunnel_ok:
             issues.append({"severity": "critical", "category": "security",
                            "title": "Cloudflare Tunnel is down",
-                           "route_to": "self-healing"})
+                           "route_to": "operator"})
 
         # ── 7. Attack Detection ──────────────────────────────
         attacks = await self._scan_for_attacks(ctx)
@@ -439,7 +439,7 @@ WHEN TO ESCALATE TO HUMAN:
                     "severity": "critical", "category": "resources",
                     "title": f"{label} CRITICAL: {val}"
                              + ("%" if "percent" in key else ""),
-                    "route_to": "self-healing",
+                    "route_to": "operator",
                     "escalate_human": True,
                 })
                 await ctx.finding("critical", "resources",
@@ -451,7 +451,7 @@ WHEN TO ESCALATE TO HUMAN:
                     "severity": "warning", "category": "resources",
                     "title": f"{label} elevated: {val}"
                              + ("%" if "percent" in key else ""),
-                    "route_to": "self-healing",
+                    "route_to": "operator",
                 })
                 await ctx.finding("warning", "resources",
                     f"{label} elevated: {val}",
@@ -657,7 +657,7 @@ WHEN TO ESCALATE TO HUMAN:
                                 title = title.replace(f"{{{i}}}", g or "?")
 
                             severity = "critical" if label in ("oom", "segfault") else "warning"
-                            route = ("self-healing" if label in ("service_fail", "disk_error")
+                            route = ("operator" if label in ("service_fail", "disk_error")
                                      else "dba" if label == "postgres_err"
                                      else "security")
                             issues.append({
@@ -692,7 +692,7 @@ WHEN TO ESCALATE TO HUMAN:
                         "severity": "warning" if error_count < 10 else "critical",
                         "category": f"log:service",
                         "title": f"{svc}: {error_count} error(s) in logs",
-                        "route_to": "self-healing",
+                        "route_to": "operator",
                         "detail": lines[-3:] if lines else [],
                     })
             except Exception:
@@ -853,7 +853,7 @@ WHEN TO ESCALATE TO HUMAN:
                         "severity": severity,
                         "category": "performance",
                         "title": title,
-                        "route_to": "self-healing",
+                        "route_to": "operator",
                         "escalate_human": severity == "critical",
                         "detail": f"Window: last {window}m vs prior {window}m; runs {curr_cnt} vs {prev_cnt}",
                     })
@@ -1245,9 +1245,14 @@ WHEN TO ESCALATE TO HUMAN:
         now = datetime.now(timezone.utc).isoformat()
 
         # Build set of current issue keys
+        # Strip embedded numbers/durations from the title so that a "drifting"
+        # metric (e.g. p95 24326ms→39566ms vs 23959ms→37132ms) tracks as the
+        # same persistent issue across runs instead of re-escalating each time
+        # the numbers shift.
         current_keys = set()
         for issue in issues:
-            key = f"{issue['category']}:{issue['title'][:80]}"
+            stable_title = re.sub(r"[\d.]+\s*(?:ms|s|%|x|MB|GB)?", "#", issue["title"])
+            key = f"{issue['category']}:{stable_title[:80]}"
             current_keys.add(key)
 
             if key in tracker:
