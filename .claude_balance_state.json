@@ -1,0 +1,10 @@
+{
+  "top_up_amount_usd": 50.00,
+  "top_up_at": "2026-04-24T17:42:00Z",
+  "anchor_day_prior_spend_cents": 5239,
+  "threshold_usd": 11.00,
+  "alert_phone": "+18087073400",
+  "dedup_hours": 24,
+  "last_alert_at": null,
+  "last_alerted_balance_usd": null
+}

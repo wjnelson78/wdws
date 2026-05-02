@@ -52,6 +52,9 @@ if os.path.exists(_env_file):
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_ENABLED = os.getenv("DEEPSEEK_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
 class TaskType(str, Enum):
@@ -85,6 +88,11 @@ class ProviderConfig:
     supports_tools: bool = True
     is_local: bool = False
     context_window: int = 128000
+    # Anthropic-style extended thinking. When True, the call adapter sends a
+    # `thinking={"type":"enabled",...}` block. DeepSeek's Anthropic endpoint
+    # accepts this on deepseek-v4-pro and exposes the chain in the response;
+    # native Anthropic models also support it on Opus/Sonnet variants.
+    enables_thinking: bool = False
 
 
 @dataclass
@@ -125,6 +133,10 @@ class RoutingResult:
     cost_usd: float = 0.0
     fallback_used: bool = False
     task_type: str = ""
+    # Populated by reasoning-capable providers (e.g. DeepSeek deepseek-reasoner).
+    # Holds the chain-of-thought separate from the final content. Empty for
+    # non-reasoning providers.
+    reasoning_content: str = ""
 
 
 # ── Provider Definitions ─────────────────────────────────────
@@ -205,15 +217,40 @@ PROVIDERS: dict[str, ProviderConfig] = {
         avg_latency_ms=1000,
         context_window=128000,
     ),
-    "anthropic:claude-opus-4-6": ProviderConfig(
-        name="Claude Opus 4.6",
-        model="claude-opus-4-6",
+    "anthropic:claude-opus-4-7": ProviderConfig(
+        name="Claude Opus 4.7",
+        model="claude-opus-4-7",
         provider="anthropic",
         max_tokens=16384,
         cost_per_1k_input=0.015,
         cost_per_1k_output=0.075,
         avg_latency_ms=2000,
         context_window=1000000,
+    ),
+    # DeepSeek V4 via Anthropic-compatible endpoint (api.deepseek.com/anthropic).
+    # Staged inactive: gated by DEEPSEEK_ENABLED env flag and not yet listed in
+    # ROUTING_TABLE. Call path mirrors _call_anthropic — same x-api-key auth,
+    # same /v1/messages shape, same content-array parsing.
+    "deepseek:deepseek-v4-pro": ProviderConfig(
+        name="DeepSeek V4 Pro",
+        model="deepseek-v4-pro",
+        provider="deepseek",
+        max_tokens=8192,
+        cost_per_1k_input=0.00055,
+        cost_per_1k_output=0.00219,
+        avg_latency_ms=3000,
+        context_window=128000,
+        enables_thinking=True,
+    ),
+    "deepseek:deepseek-v4-flash": ProviderConfig(
+        name="DeepSeek V4 Flash",
+        model="deepseek-v4-flash",
+        provider="deepseek",
+        max_tokens=8192,
+        cost_per_1k_input=0.00027,
+        cost_per_1k_output=0.0011,
+        avg_latency_ms=1200,
+        context_window=128000,
     ),
 }
 
@@ -224,56 +261,43 @@ PROVIDERS: dict[str, ProviderConfig] = {
 ROUTING_TABLE: dict[TaskType, list[str]] = {
     TaskType.TRIAGE: [
         "anthropic:claude-haiku-4-5",
-        "claude-code:haiku",
         "ollama:llama3.2:3b",
         "openai:gpt-5.4",
     ],
     TaskType.SUMMARY: [
         "anthropic:claude-haiku-4-5",
-        "claude-code:haiku",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.REASONING: [
         "anthropic:claude-sonnet-4-6",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
-        "claude-code:opus",
         "ollama:llama3.2:3b",
     ],
     TaskType.CODE: [
         "anthropic:claude-sonnet-4-6",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.LEGAL: [
-        "anthropic:claude-opus-4-6",
+        "anthropic:claude-opus-4-7",
         "anthropic:claude-sonnet-4-6",
-        "claude-code:opus",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.MEDICAL: [
-        "anthropic:claude-opus-4-6",
+        "anthropic:claude-opus-4-7",
         "anthropic:claude-sonnet-4-6",
-        "claude-code:opus",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.CREATIVE: [
         "anthropic:claude-sonnet-4-6",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
-        "claude-code:haiku",
         "ollama:llama3.2:3b",
     ],
     TaskType.CONVERSATION: [
         "anthropic:claude-haiku-4-5",
-        "claude-code:haiku",
-        "claude-code:sonnet",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
@@ -318,6 +342,16 @@ class ModelRouter:
         else:
             for key in PROVIDERS:
                 if PROVIDERS[key].provider == "openai":
+                    self._circuits[key].is_open = True
+
+        # DeepSeek staged inactive: keep circuits closed unless both the key
+        # is present AND DEEPSEEK_ENABLED is true. Flipping the env flag is
+        # the single switch to bring it online without a code change.
+        if DEEPSEEK_API_KEY and DEEPSEEK_ENABLED:
+            available.append("deepseek")
+        else:
+            for key in PROVIDERS:
+                if PROVIDERS[key].provider == "deepseek":
                     self._circuits[key].is_open = True
 
         log.info("ModelRouter initialized. Available providers: %s", available)
@@ -437,6 +471,8 @@ class ModelRouter:
                 result = await self._call_anthropic(config, messages, temp, max_tok, tools)
             elif config.provider == "openai":
                 result = await self._call_openai(config, messages, temp, max_tok, tools)
+            elif config.provider == "deepseek":
+                result = await self._call_deepseek(config, messages, temp, max_tok, tools)
             else:
                 raise ValueError(f"Unknown provider: {config.provider}")
 
@@ -640,11 +676,18 @@ class ModelRouter:
         temperature: float, max_tokens: int,
         tools: list[dict] | None = None,
     ) -> RoutingResult:
+        # GPT-5 / o-series reasoning models require max_completion_tokens.
+        # Older chat models still use max_tokens.
+        token_param = (
+            "max_completion_tokens"
+            if config.model.startswith(("gpt-5", "o1", "o3", "o4"))
+            else "max_tokens"
+        )
         body: dict[str, Any] = {
             "model": config.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            token_param: max_tokens,
         }
         if tools:
             body["tools"] = tools
@@ -671,6 +714,103 @@ class ModelRouter:
             content=content,
             tokens_in=usage.get("prompt_tokens", 0),
             tokens_out=usage.get("completion_tokens", 0),
+        )
+
+    async def _call_deepseek(
+        self, config: ProviderConfig, messages: list[dict],
+        temperature: float, max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> RoutingResult:
+        """Call DeepSeek via its Anthropic-compatible endpoint.
+
+        Why this path (not the native OpenAI-compatible API):
+          DeepSeek hosts an Anthropic-format endpoint at
+          api.deepseek.com/anthropic that accepts the same /v1/messages shape
+          we already use for Anthropic. Routing through it lets us share call
+          structure, message conversion, and response parsing across both
+          providers — code reads the same in both directions.
+
+        DeepSeek-specific behavior on this endpoint (per their docs):
+          - Models: `deepseek-v4-pro`, `deepseek-v4-flash`. Unknown model
+            names auto-map to `deepseek-v4-flash`.
+          - `x-api-key` header is honored; `anthropic-version`,
+            `anthropic-beta`, `cache_control`, and `mcp_servers` are ignored.
+          - `thinking` block is supported on v4-pro; `budget_tokens` inside
+            it is ignored (depth is governed by the model, not a knob).
+          - `tools` is supported; `disable_parallel_tool_use` is ignored.
+        """
+        # Hard activation gate: while staged inactive, refuse to fire even
+        # on explicit call_provider() invocations. Flip DEEPSEEK_ENABLED=true
+        # in .env and restart to bring DeepSeek online.
+        if not DEEPSEEK_ENABLED:
+            raise RuntimeError(
+                "DeepSeek is staged but inactive. Set DEEPSEEK_ENABLED=true "
+                "in .env to activate."
+            )
+        if not DEEPSEEK_API_KEY:
+            raise RuntimeError("DEEPSEEK_API_KEY is not configured.")
+
+        # Convert OpenAI-style messages to Anthropic format, identical to
+        # _call_anthropic so the conversion semantics match exactly.
+        system_msg = ""
+        anthropic_messages = []
+        for m in messages:
+            if m["role"] == "system":
+                system_msg = m["content"]
+            else:
+                anthropic_messages.append({
+                    "role": m["role"],
+                    "content": m["content"],
+                })
+
+        body: dict[str, Any] = {
+            "model": config.model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": anthropic_messages,
+        }
+        if system_msg:
+            body["system"] = system_msg
+        if tools:
+            body["tools"] = tools
+        if config.enables_thinking:
+            # DeepSeek ignores budget_tokens but expects the field; supplying
+            # a sentinel keeps us schema-valid against Anthropic SDK clients
+            # that may relay this body unchanged.
+            body["thinking"] = {"type": "enabled", "budget_tokens": max_tokens}
+
+        resp = await self._http.post(
+            f"{DEEPSEEK_BASE_URL}/v1/messages",
+            headers={
+                "x-api-key": DEEPSEEK_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json=body,
+            timeout=120 if config.enables_thinking else 60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Response is Anthropic-shaped: content is a list of blocks; thinking
+        # blocks (when present) carry the chain-of-thought, text blocks carry
+        # the final answer. Surface them in separate RoutingResult fields.
+        content_parts = data.get("content", [])
+        text = " ".join(
+            p.get("text", "") for p in content_parts if p.get("type") == "text"
+        )
+        thinking = " ".join(
+            p.get("thinking", "") for p in content_parts if p.get("type") == "thinking"
+        )
+
+        usage = data.get("usage", {})
+        return RoutingResult(
+            provider=config.name,
+            model=config.model,
+            content=text,
+            reasoning_content=thinking,
+            tokens_in=usage.get("input_tokens", 0),
+            tokens_out=usage.get("output_tokens", 0),
         )
 
 

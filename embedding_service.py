@@ -31,8 +31,10 @@ Usage:
     top = [candidates[i] for i, score in ranked]
 """
 import asyncio
+import itertools
 import logging
 import os
+import threading
 import time
 from typing import Optional
 
@@ -50,26 +52,62 @@ EMBEDDING_DIMENSIONS = 1024   # BGE-M3 output dimensions
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
 EMBEDDING_MAX_LENGTH = int(os.getenv("EMBEDDING_MAX_SEQ_LENGTH", "8192"))
 
-# HuggingFace Inference Endpoint (optional — falls back to local CPU if unset)
-HF_ENDPOINT_URL = os.getenv("HF_ENDPOINT_URL", "").rstrip("/")
+# ── Embed endpoint pool ──────────────────────────────────────
+# Primary + up to two extras loaded from env. All healthy endpoints receive
+# batches round-robin; any endpoint that errors is skipped for that batch
+# (tried in round-robin order until one succeeds, then CPU fallback).
+# To add a second GPU worker (e.g. cuda:1 on 172.16.81.187:9099), set
+# HF_ENDPOINT_URL_2 in .env — no code change needed.
 HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
-HF_TIMEOUT = float(os.getenv("HF_EMBEDDING_TIMEOUT", "90"))  # long enough for cold-start wake
-HF_BATCH_SIZE = int(os.getenv("HF_EMBEDDING_BATCH_SIZE", "32"))  # TEI default max_client_batch_size
-HF_ENABLED = bool(HF_ENDPOINT_URL and HF_API_TOKEN)
+HF_TIMEOUT = float(os.getenv("HF_EMBEDDING_TIMEOUT", "90"))
+HF_BATCH_SIZE = int(os.getenv("HF_EMBEDDING_BATCH_SIZE", "32"))
 
-# Reranker: separate HF endpoint (TEI cross-encoder) with same token.
-# Kept as its own env var because embed + rerank will typically run on
-# different TEI deployments (different model weights, different GPUs).
+def _build_endpoint_pool(prefix: str) -> list[str]:
+    """Collect HF_<prefix>_URL, HF_<prefix>_URL_FALLBACK, HF_<prefix>_URL_2, ..."""
+    urls = []
+    for suffix in ("URL", "URL_FALLBACK", "URL_2", "URL_3"):
+        v = os.getenv(f"HF_{prefix}_{suffix}", "").rstrip("/")
+        if v:
+            urls.append(v)
+    return urls
+
+_EMBED_POOL: list[str] = _build_endpoint_pool("ENDPOINT")
+HF_ENDPOINT_URL = _EMBED_POOL[0] if _EMBED_POOL else ""
+HF_ENDPOINT_URL_FALLBACK = _EMBED_POOL[1] if len(_EMBED_POOL) > 1 else ""
+HF_ENABLED = bool(_EMBED_POOL and HF_API_TOKEN)
+HF_FALLBACK_ENABLED = len(_EMBED_POOL) > 1 and bool(HF_API_TOKEN)
+
+# Thread-safe round-robin counter for the embed pool
+_embed_pool_lock = threading.Lock()
+_embed_pool_cycle = itertools.cycle(range(max(len(_EMBED_POOL), 1)))
+_embed_pool_idx: int = 0
+
+def _next_embed_url() -> str:
+    """Return the next endpoint URL in round-robin order."""
+    global _embed_pool_idx
+    with _embed_pool_lock:
+        _embed_pool_idx = next(_embed_pool_cycle)
+        return _EMBED_POOL[_embed_pool_idx % len(_EMBED_POOL)]
+
+if os.getenv("EMBEDDING_FORCE_LOCAL", "0") == "1":
+    HF_ENABLED = False
+    HF_FALLBACK_ENABLED = False
+    log.warning("EMBEDDING_FORCE_LOCAL=1 — using local CPU for all embeddings")
+
+# Reranker pool — same structure, separate env prefix
 RERANKER_MODEL_NAME = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
-HF_RERANKER_ENDPOINT_URL = os.getenv("HF_RERANKER_ENDPOINT_URL", "").rstrip("/")
 HF_RERANKER_TIMEOUT = float(os.getenv("HF_RERANKER_TIMEOUT", "60"))
-HF_RERANKER_ENABLED = bool(HF_RERANKER_ENDPOINT_URL and HF_API_TOKEN)
+_RERANKER_POOL: list[str] = _build_endpoint_pool("RERANKER_ENDPOINT")
+HF_RERANKER_ENDPOINT_URL = _RERANKER_POOL[0] if _RERANKER_POOL else ""
+HF_RERANKER_ENDPOINT_URL_FALLBACK = _RERANKER_POOL[1] if len(_RERANKER_POOL) > 1 else ""
+HF_RERANKER_ENABLED = bool(_RERANKER_POOL and HF_API_TOKEN)
+HF_RERANKER_FALLBACK_ENABLED = len(_RERANKER_POOL) > 1 and bool(HF_API_TOKEN)
 
 if HF_ENABLED:
-    log.info("HF Inference Endpoint enabled (GPU path primary, CPU fallback): %s",
-             HF_ENDPOINT_URL)
+    log.info("HF embed pool (%d endpoint%s): %s",
+             len(_EMBED_POOL), "s" if len(_EMBED_POOL) != 1 else "", _EMBED_POOL)
 else:
-    log.info("HF Inference Endpoint disabled (CPU-only) — set HF_ENDPOINT_URL + HF_API_TOKEN to enable")
+    log.info("HF embed endpoint disabled — set HF_ENDPOINT_URL + HF_API_TOKEN to enable")
 
 if HF_RERANKER_ENABLED:
     log.info("HF Reranker Endpoint enabled: %s", HF_RERANKER_ENDPOINT_URL)
@@ -165,26 +203,79 @@ def _get_hf_async_client():
     return _hf_async_client
 
 
-def _embed_hf_sync(texts: list[str]) -> list[list[float]]:
-    """Call HF Inference Endpoint /embed. Caller handles batching."""
+def _embed_hf_sync_at(url: str, texts: list[str]) -> list[list[float]]:
+    """POST a batch to the given TEI /embed URL and return vectors."""
     client = _get_hf_sync_client()
-    r = client.post(
-        f"{HF_ENDPOINT_URL}/embed",
-        json={"inputs": _truncate(texts)},
-    )
+    r = client.post(f"{url}/embed", json={"inputs": _truncate(texts)})
     r.raise_for_status()
     return r.json()
+
+
+async def _embed_hf_async_at(url: str, texts: list[str]) -> list[list[float]]:
+    client = _get_hf_async_client()
+    r = await client.post(f"{url}/embed", json={"inputs": _truncate(texts)})
+    r.raise_for_status()
+    return r.json()
+
+
+def _with_fallback_sync(primary_url, fallback_url, fallback_enabled, label, fn, *args):
+    """Try fn(primary_url, *args); on any exception try fn(fallback_url, *args)."""
+    try:
+        return fn(primary_url, *args)
+    except Exception as err:
+        if not fallback_enabled:
+            raise
+        log.warning("HF %s primary %s failed (%s: %s) — trying fallback %s",
+                    label, primary_url, type(err).__name__, err, fallback_url)
+        return fn(fallback_url, *args)
+
+
+async def _with_fallback_async(primary_url, fallback_url, fallback_enabled, label, fn, *args):
+    """Async variant of _with_fallback_sync."""
+    try:
+        return await fn(primary_url, *args)
+    except Exception as err:
+        if not fallback_enabled:
+            raise
+        log.warning("HF %s primary %s failed (%s: %s) — trying fallback %s",
+                    label, primary_url, type(err).__name__, err, fallback_url)
+        return await fn(fallback_url, *args)
+
+
+def _embed_hf_sync(texts: list[str]) -> list[list[float]]:
+    """Round-robin across embed pool; fall back to next endpoint on error."""
+    if len(_EMBED_POOL) == 1:
+        return _embed_hf_sync_at(_EMBED_POOL[0], texts)
+    primary = _next_embed_url()
+    rest = [u for u in _EMBED_POOL if u != primary]
+    try:
+        return _embed_hf_sync_at(primary, texts)
+    except Exception as err:
+        log.warning("HF embed %s failed (%s) — trying remaining pool", primary, err)
+        for url in rest:
+            try:
+                return _embed_hf_sync_at(url, texts)
+            except Exception:
+                continue
+        raise
 
 
 async def _embed_hf_async(texts: list[str]) -> list[list[float]]:
-    """Async variant of _embed_hf_sync."""
-    client = _get_hf_async_client()
-    r = await client.post(
-        f"{HF_ENDPOINT_URL}/embed",
-        json={"inputs": _truncate(texts)},
-    )
-    r.raise_for_status()
-    return r.json()
+    """Async round-robin across embed pool."""
+    if len(_EMBED_POOL) == 1:
+        return await _embed_hf_async_at(_EMBED_POOL[0], texts)
+    primary = _next_embed_url()
+    rest = [u for u in _EMBED_POOL if u != primary]
+    try:
+        return await _embed_hf_async_at(primary, texts)
+    except Exception as err:
+        log.warning("HF embed %s failed (%s) — trying remaining pool", primary, err)
+        for url in rest:
+            try:
+                return await _embed_hf_async_at(url, texts)
+            except Exception:
+                continue
+        raise
 
 
 # ── Local CPU path (fallback) ────────────────────────────────
@@ -372,28 +463,41 @@ def _load_reranker():
     return _reranker
 
 
-def _rerank_hf_sync(query: str, passages: list[str]) -> list[tuple[int, float]]:
-    """Call TEI /rerank. Returns [(index, score), ...] sorted desc."""
+def _rerank_hf_sync_at(url: str, query: str, passages: list[str]) -> list[tuple[int, float]]:
+    """Call TEI /rerank at the given URL. Returns [(index, score), ...] sorted desc."""
     client = _get_hf_sync_client()
     r = client.post(
-        f"{HF_RERANKER_ENDPOINT_URL}/rerank",
+        f"{url}/rerank",
         json={"query": query, "texts": _truncate(passages), "raw_scores": False},
         timeout=HF_RERANKER_TIMEOUT,
     )
     r.raise_for_status()
-    # TEI returns [{"index": int, "score": float}, ...] sorted desc.
     return [(item["index"], float(item["score"])) for item in r.json()]
+
+
+async def _rerank_hf_async_at(url: str, query: str, passages: list[str]) -> list[tuple[int, float]]:
+    client = _get_hf_async_client()
+    r = await client.post(
+        f"{url}/rerank",
+        json={"query": query, "texts": _truncate(passages), "raw_scores": False},
+        timeout=HF_RERANKER_TIMEOUT,
+    )
+    r.raise_for_status()
+    return [(item["index"], float(item["score"])) for item in r.json()]
+
+
+def _rerank_hf_sync(query: str, passages: list[str]) -> list[tuple[int, float]]:
+    return _with_fallback_sync(
+        HF_RERANKER_ENDPOINT_URL, HF_RERANKER_ENDPOINT_URL_FALLBACK, HF_RERANKER_FALLBACK_ENABLED,
+        "reranker", _rerank_hf_sync_at, query, passages,
+    )
 
 
 async def _rerank_hf_async(query: str, passages: list[str]) -> list[tuple[int, float]]:
-    client = _get_hf_async_client()
-    r = await client.post(
-        f"{HF_RERANKER_ENDPOINT_URL}/rerank",
-        json={"query": query, "texts": _truncate(passages), "raw_scores": False},
-        timeout=HF_RERANKER_TIMEOUT,
+    return await _with_fallback_async(
+        HF_RERANKER_ENDPOINT_URL, HF_RERANKER_ENDPOINT_URL_FALLBACK, HF_RERANKER_FALLBACK_ENABLED,
+        "reranker", _rerank_hf_async_at, query, passages,
     )
-    r.raise_for_status()
-    return [(item["index"], float(item["score"])) for item in r.json()]
 
 
 def _rerank_cpu_sync(query: str, passages: list[str]) -> list[tuple[int, float]]:

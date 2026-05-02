@@ -1,0 +1,29 @@
+   T6 done — sections=  569 court_rules=   0 est_chunks=   828 max_depth=12 xref_density=13.64
+   T7 done — sections= 2926 court_rules=   0 est_chunks=  4197 max_depth=12 xref_density=20.53
+  T16 done — sections= 5095 court_rules=   0 est_chunks=  6253 max_depth= 7 xref_density=12.01
+  T18 done — sections= 1399 court_rules=   0 est_chunks=  1890 max_depth= 9 xref_density=20.36
+ T18a done — sections=   26 court_rules=  77 est_chunks=   307 max_depth= 9 xref_density= 6.48
+  T21 done — sections=  757 court_rules=   0 est_chunks=  1505 max_depth=12 xref_density=28.71
+  T22 done — sections= 3478 court_rules=   0 est_chunks=  4709 max_depth= 9 xref_density=15.87
+  T25 done — sections= 2397 court_rules=   0 est_chunks=  2697 max_depth= 7 xref_density= 8.11
+  T33 done — sections= 1569 court_rules=   0 est_chunks=  2090 max_depth= 8 xref_density=15.22
+  T38 done — sections= 1198 court_rules=   0 est_chunks=  2180 max_depth=11 xref_density=37.77
+  T40 done — sections=  459 court_rules=   0 est_chunks=   587 max_depth=11 xref_density=11.05
+  T41 done — sections=  241 court_rules=   0 est_chunks=   338 max_depth=11 xref_density=12.34
+  T50 done — sections= 1360 court_rules=   0 est_chunks=  2102 max_depth=10 xref_density=19.77
+  T51 done — sections=  249 court_rules=   0 est_chunks=   347 max_depth=11 xref_density=10.78
+title|path|size_mb|is_appendix|sections|court_rules|total_units|chapters|subchapters|max_depth|avg_depth|max_section_chars|avg_section_chars|est_total_chunks|max_chunks_per_unit|avg_chunks_per_unit|chunk_buckets|n_xrefs|xref_density_per_unit|rule_set_hint
+T6|/opt/wdws/data/usc/extracted/usc06.xml|6.0|False|569|0|569|6|31|12|5.2|100283|5046|828|17|1.46|1:430 | 2-3:116 | 4-10:21 | 11-30:2 | 31+:0|7763|13.64|None
+T7|/opt/wdws/data/usc/extracted/usc07.xml|27.4|False|2926|0|2926|130|183|12|4.6|191836|4623|4197|32|1.43|1:2414 | 2-3:382 | 4-10:111 | 11-30:18 | 31+:1|60082|20.53|None
+T16|/opt/wdws/data/usc/extracted/usc16.xml|31.6|False|5095|0|5095|153|345|7|3.8|287266|3169|6253|48|1.23|1:4489 | 2-3:502 | 4-10:97 | 11-30:6 | 31+:1|61213|12.01|None
+T18|/opt/wdws/data/usc/extracted/usc18.xml|11.6|False|1399|0|1399|141|8|9|4.3|100093|4171|1890|17|1.35|1:1168 | 2-3:176 | 4-10:52 | 11-30:3 | 31+:0|28477|20.36|None
+T18a|/opt/wdws/data/usc/extracted/usc18a.xml|1.9|True|26|77|103|0|0|9|4.0|122822|14256|307|21|2.98|1:53 | 2-3:28 | 4-10:17 | 11-30:5 | 31+:0|667|6.48|FEDERAL RULES OF CRIMINAL PROCEDURE | 
+T21|/opt/wdws/data/usc/extracted/usc21.xml|11.8|False|757|0|757|31|42|12|5.0|281021|8334|1505|47|1.99|1:539 | 2-3:138 | 4-10:61 | 11-30:18 | 31+:1|21730|28.71|None
+T22|/opt/wdws/data/usc/extracted/usc22.xml|27.7|False|3478|0|3478|128|306|9|4.3|372084|4137|4709|63|1.35|1:2925 | 2-3:439 | 4-10:99 | 11-30:14 | 31+:1|55205|15.87|None
+T25|/opt/wdws/data/usc/extracted/usc25.xml|10.0|False|2397|0|2397|57|192|7|3.8|135237|1856|2697|23|1.13|1:2236 | 2-3:132 | 4-10:26 | 11-30:3 | 31+:0|19449|8.11|None
+T33|/opt/wdws/data/usc/extracted/usc33.xml|12.1|False|1569|0|1569|57|85|8|3.8|227799|3911|2090|38|1.33|1:1336 | 2-3:179 | 4-10:51 | 11-30:2 | 31+:1|23873|15.22|None
+T38|/opt/wdws/data/usc/extracted/usc38.xml|17.7|False|1198|0|1198|47|126|11|5.4|308702|7416|2180|52|1.82|1:821 | 2-3:264 | 4-10:101 | 11-30:11 | 31+:1|45250|37.77|None
+T40|/opt/wdws/data/usc/extracted/usc40.xml|4.7|False|459|0|459|45|48|11|7.8|70010|3730|587|12|1.28|1:392 | 2-3:56 | 4-10:9 | 11-30:2 | 31+:0|5072|11.05|None
+T41|/opt/wdws/data/usc/extracted/usc41.xml|3.2|False|241|0|241|27|8|11|7.8|106618|4829|338|18|1.4|1:188 | 2-3:48 | 4-10:4 | 11-30:1 | 31+:0|2974|12.34|None
+T50|/opt/wdws/data/usc/extracted/usc50.xml|13.8|False|1360|0|1360|62|108|10|4.1|552681|5216|2102|93|1.55|1:1113 | 2-3:189 | 4-10:50 | 11-30:5 | 31+:3|26893|19.77|None
+T51|/opt/wdws/data/usc/extracted/usc51.xml|2.7|False|249|0|249|35|17|11|7.8|104386|4451|347|18|1.39|1:204 | 2-3:35 | 4-10:8 | 11-30:2 | 31+:0|2684|10.78|None

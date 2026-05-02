@@ -1,0 +1,13 @@
+{
+  "phase": "acquire-chapters",
+  "started_at": "2026-04-30T23:09:40+00:00",
+  "total_chapters": 2853,
+  "fetched": 2850,
+  "cached_hits": 3,
+  "warnings": 0,
+  "last_chapter": "516-400",
+  "updated_at": "2026-05-01T00:04:40+00:00",
+  "status": "completed",
+  "completed_at": "2026-05-01T00:04:40+00:00",
+  "elapsed_seconds": 3300.2642326979985
+}

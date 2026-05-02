@@ -1,0 +1,271 @@
+{
+  "started_at": "2026-05-01T02:05:28+00:00",
+  "total_titles": 224,
+  "completed_titles": 224,
+  "skipped_titles": [],
+  "errors": [
+    {
+      "title": "3",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/3\n"
+    },
+    {
+      "title": "12",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/12\n"
+    },
+    {
+      "title": "18",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/18\n"
+    },
+    {
+      "title": "50",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/50\n"
+    },
+    {
+      "title": "55",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/55\n"
+    },
+    {
+      "title": "90",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/90\n"
+    },
+    {
+      "title": "98",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/98\n"
+    },
+    {
+      "title": "113",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/113\n"
+    },
+    {
+      "title": "114",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/114\n"
+    },
+    {
+      "title": "120",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/120\n"
+    },
+    {
+      "title": "134",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/134\n"
+    },
+    {
+      "title": "154",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/154\n"
+    },
+    {
+      "title": "158",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/158\n"
+    },
+    {
+      "title": "167",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/167\n"
+    },
+    {
+      "title": "170",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/170\n"
+    },
+    {
+      "title": "175",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/175\n"
+    },
+    {
+      "title": "177",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/177\n"
+    },
+    {
+      "title": "184",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/184\n"
+    },
+    {
+      "title": "186",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/186\n"
+    },
+    {
+      "title": "187",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/187\n"
+    },
+    {
+      "title": "199",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/199\n"
+    },
+    {
+      "title": "232",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/232\n"
+    },
+    {
+      "title": "236",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/236\n"
+    },
+    {
+      "title": "245",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/245\n"
+    },
+    {
+      "title": "248",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/248\n"
+    },
+    {
+      "title": "249",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/249\n"
+    },
+    {
+      "title": "251",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/251\n"
+    },
+    {
+      "title": "252",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/252\n"
+    },
+    {
+      "title": "259",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/259\n"
+    },
+    {
+      "title": "261",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/261\n"
+    },
+    {
+      "title": "275",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/275\n"
+    },
+    {
+      "title": "289",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/289\n"
+    },
+    {
+      "title": "290",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/290\n"
+    },
+    {
+      "title": "297",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/297\n"
+    },
+    {
+      "title": "299",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/299\n"
+    },
+    {
+      "title": "316",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/316\n"
+    },
+    {
+      "title": "318",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/318\n"
+    },
+    {
+      "title": "320",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/320\n"
+    },
+    {
+      "title": "356",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/356\n"
+    },
+    {
+      "title": "359",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/359\n"
+    },
+    {
+      "title": "360",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/360\n"
+    },
+    {
+      "title": "380",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/380\n"
+    },
+    {
+      "title": "402",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/402\n"
+    },
+    {
+      "title": "410",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/410\n"
+    },
+    {
+      "title": "414",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/414\n"
+    },
+    {
+      "title": "419",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/419\n"
+    },
+    {
+      "title": "440",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/440\n"
+    },
+    {
+      "title": "462",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/462\n"
+    },
+    {
+      "title": "465",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/465\n"
+    },
+    {
+      "title": "466",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/466\n"
+    },
+    {
+      "title": "470",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/470\n"
+    },
+    {
+      "title": "482",
+      "exit": 1,
+      "stderr_tail": "No chapter dir found at /opt/wdws/data/wac/html/chapters/482\n"
+    }
+  ],
+  "elapsed_seconds": 769.5864119350008,
+  "updated_at": "2026-05-01T02:18:18+00:00",
+  "completed_at": "2026-05-01T02:18:18+00:00"
+}

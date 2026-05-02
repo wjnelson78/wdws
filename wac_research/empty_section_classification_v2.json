@@ -1,0 +1,881 @@
+{
+  "totals": {
+    "A": 30,
+    "RESERVED": 209,
+    "B1": 41,
+    "B2": 0,
+    "C": 174
+  },
+  "class_C_remaining": [
+    {
+      "cite": "WAC 173-304-463",
+      "caption": "Problem waste landfills. (Reserved.)",
+      "file": "304.html"
+    },
+    {
+      "cite": "WAC 240-20-130",
+      "caption": "Central Puget Sound public transportation account\u2014Timing",
+      "file": "20.html"
+    },
+    {
+      "cite": "WAC 240-20-230",
+      "caption": "Public transportation systems account\u2014Timing",
+      "file": "20.html"
+    },
+    {
+      "cite": "WAC 240-20-330",
+      "caption": "High capacity transportation account\u2014Timing",
+      "file": "20.html"
+    },
+    {
+      "cite": "WAC 240-20-430",
+      "caption": "Intermodal Surface Transportation Efficiency Act, surface transportation program, statewide competitive program account\u2014Timing",
+      "file": "20.html"
+    },
+    {
+      "cite": "WAC 296-155-173",
+      "caption": "Methylenedianiline",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-176",
+      "caption": "Lead",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-337",
+      "caption": "Rigging\u2014General requirements",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-338",
+      "caption": "Slings",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-339",
+      "caption": "Rigging hardware and lifting devices other than slings and rigging hardware",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-340",
+      "caption": "Lifting devices other than slings and rigging hardware",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-363",
+      "caption": "Safety requirements for powder actuated fastening systems, in accordance with ANSI A10.3-1985, Safety Requirements for Powder Actuated Fastening Systems",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-529",
+      "caption": "Scope and definitions",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-531",
+      "caption": "Crane certifier accreditation process",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-532",
+      "caption": "Crane certification requirements for cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-533",
+      "caption": "Qualifications and certification",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-534",
+      "caption": "General requirements for all cranes and derricks",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-537",
+      "caption": "Mobile cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-538",
+      "caption": "Articulating boom cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-539",
+      "caption": "Tower cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-541",
+      "caption": "Self-erecting tower cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-542",
+      "caption": "Overhead/bridge and gantry cranes",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-543",
+      "caption": "Derricks",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-544",
+      "caption": "Additional requirements for other types of cranes/derricks",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-548",
+      "caption": "Design and installation requirements for personnel lifting systems",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-549",
+      "caption": "Personnel lifting hoisting equipment",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-551",
+      "caption": "Inspections, maintenance and testing",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-552",
+      "caption": "Employer responsibilities",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-554",
+      "caption": "Boatswain's chairs",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-556",
+      "caption": "Rigging\u2014General requirements",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-558",
+      "caption": "Slings",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-561",
+      "caption": "Rigging hardware",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-562",
+      "caption": "Lifting devices other than slings and rigging hardware",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-564",
+      "caption": "Appendices",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-155-664",
+      "caption": "Appendices",
+      "file": "155.html"
+    },
+    {
+      "cite": "WAC 296-24-235",
+      "caption": "Overhead and gantry cranes",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-240",
+      "caption": "Crawler locomotive and truck cranes",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-245",
+      "caption": "Derricks",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-294",
+      "caption": "Rigging",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-310",
+      "caption": "Acetylene",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-315",
+      "caption": "Hydrogen",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-320",
+      "caption": "Oxygen",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-330",
+      "caption": "Flammable liquids",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-370",
+      "caption": "Spray finishing using flammable materials",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-682",
+      "caption": "Installation and operation of oxygen fuel gas systems for welding and cutting",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-685",
+      "caption": "Application, installation, and operation of arc welding and cutting equipment",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-690",
+      "caption": "Installation and operation of resistance welding equipment",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-695",
+      "caption": "Fire prevention and protection",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-700",
+      "caption": "Protection of employees",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-715",
+      "caption": "Health protection and ventilation",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-720",
+      "caption": "Industrial applications",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-7500",
+      "caption": "Other working surfaces",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-930",
+      "caption": "Safety relief devices for compressed gas cylinders",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-935",
+      "caption": "Safety relief devices for cargo and portable tanks storing compressed gases",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-24-940",
+      "caption": "Air receivers",
+      "file": "24.html"
+    },
+    {
+      "cite": "WAC 296-27-021",
+      "caption": "Other injury and illness recordkeeping requirements",
+      "file": "27.html"
+    },
+    {
+      "cite": "WAC 296-307-070",
+      "caption": "Motor vehicles",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-098",
+      "caption": "Wildfire smoke",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-185",
+      "caption": "Guarding powered saws",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-190",
+      "caption": "Guarding bench grinders, abrasive wheels, and portable grinders",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-200",
+      "caption": "Compressed air",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-205",
+      "caption": "Guarding portable powered tools",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-220",
+      "caption": "Power lawnmowers",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-225",
+      "caption": "Jacks",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-240",
+      "caption": "Sanitation for fixed, indoor workplaces",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-260",
+      "caption": "Fixed industrial stairs",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-270",
+      "caption": "Aerial manlift equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-290",
+      "caption": "Auger conveying equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-300",
+      "caption": "Guarding farmstead equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-345",
+      "caption": "Employee alarm systems",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-350",
+      "caption": "Exit routes",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-362",
+      "caption": "General electrical requirements",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-364",
+      "caption": "Electrical installation and maintenance",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-366",
+      "caption": "Wiring design and protection",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-368",
+      "caption": "Wiring methods, components, and equipment for general use",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-370",
+      "caption": "Special purpose equipment and installations",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-372",
+      "caption": "Hazardous (classified) locations",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-374",
+      "caption": "Special systems",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-376",
+      "caption": "Working on or near exposed energized parts",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-378",
+      "caption": "Safety-related work practices",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-380",
+      "caption": "Electrical protective equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-415",
+      "caption": "Cylinder systems",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-420",
+      "caption": "Systems using non-DOT containers",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-425",
+      "caption": "LP-gas as a motor fuel",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-430",
+      "caption": "Storage of containers awaiting use or resale",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-435",
+      "caption": "LP-gas system installations on commercial vehicles",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-440",
+      "caption": "LP-gas service stations",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-480",
+      "caption": "Installation and operation of oxygen fuel gas systems for welding and cutting",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-485",
+      "caption": "Installation and operation of resistance welding equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-490",
+      "caption": "Application, installation, and operation of arc welding and cutting equipment",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-495",
+      "caption": "Fire prevention and protection",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-307-500",
+      "caption": "Protection of employees",
+      "file": "307.html"
+    },
+    {
+      "cite": "WAC 296-45-525",
+      "caption": "Special conditions",
+      "file": "45.html"
+    },
+    {
+      "cite": "WAC 296-52-64045",
+      "caption": "Application",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 296-52-650",
+      "caption": "Manufacturer's license",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 296-52-660",
+      "caption": "Storage license",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 296-62-074",
+      "caption": "Cadmium",
+      "file": "62.html"
+    },
+    {
+      "cite": "WAC 296-62-076",
+      "caption": "Methylenedianiline",
+      "file": "62.html"
+    },
+    {
+      "cite": "WAC 296-62-095",
+      "caption": "Outdoor heat exposure",
+      "file": "62.html"
+    },
+    {
+      "cite": "WAC 296-62-136",
+      "caption": "Ventilation",
+      "file": "62.html"
+    },
+    {
+      "cite": "WAC 296-78-565",
+      "caption": "Log dumps and ponds\u2014Headmills",
+      "file": "78.html"
+    },
+    {
+      "cite": "WAC 296-78-710",
+      "caption": "Construction and isolated equipment",
+      "file": "78.html"
+    },
+    {
+      "cite": "WAC 296-78-715",
+      "caption": "Mechanical, steam and electrical equipment",
+      "file": "78.html"
+    },
+    {
+      "cite": "WAC 296-78-840",
+      "caption": "Loading, piling, storage and conveying",
+      "file": "78.html"
+    },
+    {
+      "cite": "WAC 296-79-290",
+      "caption": "Stock preparation and reprocessing",
+      "file": "79.html"
+    },
+    {
+      "cite": "WAC 296-79-310",
+      "caption": "Converting operations (bag and container manufacturing, printing, coating, finishing and related processes)",
+      "file": "79.html"
+    },
+    {
+      "cite": "WAC 296-841-200",
+      "caption": "Evaluate and control employee exposures",
+      "file": "841.html"
+    },
+    {
+      "cite": "WAC 296-900-175",
+      "caption": "Safety and health investment projects",
+      "file": "900.html"
+    },
+    {
+      "cite": "WAC 296-901-140",
+      "caption": "Hazard communication",
+      "file": "901.html"
+    },
+    {
+      "cite": "WAC 317-40-110",
+      "caption": "Location of bunkering (reserved)",
+      "file": "40.html"
+    },
+    {
+      "cite": "WAC 317-40-120",
+      "caption": "Best achievable technology (reserved)",
+      "file": "40.html"
+    },
+    {
+      "cite": "WAC 363-116-140",
+      "caption": "Limitations",
+      "file": "116.html"
+    },
+    {
+      "cite": "WAC 51-11C-20200",
+      "caption": "Section C202\u2014General definitions",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-20210",
+      "caption": "Section C202.10\u2014J",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-20211",
+      "caption": "Section C202.11\u2014K",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-20217",
+      "caption": "Section C202.17\u2014Q",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-30300",
+      "caption": "Section C303\u2014Materials, systems and equipment",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-303132",
+      "caption": "Table C303.1.3(2)\u2014Default door U-factors",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40200",
+      "caption": "Section C402\u2014Building envelope requirements",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40300",
+      "caption": "Section C403\u2014Mechanical systems",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40400",
+      "caption": "Section C404\u2014Service water heating and pressure-booster systems",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40500",
+      "caption": "Section C405\u2014Electrical power and lighting systems",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40700",
+      "caption": "Section C407\u2014Total building performance",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40704",
+      "caption": "Section C407.4\u2014Reserved",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40705",
+      "caption": "Section C407.5\u2014Reserved",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40706",
+      "caption": "Section C407.6\u2014Reserved",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40800",
+      "caption": "Section C408\u2014System commissioning",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-40900",
+      "caption": "Section C409\u2014Energy metering and energy consumption management",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61000",
+      "caption": "Appendix A\u2014Default heat loss coefficients",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61010",
+      "caption": "Section A101\u2014General",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61020",
+      "caption": "Section A102\u2014Ceilings",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61030",
+      "caption": "Section A103\u2014Above grade walls",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61040",
+      "caption": "Section A104\u2014Below-grade walls and slabs",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61050",
+      "caption": "Section A105\u2014Floors over unconditioned space",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61060",
+      "caption": "Section A106\u2014On-grade slab floors",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61070",
+      "caption": "Section A107\u2014Default U-factors for doors",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-61080",
+      "caption": "Section A108\u2014Air infiltration",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-70000",
+      "caption": "Appendix B\u2014Default internal load values and schedules",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11C-90000",
+      "caption": "Appendix E\u2014Reserved",
+      "file": "11C.html"
+    },
+    {
+      "cite": "WAC 51-11R-20200",
+      "caption": "Section R202\u2014General definitions",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-20207",
+      "caption": "Section R202.7\u2014G",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-20210",
+      "caption": "Section R202.10\u2014J",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-20211",
+      "caption": "Section 202.11\u2014K",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-20214",
+      "caption": "Section R202.14\u2014N",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-20217",
+      "caption": "Section R202.17\u2014Q",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-30300",
+      "caption": "Section R303\u2014Materials, systems and equipment",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-40200",
+      "caption": "Section R402\u2014Building thermal envelope",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-40300",
+      "caption": "Section R403\u2014Systems",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-40400",
+      "caption": "Section R404\u2014Electrical power and lighting systems",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-40500",
+      "caption": "Section R405\u2014Total building performance",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-40600",
+      "caption": "Section R406\u2014Additional energy efficiency requirements",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-11R-50000",
+      "caption": "Chapter 5\u2014Existing buildings",
+      "file": "11R.html"
+    },
+    {
+      "cite": "WAC 51-50-0708",
+      "caption": "Section 708\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-0710",
+      "caption": "Section 710\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-1007",
+      "caption": "Section 1007\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-1018",
+      "caption": "Section 1018\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-1609",
+      "caption": "Section 1609\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-2108",
+      "caption": "Section 2108\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-3108",
+      "caption": "Section 3108\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-480000",
+      "caption": "2021 International Existing Building Code",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-480307",
+      "caption": "Section 307\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-50-480607",
+      "caption": "Section 607\u2014Reserved",
+      "file": "50.html"
+    },
+    {
+      "cite": "WAC 51-51-0502",
+      "caption": "Section R502\u2014Reserved",
+      "file": "51.html"
+    },
+    {
+      "cite": "WAC 51-51-0806",
+      "caption": "Section R806\u2014Reserved",
+      "file": "51.html"
+    },
+    {
+      "cite": "WAC 51-51-1302",
+      "caption": "Section M1302\u2014Reserved",
+      "file": "51.html"
+    },
+    {
+      "cite": "WAC 51-51-1415",
+      "caption": "Section M1415\u2014Reserved",
+      "file": "51.html"
+    },
+    {
+      "cite": "WAC 51-51-1508",
+      "caption": "Section M1508\u2014Reserved",
+      "file": "51.html"
+    },
+    {
+      "cite": "WAC 51-52-0301",
+      "caption": "Section 301\u2014Reserved",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 51-52-1107",
+      "caption": "Section 1107\u2014Reserved",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 51-52-21000",
+      "caption": "International Fuel Gas Code",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 51-52-22000",
+      "caption": "National Fuel Gas Code",
+      "file": "52.html"
+    },
+    {
+      "cite": "WAC 51-56-0800",
+      "caption": "Chapter 8\u2014Indirect wastes",
+      "file": "56.html"
+    },
+    {
+      "cite": "WAC 51-56-1000",
+      "caption": "Chapter 10\u2014Traps and interceptors",
+      "file": "56.html"
+    },
+    {
+      "cite": "WAC 51-56-1400",
+      "caption": "Chapter 14\u2014Reserved",
+      "file": "56.html"
+    }
+  ]
+}

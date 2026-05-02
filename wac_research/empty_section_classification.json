@@ -1,0 +1,3642 @@
+{
+  "totals": {
+    "A": 30,
+    "B1": 30,
+    "B2": 1,
+    "C": 393
+  },
+  "sections": [
+    {
+      "cite": "WAC 16-157-275",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-303-102",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-303-202",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-303-9901",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-304-463",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-310-990",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-100",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-600",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-700",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-406-800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-491-050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-518-140",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-527-030",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-528-030",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-539A-990",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-545-170",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-549-900",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 173-58-090",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 200-340-070",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-100",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-600",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-700",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 208-600-900",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 240-20-130",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 240-20-230",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 240-20-330",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 240-20-430",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-810",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-820",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-830",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-840",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-850",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-16-860",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 246-70-090",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59502",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59503",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59504",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59505",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59506",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59507",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59508",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 284-13-59509",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-05-402",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-155-173",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-176",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-336",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-337",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-338",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-339",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-340",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-363",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-529",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-531",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-532",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-533",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-534",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-537",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-538",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-539",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-541",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-542",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-543",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-544",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-548",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-549",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-551",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-552",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-554",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-556",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-558",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-561",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-562",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-564",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-155-66103",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-155-66105",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-155-66109",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-155-664",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-215",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-235",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-240",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-245",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-294",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-295",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-310",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-315",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-320",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-330",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-370",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-475",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-585",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-682",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-685",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-690",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-695",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-700",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-715",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-720",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-735",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": true,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-7500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-920",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-930",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-935",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-24-940",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-27-021",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-304-02001",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-307-055",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-070",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-080",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-095",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-097",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-098",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-100",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-108",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-109",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-112",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-114",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-145",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-14510",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-307-150",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-161",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-185",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-190",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-205",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-220",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-225",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-240",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-250",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-260",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-270",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-280",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-290",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-320",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-330",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-340",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-345",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-350",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-360",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-362",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-364",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-366",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-368",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-370",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-372",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-374",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-376",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-378",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-380",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-400",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-410",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-415",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-420",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-425",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-430",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-435",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-440",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-475",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-480",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-485",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-490",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-495",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-520",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-307-530",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-37-580",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-45-525",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-45-909",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-52-64045",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-52-650",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-52-660",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-074",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-07517",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-62-076",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-077",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-090",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-095",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-136",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-62-14539",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-62-510",
+      "class": "B1",
+      "has_img": false,
+      "has_part_divider": true,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-78-565",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-78-710",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-78-715",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-78-840",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-79-290",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-79-310",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-824-110",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-824-11010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-11020",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-11050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-11060",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12020",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12030",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12040",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-12060",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-13010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-13020",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-13030",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-14010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-824-15010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-840-175",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-841-200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-900-175",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-901-140",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 296-99-090",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-99-093",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 296-99-095",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 317-40-110",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 317-40-120",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 363-116-140",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 434-324-026",
+      "class": "A",
+      "has_img": true,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-10143",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-20200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-20210",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-20211",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-20217",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-30300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-303132",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-30330",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-402211",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40250",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40260",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40325",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40326",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40327",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40328",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40329",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-403431",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40504",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40602",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40603",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40604",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40605",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40606",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40607",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40608",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40609",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40610",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40611",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40612",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40700",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40704",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40705",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 51-11C-407051",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-407052",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-407053",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-407054",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-407055",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40706",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40900",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-40905",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-60000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": true
+    },
+    {
+      "cite": "WAC 51-11C-61000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61010",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61020",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61030",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61040",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61060",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61070",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-61080",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-70000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11C-90000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20207",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20210",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20211",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20214",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-20217",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-30300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40392",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40500",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40550",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-40600",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-11R-50000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-009",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0110",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0312",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0406",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0407",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0427",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0502",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0506",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0601",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0603",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0703",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-07070",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0708",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0710",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0717",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0718",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0722",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0803",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0902",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-0908",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1007",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1018",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1019",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-10240",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1028",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-10300",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-11050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-11090",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1204",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1206",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1207",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1209",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1403",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1405",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1406",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1602",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1604",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1607",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1609",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1702",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1710",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1715",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1901",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1903",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1904",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1905",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1908",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-1909",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2104",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2106",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-21070",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2108",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2114",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2407",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2603",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-2900",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3001",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3004",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3009",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3102",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3108",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3114",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3304",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3401",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3404",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3410",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-3411",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480102",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480305",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480307",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480403",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480407",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480409",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480410",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480505",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480607",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480704",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480705",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480707",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480711",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480804",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480807",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480808",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480810",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480811",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480906",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480908",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-480912",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481012",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481102",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481103",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481104",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481105",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481106",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481204",
+      "class": "B2",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": true,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481205",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481301",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-481302",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-50-490000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0106",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0308",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0317",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0322",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0329",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0404",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0501",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0502",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0608",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0612",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-0806",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-1302",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-1415",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-1501",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-1508",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-51-2439",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-005",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-0301",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-0928",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-1101",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-1105",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-1107",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-1400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-21000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-21401",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-21601",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-22000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-52-22006",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0315",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0405",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0408",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0501",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0607",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0609",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0701",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0908",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0916",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-0918",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1007",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1018",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1019",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1021",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1028",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1030",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-1204",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-3800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-3900",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-3904",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-4000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-5003",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-5307",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-8100",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-54A-8200",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-0800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-1000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-1400",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-90700",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-90800",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 51-56-92000",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    },
+    {
+      "cite": "WAC 516-09-050",
+      "class": "C",
+      "has_img": false,
+      "has_part_divider": false,
+      "has_table": false,
+      "has_subsections": false
+    }
+  ]
+}

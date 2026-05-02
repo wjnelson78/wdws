@@ -264,6 +264,50 @@ def extract_docx_text(docx_path: Path) -> str:
         return ""
 
 
+def extract_xlsx_text(xlsx_path: Path) -> str:
+    """Extract text from XLSX via openpyxl. Sheet-prefixed TSV; skips blank rows."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True, read_only=True)
+        parts: List[str] = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            parts.append(f"=== Sheet: {sheet_name} ===")
+            for row in ws.iter_rows(values_only=True):
+                cells = [("" if c is None else str(c)) for c in row]
+                if any(c.strip() for c in cells):
+                    parts.append("\t".join(cells))
+        wb.close()
+        return "\n".join(parts)
+    except Exception as e:
+        log.error(f"XLSX extraction failed for {xlsx_path.name}: {e}")
+        return ""
+
+
+def extract_xls_text(xls_path: Path) -> str:
+    """Extract text from legacy XLS via soffice → xlsx → openpyxl."""
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            result = subprocess.run(
+                ["soffice", "--headless", "--convert-to", "xlsx",
+                 "--outdir", td, str(xls_path)],
+                capture_output=True, timeout=120,
+            )
+            if result.returncode != 0:
+                log.error(
+                    f"soffice xls→xlsx failed for {xls_path.name}: "
+                    f"{result.stderr.decode(errors='ignore')[:200]}"
+                )
+                return ""
+            converted = next(Path(td).glob("*.xlsx"), None)
+            if not converted:
+                return ""
+            return extract_xlsx_text(converted)
+    except Exception as e:
+        log.error(f"XLS extraction failed for {xls_path.name}: {e}")
+        return ""
+
+
 # ============================================================
 # Attachment extraction from .eml files
 # ============================================================
@@ -422,6 +466,12 @@ def _ocr_attachment_worker(args: Tuple[str, str, str]) -> Tuple[str, str, str]:
         elif content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             text = extract_docx_text(file_path)
             method = "docx_xml"
+        elif content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+            text = extract_xlsx_text(file_path)
+            method = "xlsx_openpyxl"
+        elif content_type == "application/vnd.ms-excel":
+            text = extract_xls_text(file_path)
+            method = "xls_soffice"
         elif content_type == "text/plain":
             text = file_path.read_text(errors="ignore")
             method = "text_direct"

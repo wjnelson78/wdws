@@ -1,0 +1,3635 @@
+[
+  {
+    "canonical_citation": "RCW 11.98A.160",
+    "chapter": "11.98A",
+    "title": "11",
+    "parser_entries_in_chapter": 13,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 36.91.050",
+    "chapter": "36.91",
+    "title": "36",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 36.91.030",
+    "chapter": "36.91",
+    "title": "36",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 36.91.020",
+    "chapter": "36.91",
+    "title": "36",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 36.91.040",
+    "chapter": "36.91",
+    "title": "36",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.370",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.405",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.420",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.410",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.390",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.19.400",
+    "chapter": "43.19",
+    "title": "43",
+    "parser_entries_in_chapter": 117,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.95.100",
+    "chapter": "43.95",
+    "title": "43",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.95.210",
+    "chapter": "43.95",
+    "title": "43",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.95.150",
+    "chapter": "43.95",
+    "title": "43",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 43.95.090",
+    "chapter": "43.95",
+    "title": "43",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.6-102",
+    "chapter": "62A.6",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-105",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-403",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-409",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-402",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-107",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-103",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-503",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-401",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-302",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-504",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-501",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 62A.9-104",
+    "chapter": "62A.9",
+    "title": "62A",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 72.08.370",
+    "chapter": "72.08",
+    "title": "72",
+    "parser_entries_in_chapter": 34,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 72.08.360",
+    "chapter": "72.08",
+    "title": "72",
+    "parser_entries_in_chapter": 34,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.020",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.080",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.170",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.130",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.110",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.240",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.220",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.060",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.090",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.270",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.200",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.140",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.210",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.230",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.250",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.040",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.150",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.260",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.100",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.120",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.050",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.160",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.070",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.180",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.190",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.24.030",
+    "chapter": "74.24",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.060",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.070",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.020",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.050",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.040",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.28.030",
+    "chapter": "74.28",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.060",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.080",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.070",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.140",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.090",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.36.150",
+    "chapter": "74.36",
+    "title": "74",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.40.040",
+    "chapter": "74.40",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.40.020",
+    "chapter": "74.40",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.40.030",
+    "chapter": "74.40",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.40.050",
+    "chapter": "74.40",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 74.44.020",
+    "chapter": "74.44",
+    "title": "74",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 78.36.850",
+    "chapter": "78.36",
+    "title": "78",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.160",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.140",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.100",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.054",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.190",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.130",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.170",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.290",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.180",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.090",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.025",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.015",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.012",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.250",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.150",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.110",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.014",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.200",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.080",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.310",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.280",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.220",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.260",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.300",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.120",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.270",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.230",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.40.240",
+    "chapter": "80.40",
+    "title": "80",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.48.020",
+    "chapter": "80.48",
+    "title": "80",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 80.48.030",
+    "chapter": "80.48",
+    "title": "80",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.32.290",
+    "chapter": "81.32",
+    "title": "81",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.32.340",
+    "chapter": "81.32",
+    "title": "81",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.32.360",
+    "chapter": "81.32",
+    "title": "81",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.32.350",
+    "chapter": "81.32",
+    "title": "81",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.130",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.040",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.110",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.050",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.120",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.070",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.020",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.140",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.030",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.080",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.150",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.060",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 81.72.100",
+    "chapter": "81.72",
+    "title": "81",
+    "parser_entries_in_chapter": 2,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.435",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.455",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.645",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.745",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.725",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.515",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.552",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.510",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.635",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.055",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.610",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.430",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.740",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.110",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.100",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.551",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.405",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.115",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.490",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.625",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.210",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.465",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.200",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.640",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.045",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.180",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.095",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.450",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.145",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.175",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.715",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.600",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.215",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.553",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.620",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.085",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.710",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.445",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.065",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.650",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.550",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.120",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.140",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.730",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.150",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.460",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.185",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.470",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.750",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.040",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.735",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.400",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.615",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.160",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.630",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.605",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.080",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.070",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.170",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.755",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.554",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.060",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.720",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.205",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.505",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.075",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.420",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.410",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.415",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.005",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.425",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.475",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.105",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.480",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 85.04.050",
+    "chapter": "85.04",
+    "title": "85",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.05.380",
+    "chapter": "86.05",
+    "title": "86",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.05.320",
+    "chapter": "86.05",
+    "title": "86",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.05.720",
+    "chapter": "86.05",
+    "title": "86",
+    "parser_entries_in_chapter": 1,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.475",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.600",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.670",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.820",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.540",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.800",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.510",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.720",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.175",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.640",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.520",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.690",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.485",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.340",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.620",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.165",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.205",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.440",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.220",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.660",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.530",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.360",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.320",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.630",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.490",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.350",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.010",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.610",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.550",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.260",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.370",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.225",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.420",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.200",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.290",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.710",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.195",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.480",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.790",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.450",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.270",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.685",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.240",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.215",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.590",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.460",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.700",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.330",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.250",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.650",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.310",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.430",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.680",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.695",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.560",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.675",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.580",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.495",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.500",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.280",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.230",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.005",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.390",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.470",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 86.08.830",
+    "chapter": "86.08",
+    "title": "86",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 87.12.180",
+    "chapter": "87.12",
+    "title": "87",
+    "parser_entries_in_chapter": 5,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.590",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.760",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.320",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.030",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.740",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.310",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.920",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.940",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.360",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.340",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.530",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.060",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.730",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.560",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.220",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.510",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.020",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.520",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.330",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.390",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.790",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.230",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.870",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.550",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.300",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.350",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.240",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.380",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.700",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.500",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.910",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.210",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.080",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.200",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.780",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.540",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.880",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.770",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.750",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.580",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.710",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.570",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.370",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.800",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.890",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.070",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.900",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.050",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.930",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.20.720",
+    "chapter": "89.20",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.670",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.330",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.170",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.320",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.120",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.700",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.100",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.870",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.740",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.610",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.080",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.620",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.430",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.110",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.180",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.690",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.730",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.570",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.580",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.040",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.460",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.440",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.030",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.290",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.880",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.820",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.060",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.410",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.810",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.850",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.860",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.090",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.470",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.070",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.160",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.710",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.420",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.840",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.310",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.830",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.020",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.130",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.630",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.600",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.660",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.140",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.800",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.400",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.450",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.680",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.010",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.720",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.640",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.050",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.300",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.150",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.22.590",
+    "chapter": "89.22",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.240",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.100",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.400",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.080",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.580",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.550",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.410",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.420",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.760",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.220",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.210",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.780",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.020",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.030",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.260",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.190",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.500",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.270",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.750",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.060",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.560",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.570",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.770",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.090",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.800",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.050",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.200",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.710",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.520",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.180",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.170",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.440",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.530",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.510",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.040",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.120",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.010",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.130",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.070",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.250",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.730",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.790",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.150",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.540",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.810",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.140",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.700",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.230",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.450",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.430",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.160",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.110",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.720",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.24.740",
+    "chapter": "89.24",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.450",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.770",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.740",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.260",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.560",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.430",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.720",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.760",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.840",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.400",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.410",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.060",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.530",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.020",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.470",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.780",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.860",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.460",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.790",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.830",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.010",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.730",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.710",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.200",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.050",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.500",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.520",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.030",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.440",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.570",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.810",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.040",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.850",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.480",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.700",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.070",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.240",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.820",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.540",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.490",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.800",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.420",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.270",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.26.750",
+    "chapter": "89.26",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.050",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.480",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.700",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.760",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.260",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.440",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.510",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.400",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.530",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.490",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.230",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.720",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.070",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.840",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.020",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.450",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.060",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.560",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.710",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.850",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.730",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.220",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.750",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.200",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.470",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.740",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.500",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.800",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.030",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.240",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.420",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.250",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.520",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.790",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.820",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.810",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.460",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.570",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.430",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.410",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.080",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.040",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.210",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.010",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.770",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.540",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.780",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.830",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  },
+  {
+    "canonical_citation": "RCW 89.28.550",
+    "chapter": "89.28",
+    "title": "89",
+    "parser_entries_in_chapter": 0,
+    "reason": "non-existent section in present chapter (preserved as NULL per \u00a7K #37)"
+  }
+]

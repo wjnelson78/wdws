@@ -106,9 +106,9 @@ async def _wait_until_quiet_hours_end() -> None:
 # Configuration
 # ============================================================
 
-CLASSIFIER_VERSION = 'agent_athena_v1'
-CLASSIFIER_MODEL = 'claude-sonnet-4-6'
-TOKENS_PER_HOUR = 100
+DEFAULT_CLASSIFIER_VERSION = 'agent_athena_v1'
+CLASSIFIER_MODEL = 'claude-haiku-4-5-20251001'
+TOKENS_PER_HOUR = 400
 CONFIDENCE_HIGH = 0.9
 CONFIDENCE_MEDIUM = 0.7
 PROMPTS_DIR = Path("/opt/wdws/sprint_a_prompts")
@@ -119,52 +119,65 @@ PROMPTS_DIR = Path("/opt/wdws/sprint_a_prompts")
 # ============================================================
 
 class TokenBucket:
-    """Rolling 1-hour window token bucket.
+    """DB-authoritative rolling 1-hour window token bucket.
 
-    consume() returns immediately if budget is available, else returns the
-    seconds-to-wait until the oldest token ages out.
+    Every acquire() reads the current staging-row count from the DB, so
+    multiple concurrent workers coordinate through shared state rather than
+    each maintaining their own in-memory window. A token is "consumed" when
+    the worker writes its staging row shortly after acquire() returns — the
+    DB timestamp of that row is the token, and there is no separate reserve.
 
-    from_db() initializes the bucket from recent staging-row timestamps so
-    worker restarts don't immediately burst the rate limit.
+    Overshoot is bounded at (N-1) for N concurrent workers: if all N call
+    acquire() at count=per_hour-1 simultaneously, all see budget and return,
+    then all insert, landing at per_hour+(N-1). On the next cycle they all
+    see over-budget and wait. For the sprint A 2-worker case this is ~1%
+    transient overshoot, which is within tolerance.
     """
 
     def __init__(self, per_hour: int = TOKENS_PER_HOUR) -> None:
         self.per_hour = per_hour
-        self.timestamps: list[float] = []
 
-    def _prune(self, now: float) -> None:
-        cutoff = now - 3600
-        self.timestamps = [t for t in self.timestamps if t > cutoff]
+    async def state(self, conn: asyncpg.Connection) -> tuple[int, float | None]:
+        row = await conn.fetchrow("""
+            SELECT COUNT(*) AS cnt,
+                   EXTRACT(EPOCH FROM MIN(created_at)) AS oldest_ts
+              FROM core.documents_backfill_staging
+             WHERE created_at >= now() - interval '1 hour'
+        """)
+        oldest = float(row['oldest_ts']) if row['oldest_ts'] is not None else None
+        return int(row['cnt']), oldest
 
-    def try_consume(self) -> float:
-        """Return 0.0 if token consumed, else seconds to wait before retry."""
-        now = time.time()
-        self._prune(now)
-        if len(self.timestamps) < self.per_hour:
-            self.timestamps.append(now)
-            return 0.0
-        oldest = self.timestamps[0]
-        return (oldest + 3600.0) - now + 1.0
-
-    async def acquire(self) -> None:
+    async def acquire(self, conn: asyncpg.Connection) -> None:
         while True:
-            wait = self.try_consume()
-            if wait <= 0.0:
+            count, oldest_ts = await self.state(conn)
+            if count < self.per_hour:
                 return
-            # Sleep in 60-second chunks so Ctrl-C feels responsive
-            await asyncio.sleep(min(wait, 60.0))
+            now = time.time()
+            # Time until oldest timestamp ages out of the window
+            if oldest_ts is not None:
+                wait = max(1.0, (oldest_ts + 3600.0) - now + 1.0)
+            else:
+                wait = 60.0
+            # Safety cap: default 60s so Ctrl-C stays responsive. When count
+            # materially exceeds per_hour, extend the inter-query cap so we
+            # don't spin once/min pointlessly — 1 extra overshoot token adds
+            # ~36s of wait at 100/hr, so 10+ overshoot makes 60s re-polling
+            # wasteful. Cap grows with overshoot, ceiling at 5 min.
+            overshoot = count - self.per_hour
+            if overshoot > 10:
+                sleep_cap = min(300.0, 60.0 + 6.0 * (overshoot - 10))
+            else:
+                sleep_cap = 60.0
+            await asyncio.sleep(min(wait, sleep_cap))
 
     @classmethod
     async def from_db(cls, conn: asyncpg.Connection,
                       per_hour: int = TOKENS_PER_HOUR) -> "TokenBucket":
+        """Construct a bucket and report current state for startup logging."""
         bucket = cls(per_hour)
-        rows = await conn.fetch("""
-            SELECT EXTRACT(EPOCH FROM created_at) AS ts
-              FROM core.documents_backfill_staging
-             WHERE created_at >= now() - interval '1 hour'
-             ORDER BY created_at
-        """)
-        bucket.timestamps = [float(r['ts']) for r in rows]
+        count, oldest_ts = await bucket.state(conn)
+        bucket._startup_count = count
+        bucket._startup_oldest = oldest_ts
         return bucket
 
 
@@ -354,6 +367,7 @@ def _review_required_categories(proposal: dict) -> list[str]:
 async def stage_legal_classification(
     conn: asyncpg.Connection, doc: asyncpg.Record,
     proposal: dict, batch_id: uuid.UUID,
+    classifier_version: str,
 ) -> uuid.UUID:
     po_active = await check_protective_order(conn, doc['id'])
     privilege, confidentiality = _route_legal(proposal, po_active)
@@ -367,7 +381,7 @@ async def stage_legal_classification(
         RETURNING id
     """, doc['id'], batch_id, privilege, confidentiality,
          proposal['confidence'], proposal['rationale'],
-         CLASSIFIER_VERSION, CLASSIFIER_MODEL)
+         classifier_version, CLASSIFIER_MODEL)
 
     # Medium-confidence → classification review
     if CONFIDENCE_MEDIUM <= proposal['confidence'] < CONFIDENCE_HIGH:
@@ -397,6 +411,7 @@ async def stage_legal_classification(
 async def stage_medical_classification(
     conn: asyncpg.Connection, doc: asyncpg.Record,
     proposal: dict, batch_id: uuid.UUID,
+    classifier_version: str,
 ) -> uuid.UUID:
     phi_status = proposal['phi_status']
     categories = list(proposal.get('phi_categories') or [])
@@ -415,7 +430,7 @@ async def stage_medical_classification(
         VALUES ($1, $2, 'medical', $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
     """, doc['id'], batch_id, phi_status, categories, minor,
-         confidence, proposal['rationale'], CLASSIFIER_VERSION, CLASSIFIER_MODEL)
+         confidence, proposal['rationale'], classifier_version, CLASSIFIER_MODEL)
 
     # Medium-confidence → classification review
     if CONFIDENCE_MEDIUM <= confidence < CONFIDENCE_HIGH:
@@ -522,20 +537,31 @@ async def count_staged_in_batch(
 
 
 async def count_pending_this_classifier(
-    conn: asyncpg.Connection, domain: str,
+    conn: asyncpg.Connection, domain: str, classifier_version: str,
 ) -> int:
-    """Count pending staging rows from the current classifier version,
-    across all batches. Used for sample_batch target-reached detection
-    so that an earlier aborted run's classifications still count."""
+    """Count pending FRESH staging rows from the current classifier version.
+
+    Excludes reclassification rows (those with a sibling staging row for the
+    same document_id — typically a superseded earlier-version row). Aborted-
+    run carryover (no sibling) is still counted so that a restart of an
+    interrupted sample_batch resumes the right target count, per Will
+    2026-04-23: those already-staged fresh rows count regardless of ordering.
+    """
     return await conn.fetchval("""
-        SELECT COUNT(*) FROM core.documents_backfill_staging
-         WHERE domain = $1 AND status = 'pending'
-           AND classifier_version = $2
-    """, domain, CLASSIFIER_VERSION)
+        SELECT COUNT(*) FROM core.documents_backfill_staging s
+         WHERE s.domain = $1 AND s.status = 'pending'
+           AND s.classifier_version = $2
+           AND NOT EXISTS (
+               SELECT 1 FROM core.documents_backfill_staging s2
+                WHERE s2.document_id = s.document_id
+                  AND s2.id != s.id
+           )
+    """, domain, classifier_version)
 
 
 async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
-                     domain_filter: Optional[str] = None) -> None:
+                     domain_filter: Optional[str] = None,
+                     classifier_version: str = DEFAULT_CLASSIFIER_VERSION) -> None:
     anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
     if not anthropic_key:
         sys.exit("ANTHROPIC_API_KEY env var required")
@@ -544,8 +570,11 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
     conn = await asyncpg.connect(dsn)
     try:
         print(f"mode={mode} as user={await conn.fetchval('SELECT current_user')}")
+        print(f"classifier_version = {classifier_version}")
         bucket = await TokenBucket.from_db(conn)
-        print(f"rate bucket initialized: {len(bucket.timestamps)} recent consumptions")
+        print(f"rate bucket initialized (DB-authoritative): "
+              f"{bucket._startup_count} recent consumptions, "
+              f"ceiling={bucket.per_hour}/hr")
 
         batch_id = uuid.uuid4()  # identifies this worker-session's batch
         print(f"batch_id = {batch_id}")
@@ -560,7 +589,7 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
         # Per Will 2026-04-23: those already-staged rows count regardless of
         # the ordering that produced them.
         initial_staged = {
-            d: await count_pending_this_classifier(conn, d)
+            d: await count_pending_this_classifier(conn, d, classifier_version)
             for d in ('legal', 'medical')
         }
         print(f"initial staged (carryover from prior runs): "
@@ -585,7 +614,7 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
                     print(f"  [{domain}] no more NULL documents")
                     continue
 
-                await bucket.acquire()
+                await bucket.acquire(conn)
                 print(f"  [{domain}] classify {str(doc['id'])[:8]}... "
                       f"title={doc['title'][:50] if doc['title'] else '(none)'}")
                 result = await classifiers[domain].classify(doc)
@@ -608,15 +637,15 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
                         VALUES ($1, $2, $3, 0.0, 'classifier did not return valid tool_use',
                                 $4, $5, 'rejected', $6)
                     """, doc['id'], batch_id, domain,
-                         CLASSIFIER_VERSION, CLASSIFIER_MODEL, error_detail)
+                         classifier_version, CLASSIFIER_MODEL, error_detail)
                     continue
 
                 proposal = result['proposal']
                 try:
                     if domain == 'legal':
-                        staging_id = await stage_legal_classification(conn, doc, proposal, batch_id)
+                        staging_id = await stage_legal_classification(conn, doc, proposal, batch_id, classifier_version)
                     else:
-                        staging_id = await stage_medical_classification(conn, doc, proposal, batch_id)
+                        staging_id = await stage_medical_classification(conn, doc, proposal, batch_id, classifier_version)
                     classified[domain] += 1
                     print(f"    staged {str(staging_id)[:8]}... "
                           f"confidence={proposal['confidence']:.2f}")
@@ -634,23 +663,26 @@ async def run_worker(dsn: str, mode: str, sample_size_per_domain: int = 100,
                       + ", ".join(f"{d}={classified[d]}" for d in domains_to_process)
                       + ", "
                       + ", ".join(f"failed_{d}={failed[d]}" for d in domains_to_process))
-                await create_t4_sample_review(conn, batch_id, classified, failed)
+                await create_t4_sample_review(conn, batch_id, classified, failed, classifier_version)
                 return
 
             # Worker mode: keep going until interrupted or no more work
-            if mode == 'worker' and all(
-                await fetch_next_document(conn, d) is None
-                for d in domains_to_process
-            ):
-                print("no more work; exiting worker loop")
-                return
+            if mode == 'worker':
+                any_work_left = False
+                for d in domains_to_process:
+                    if await fetch_next_document(conn, d) is not None:
+                        any_work_left = True
+                        break
+                if not any_work_left:
+                    print("no more work; exiting worker loop")
+                    return
     finally:
         await conn.close()
 
 
 async def create_t4_sample_review(
     conn: asyncpg.Connection, batch_id: uuid.UUID,
-    classified: dict, failed: dict,
+    classified: dict, failed: dict, classifier_version: str,
 ) -> None:
     """T4_SAMPLE_REVIEW stop-gate per v2.2 §6.5.
 
@@ -663,10 +695,11 @@ async def create_t4_sample_review(
         print("sample_batch completed during quiet hours; deferring "
               "T4_SAMPLE_REVIEW creation until 7am PT", flush=True)
         await _wait_until_quiet_hours_end()
-    # 10 random samples per domain — draw from all pending rows this
-    # classifier version has produced (across batches), not just this
-    # worker-session's batch_id, so carryover classifications from a
-    # prior aborted run are included in the sample pool.
+    # 10 random samples per domain — draw from FRESH pending rows this
+    # classifier version has produced (across batches). Excludes
+    # reclassification rows (sibling staging row on same document_id), so
+    # the gate sample pool is just fresh classifications. Aborted-run
+    # carryover (no sibling) still flows in, matching count_pending_this_classifier.
     samples = {}
     for domain in ('legal', 'medical'):
         rows = await conn.fetch("""
@@ -679,9 +712,14 @@ async def create_t4_sample_review(
               JOIN core.documents d ON d.id = s.document_id
              WHERE s.domain = $1 AND s.status = 'pending'
                AND s.classifier_version = $2
+               AND NOT EXISTS (
+                   SELECT 1 FROM core.documents_backfill_staging s2
+                    WHERE s2.document_id = s.document_id
+                      AND s2.id != s.id
+               )
              ORDER BY random()
              LIMIT 10
-        """, domain, CLASSIFIER_VERSION)
+        """, domain, classifier_version)
         samples[domain] = [
             {
                 'staging_id': str(r['staging_id']),
@@ -759,7 +797,7 @@ async def run_promote(dsn: str) -> None:
                 SELECT s.id AS staging_id, s.document_id, s.domain,
                        s.proposed_privilege, s.proposed_confidentiality,
                        s.proposed_phi_status, s.proposed_phi_categories,
-                       s.proposed_minor_patient
+                       s.proposed_minor_patient, s.classifier_version
                   FROM core.documents_backfill_staging s
                  WHERE s.status = 'pending'
                    AND s.confidence >= $1
@@ -795,7 +833,7 @@ async def run_promote(dsn: str) -> None:
                                    privilege_classified_at = now()
                              WHERE id = $1::uuid AND privilege IS NULL
                         """, s['document_id'], s['proposed_privilege'],
-                             s['proposed_confidentiality'], CLASSIFIER_VERSION)
+                             s['proposed_confidentiality'], s['classifier_version'])
                     else:
                         status = await conn.execute("""
                             UPDATE core.documents
@@ -808,7 +846,7 @@ async def run_promote(dsn: str) -> None:
                         """, s['document_id'], s['proposed_phi_status'],
                              s['proposed_phi_categories'] or [],
                              s['proposed_minor_patient'] or False,
-                             CLASSIFIER_VERSION)
+                             s['classifier_version'])
 
                     if status.endswith(" 1"):
                         await conn.execute("""
@@ -848,7 +886,9 @@ async def run_promote(dsn: str) -> None:
             f"captured as 'superseded' status.",
             1.0,
             json.dumps({'total_promoted': total_promoted,
-                        'classifier_version': CLASSIFIER_VERSION}),
+                        'classifier_version_default': DEFAULT_CLASSIFIER_VERSION,
+                        'note': ('per-row classifier_version preserved from staging; '
+                                 'see core.documents.privilege_classified_by / phi_classified_by')}),
             'applied',
         )
         print(f"\npromotion complete: {total_promoted} rows promoted.")
@@ -869,11 +909,17 @@ def main() -> None:
                         help="per-domain sample size for sample_batch mode (default 100)")
     parser.add_argument("--domain", choices=['legal', 'medical'], default=None,
                         help="Restrict worker to one domain (default: both alternating)")
+    parser.add_argument("--classifier-version", default=DEFAULT_CLASSIFIER_VERSION,
+                        help=("Tag applied to staging rows' classifier_version column. "
+                              "Change this whenever the classifier prompt is swapped so "
+                              "downstream can distinguish v1 vs v2 output. Default: "
+                              f"{DEFAULT_CLASSIFIER_VERSION}."))
     args = parser.parse_args()
     dsn = args.dsn or os.environ["DATABASE_URL"]
 
     if args.mode in ('worker', 'sample_batch'):
-        asyncio.run(run_worker(dsn, args.mode, args.sample_size, args.domain))
+        asyncio.run(run_worker(dsn, args.mode, args.sample_size, args.domain,
+                               args.classifier_version))
     elif args.mode == 'promote':
         asyncio.run(run_promote(dsn))
 

@@ -1,0 +1,12 @@
+{
+  "parse_errors": [],
+  "empty_or_garbled": [],
+  "anomalies": [
+    {
+      "set": "CRLJ",
+      "num": "86.04--99.04",
+      "note": "Range expansion ambiguous \u2014 multi-decimal notation; operator review required",
+      "pdf": "/opt/wdws/data/wa_court_rules/pdf/CRLJ/CLJ_CRLJ_86.04-99.04.pdf"
+    }
+  ]
+}

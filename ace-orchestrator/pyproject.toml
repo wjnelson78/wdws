@@ -1,0 +1,57 @@
+[project]
+name = "ace-orchestrator"
+version = "0.1.0"
+description = "ACE Orchestrator — FastAPI service that owns conversation state, system-prompt assembly, prompt caching, MCP routing, and case-file preloading for the Athena AI ecosystem."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "William Nelson" }]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sse-starlette>=2.1",
+    "anthropic>=0.40",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+    "httpx>=0.28",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "apscheduler[sqlalchemy]>=3.10",
+    "tenacity>=8.0",
+    "pgvector>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrator"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+ignore = ["E501"]

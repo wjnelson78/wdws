@@ -122,12 +122,18 @@ SUPPORTED_MEDICAL_IMPORT_EXTENSIONS = {
 AVAILABLE_MODELS = [
   {"id": "auto",            "model": "gpt-5.4",                     "provider": "openai",    "label": "⚡ Auto (GPT-5.4)",       "reasoning_effort": None,      "max_tool_rounds": 12, "description": "GPT-5.4 — automatically decides when to think deeper"},
   {"id": "claude-sonnet",   "model": "claude-sonnet-4-6",           "provider": "anthropic", "label": "🟣 Claude Sonnet 4.6",    "reasoning_effort": None,      "max_tool_rounds": 14, "description": "Claude Sonnet — fast, capable, great for most tasks"},
-  {"id": "claude-opus",     "model": "claude-opus-4-6",             "provider": "anthropic", "label": "🔮 Claude Opus 4.6",      "reasoning_effort": None,      "max_tool_rounds": 18, "description": "Claude Opus — most capable, deep legal reasoning"},
+  {"id": "claude-opus",     "model": "claude-opus-4-7",             "provider": "anthropic", "label": "🔮 Claude Opus 4.7",      "reasoning_effort": None,      "max_tool_rounds": 18, "description": "Claude Opus — most capable, deep legal reasoning"},
   {"id": "claude-haiku",    "model": "claude-haiku-4-5-20251001",   "provider": "anthropic", "label": "⚡ Claude Haiku 4.5",     "reasoning_effort": None,      "max_tool_rounds": 10, "description": "Claude Haiku — fastest, great for simple questions"},
   {"id": "think-low",       "model": "gpt-5.4",                     "provider": "openai",    "label": "💭 GPT Think Low",        "reasoning_effort": "low",     "max_tool_rounds": 8,  "description": "GPT-5.4 light reasoning — faster responses"},
   {"id": "think-med",       "model": "gpt-5.4",                     "provider": "openai",    "label": "💭 GPT Think Med",        "reasoning_effort": "medium",  "max_tool_rounds": 10, "description": "GPT-5.4 balanced reasoning and speed"},
   {"id": "think-high",      "model": "gpt-5.4",                     "provider": "openai",    "label": "🧠 GPT Think High",       "reasoning_effort": "high",    "max_tool_rounds": 14, "description": "GPT-5.4 deep reasoning — most thorough"},
 ]
+# Shorthand aliases for Claude model IDs → compact labels used in chat headers
+CLAUDE_MODEL_ALIASES = {
+    "claude-haiku-4-5-20251001": "haiku",
+    "claude-sonnet-4-6": "sonnet",
+    "claude-opus-4-7": "opus",
+}
 
 pool: Optional[asyncpg.Pool] = None
 _graph_access_token: Optional[str] = None
@@ -3463,7 +3469,7 @@ async def _call_claude_code(messages, api_model, tools=None):
     import asyncio as _aio
 
     # Convert model name to CLI alias
-    model_map = {"claude-haiku-4-5-20251001": "haiku", "claude-sonnet-4-6": "sonnet", "claude-opus-4-6": "opus"}
+    model_map = CLAUDE_MODEL_ALIASES
     model_alias = model_map.get(api_model, api_model)
 
     # Build prompt from messages
@@ -4409,7 +4415,7 @@ async def api_chat_stream(request: Request):
                 import asyncio as _aio
                 _cli_ok = False
                 try:
-                    model_map = {"claude-haiku-4-5-20251001": "haiku", "claude-sonnet-4-6": "sonnet", "claude-opus-4-6": "opus"}
+                    model_map = CLAUDE_MODEL_ALIASES
                     model_alias = model_map.get(api_model, api_model)
 
                     # Build prompt from messages
@@ -5830,7 +5836,7 @@ main:has(#tab-chat:not(.hidden)){padding:0;max-width:none}
       <select id="chat-model-select" title="Select model">
         <option value="claude-haiku">Haiku 4.5</option>
         <option value="claude-sonnet">Sonnet 4.6</option>
-        <option value="claude-opus">Opus 4.6</option>
+        <option value="claude-opus">Opus 4.7</option>
         <option value="auto">GPT Auto</option>
         <option value="think-low">GPT Think Low</option>
         <option value="think-med">GPT Think Med</option>

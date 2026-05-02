@@ -336,16 +336,45 @@ async def get_sprint_a_task4_progress(pool: asyncpg.Pool) -> Optional[dict]:
                AND created_at >= now() - interval '24 hours'
         """)
 
-        # Throughput: docs/hr averages last 24h, split by business hours
+        # Throughput: docs/hr averages last 24h (across all classifier versions,
+        # which includes the parallel legal_v1 + medical_v2 workers)
         throughput = await conn.fetchrow("""
             SELECT
-                COUNT(*) FILTER (WHERE classifier_version = 'agent_athena_v1')::float
+                COUNT(*)::float
                     / GREATEST(EXTRACT(EPOCH FROM (now() - MIN(created_at))) / 3600.0, 1.0) AS avg_24h,
-                COUNT(*) FILTER (WHERE classifier_version = 'agent_athena_v1'
-                                  AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/Los_Angeles') BETWEEN 9 AND 18)::float
+                COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/Los_Angeles') BETWEEN 9 AND 18)::float
                     / GREATEST(10.0, 1.0) AS business_hours_avg
               FROM core.documents_backfill_staging
              WHERE created_at >= now() - interval '24 hours'
+        """)
+
+        # Three-process sub-counters — Will's spec for the multi-process phase:
+        # (1) legal bulk v1, (2) medical bulk v2 (fresh only, excluding
+        # reclassification rows which are already in counter 3), (3) the
+        # reclassification-and-gate v2 output already promoted to core.documents.
+        legal_bulk = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE status='pending') AS pending,
+                COUNT(*) FILTER (WHERE status='promoted') AS promoted,
+                COUNT(*) FILTER (WHERE status='rejected') AS rejected
+              FROM core.documents_backfill_staging
+             WHERE domain='legal' AND classifier_version='agent_athena_v1'
+        """)
+        medical_bulk_v2 = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE s.status='pending') AS pending,
+                COUNT(*) FILTER (WHERE s.status='promoted') AS promoted,
+                COUNT(*) FILTER (WHERE s.status='rejected') AS rejected
+              FROM core.documents_backfill_staging s
+             WHERE s.domain='medical' AND s.classifier_version='agent_athena_v2'
+               AND NOT EXISTS (
+                   SELECT 1 FROM core.documents_backfill_staging s2
+                    WHERE s2.document_id = s.document_id AND s2.id != s.id
+               )
+        """)
+        v2_promoted_core = await conn.fetchval("""
+            SELECT COUNT(*) FROM core.documents
+             WHERE phi_classified_by = 'agent_athena_v2'
         """)
 
         # ETA at current 24h rate
@@ -374,6 +403,9 @@ async def get_sprint_a_task4_progress(pool: asyncpg.Pool) -> Optional[dict]:
             'throughput_business_hours_avg': float(throughput['business_hours_avg'] or 0),
             'eta_days': eta_days,
             'total_remaining': total_to_classify,
+            'legal_bulk': dict(legal_bulk),
+            'medical_bulk_v2': dict(medical_bulk_v2),
+            'v2_promoted_core': v2_promoted_core,
             't4_sample_review': (
                 'cleared' if (t4_sample and t4_sample['approved'])
                 else ('pending' if t4_sample else 'not yet created')
@@ -389,6 +421,11 @@ def format_task4_block(progress: dict) -> list[str]:
         pd = d['per_domain'][domain]
         pct = 100.0 * pd['classified'] / pd['total'] if pd['total'] else 0
         lines.append(f"  {domain}: {pd['classified']}/{pd['total']} ({pct:.1f}%)")
+    # Multi-process phase sub-counters
+    lb = d['legal_bulk']; mb = d['medical_bulk_v2']
+    lines.append(f"  legal bulk (v1): pending={lb['pending']} promoted={lb['promoted']} rejected={lb['rejected']}")
+    lines.append(f"  medical bulk (v2, fresh): pending={mb['pending']} promoted={mb['promoted']} rejected={mb['rejected']}")
+    lines.append(f"  v2 already promoted to core.documents (reclass+gate+bulk): {d['v2_promoted_core']}")
     bl = d['buckets_legal']; bm = d['buckets_medical']
     lines.append(f"  confidence buckets (24h) — legal: high={bl['high']} med={bl['medium']} low={bl['low']}; "
                  f"medical: high={bm['high']} med={bm['medium']} low={bm['low']}")

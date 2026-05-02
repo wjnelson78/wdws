@@ -1,0 +1,201 @@
+{
+  "articles": {
+    "I": {
+      "title": "Declaration of Rights",
+      "guid": "15aea7cf-9f33-455d-9ebc-027ccb3c6b98",
+      "cached_path": "/tmp/wa_const_cache/article_I.html",
+      "size_bytes": 172703
+    },
+    "II": {
+      "title": "Legislative Department",
+      "guid": "13c8f0de-58d7-4cee-b367-4478b3be34fb",
+      "cached_path": "/tmp/wa_const_cache/article_II.html",
+      "size_bytes": 223761
+    },
+    "III": {
+      "title": "The Executive",
+      "guid": "62da7e39-e41a-4405-be4e-ed6f593ca55f",
+      "cached_path": "/tmp/wa_const_cache/article_III.html",
+      "size_bytes": 170395
+    },
+    "IV": {
+      "title": "The Judiciary",
+      "guid": "ae405373-5163-4b8e-a2ab-690941cc89ac",
+      "cached_path": "/tmp/wa_const_cache/article_IV.html",
+      "size_bytes": 204382
+    },
+    "V": {
+      "title": "Impeachment",
+      "guid": "30f8cb9d-4929-41fc-96d2-666f53e09b7b",
+      "cached_path": "/tmp/wa_const_cache/article_V.html",
+      "size_bytes": 148166
+    },
+    "VI": {
+      "title": "Elections and Elective Rights",
+      "guid": "e0de4c3e-d3f1-47fd-85c3-f8e4946b81ff",
+      "cached_path": "/tmp/wa_const_cache/article_VI.html",
+      "size_bytes": 156547
+    },
+    "VII": {
+      "title": "Revenue and Taxation",
+      "guid": "36abc7f0-51d5-4d32-b0ca-c1dd1fa3c27c",
+      "cached_path": "/tmp/wa_const_cache/article_VII.html",
+      "size_bytes": 198629
+    },
+    "VIII": {
+      "title": "State, County, and Municipal Indebtedness",
+      "guid": "c8680870-39e8-457c-b6f4-9e401940e28f",
+      "cached_path": "/tmp/wa_const_cache/article_VIII.html",
+      "size_bytes": 197274
+    },
+    "IX": {
+      "title": "Education",
+      "guid": "7ee60562-f33c-4f7c-af29-65d79a9f3892",
+      "cached_path": "/tmp/wa_const_cache/article_IX.html",
+      "size_bytes": 154407
+    },
+    "X": {
+      "title": "Militia",
+      "guid": "b022defb-25c4-4749-8448-9468d22aa202",
+      "cached_path": "/tmp/wa_const_cache/article_X.html",
+      "size_bytes": 149256
+    },
+    "XI": {
+      "title": "County, City, and Township Organization",
+      "guid": "b5d3ff0e-7914-47c9-87b5-6f237d7be982",
+      "cached_path": "/tmp/wa_const_cache/article_XI.html",
+      "size_bytes": 182774
+    },
+    "XII": {
+      "title": "Corporations Other Than Municipal",
+      "guid": "9472364f-ba82-4397-8383-60be45ebc91e",
+      "cached_path": "/tmp/wa_const_cache/article_XII.html",
+      "size_bytes": 164494
+    },
+    "XIII": {
+      "title": "State Institutions",
+      "guid": "4f8bddb6-9395-4079-a70e-37eb5be99567",
+      "cached_path": "/tmp/wa_const_cache/article_XIII.html",
+      "size_bytes": 148286
+    },
+    "XIV": {
+      "title": "Seat of Government",
+      "guid": "331dcf48-d767-478c-aee4-d1efa514021b",
+      "cached_path": "/tmp/wa_const_cache/article_XIV.html",
+      "size_bytes": 149419
+    },
+    "XV": {
+      "title": "Harbors and Tide Waters",
+      "guid": "92f99a09-72eb-4f91-a67b-614f9cfc9c02",
+      "cached_path": "/tmp/wa_const_cache/article_XV.html",
+      "size_bytes": 149988
+    },
+    "XVI": {
+      "title": "School and Granted Lands",
+      "guid": "4a617156-d5a9-4c7b-b901-7ec9572ea09b",
+      "cached_path": "/tmp/wa_const_cache/article_XVI.html",
+      "size_bytes": 151996
+    },
+    "XVII": {
+      "title": "Tide Lands",
+      "guid": "35330e9e-652f-439e-8e96-13ab0d698c36",
+      "cached_path": "/tmp/wa_const_cache/article_XVII.html",
+      "size_bytes": 147524
+    },
+    "XVIII": {
+      "title": "State Seal",
+      "guid": "245b6d63-f504-4079-9137-5d6edcda397e",
+      "cached_path": "/tmp/wa_const_cache/article_XVIII.html",
+      "size_bytes": 146893
+    },
+    "XIX": {
+      "title": "Exemptions",
+      "guid": "ea635f35-e084-4b95-ab6e-3a3d8262d741",
+      "cached_path": "/tmp/wa_const_cache/article_XIX.html",
+      "size_bytes": 146653
+    },
+    "XX": {
+      "title": "Public Health and Vital Statistics",
+      "guid": "c4013f0d-cbde-4b98-8e2f-64f6e842d025",
+      "cached_path": "/tmp/wa_const_cache/article_XX.html",
+      "size_bytes": 147113
+    },
+    "XXI": {
+      "title": "Water and Water Rights",
+      "guid": "3464b3b8-29b9-40d2-b1dd-c15ceed53e21",
+      "cached_path": "/tmp/wa_const_cache/article_XXI.html",
+      "size_bytes": 146629
+    },
+    "XXII": {
+      "title": "Legislative Apportionment",
+      "guid": "ea1a454c-2c22-4b18-b3c0-8c62da993821",
+      "cached_path": "/tmp/wa_const_cache/article_XXII.html",
+      "size_bytes": 151602
+    },
+    "XXIII": {
+      "title": "Amendments",
+      "guid": "697b5d20-b7a6-44e4-91c7-ae7fff95ce21",
+      "cached_path": "/tmp/wa_const_cache/article_XXIII.html",
+      "size_bytes": 150167
+    },
+    "XXIV": {
+      "title": "Boundaries",
+      "guid": "0397defa-d288-412a-9d97-15230ed8a235",
+      "cached_path": "/tmp/wa_const_cache/article_XXIV.html",
+      "size_bytes": 149951
+    },
+    "XXV": {
+      "title": "Jurisdiction",
+      "guid": "c3e09abb-3753-46d3-85cc-d09e52b790af",
+      "cached_path": "/tmp/wa_const_cache/article_XXV.html",
+      "size_bytes": 147826
+    },
+    "XXVI": {
+      "title": "Compact with the United States",
+      "guid": "55005615-ffde-4552-918f-bdb1ab9fb6fd",
+      "cached_path": "/tmp/wa_const_cache/article_XXVI.html",
+      "size_bytes": 149221
+    },
+    "XXVII": {
+      "title": "Schedule",
+      "guid": "67c88464-958c-42fd-92f0-a5c8a9e3970f",
+      "cached_path": "/tmp/wa_const_cache/article_XXVII.html",
+      "size_bytes": 163788
+    },
+    "XXVIII": {
+      "title": "Compensation of State Officers",
+      "guid": "09478a2c-5858-499e-8e28-2e737723d2f1",
+      "cached_path": "/tmp/wa_const_cache/article_XXVIII.html",
+      "size_bytes": 149990
+    },
+    "XXIX": {
+      "title": "Investments of Public Pension and Retirement Funds",
+      "guid": "d9b609f5-915a-4c92-a095-3ef571aa58c0",
+      "cached_path": "/tmp/wa_const_cache/article_XXIX.html",
+      "size_bytes": 148954
+    },
+    "XXX": {
+      "title": "Compensation of Public Officers",
+      "guid": "18db8560-7b68-43e8-a08e-0c15b50b724a",
+      "cached_path": "/tmp/wa_const_cache/article_XXX.html",
+      "size_bytes": 147765
+    },
+    "XXXI": {
+      "title": "Sex Equality - Rights and Responsibilities",
+      "guid": "273dba45-c5e5-4e5b-97e3-38636b0db9dd",
+      "cached_path": "/tmp/wa_const_cache/article_XXXI.html",
+      "size_bytes": 147277
+    },
+    "XXXII": {
+      "title": "Special Revenue Financing",
+      "guid": "1354d034-48af-4534-9ea2-890b50a77898",
+      "cached_path": "/tmp/wa_const_cache/article_XXXII.html",
+      "size_bytes": 149777
+    }
+  },
+  "amendment_landing": {
+    "guid": "dbfbe753-d62b-45a4-b6a5-92322f340d19",
+    "cached_path": "/tmp/wa_const_cache/amendment_landing.html",
+    "size_bytes": 507155
+  }
+}

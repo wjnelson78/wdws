@@ -1,0 +1,28 @@
+[Unit]
+Description=Athena BGE-M3 + bge-reranker GPU server (TEI-compatible, port 9098)
+Documentation=file:///opt/bge-server/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bge-server
+EnvironmentFile=/opt/bge-server/.env
+ExecStart=/opt/bge-server/venv/bin/python /opt/bge-server/gpu_embedding_server.py
+Restart=always
+RestartSec=10
+
+# Long warm-up: BGE-M3 + reranker fp16 load can take 30-60s on cold cache.
+TimeoutStartSec=300
+
+# Stable VRAM: prefer process kill over GPU lockup if it ever wedges.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bge-embedding
+
+[Install]
+WantedBy=multi-user.target

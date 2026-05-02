@@ -1,0 +1,83 @@
+======================================================================
+WAC PHASE 5 VALIDATION SUITE
+======================================================================
+
+=== CHECK 1: Embedding count completeness ===
+total_chunks=56998
+embedded=56998
+pending=0
+CHECK 1: PASS
+
+=== CHECK 2: Authority-chain resolution rate ===
+section_total=87689|resolved=83752|pct=95.51|CHECK 2: PASS
+
+=== CHECK 3a: WLAD authority chain reverse query ===
+wlad_count=200|CHECK 3a: PASS
+
+=== CHECK 3b: BIIA authority chain (RCW 51.x) ===
+bii_count=2317|CHECK 3b: PASS
+
+=== CHECK 3c: Three-jurisdiction unified semantic query ===
+Probe via RCW 49.60.180 embedding; expect WAC + RCW + USC results in top-15
+RCW RCW 49.60.180|rcw|1.0000
+RCW RCW 49.60.200|rcw|0.9339
+RCW RCW 49.60.190|rcw|0.8793
+RCW RCW 49.60.175|rcw|0.8409
+RCW RCW 49.44.090|rcw|0.8355
+WAC WAC 162-22-025|wac|0.8344
+RCW RCW 49.60.176|rcw|0.8321
+29 U.S.C. § 623 — Prohibition |usc|0.8257
+RCW RCW 49.60.222|rcw|0.8256
+WAC WAC 162-36-005|wac|0.8242
+42 U.S.C. § 2000e–2 — Unlawful|usc|0.8203
+WAC WAC 162-22-035|wac|0.8148
+WAC WAC 392-190-0591|wac|0.8096
+WAC WAC 162-16-250|wac|0.8071
+RCW RCW 49.60.030|rcw|0.8066
+
+=== CHECK 4: Content-fidelity spot (20 random active sections; verify non-empty body + valid metadata) ===
+ERROR:  syntax error at or near "TABLESAMPLE"
+LINE 4: TABLESAMPLE BERNOULLI(0.04)
+        ^
+
+=== CHECK 5: Citation graph density ===
+wac_xrefs_total=89082|avg_per_active_section=1.74
+
+--- xrefs by target_jurisdiction ---
+state-wa-wac|52152
+state-wa-rcw|36610
+cfr|199
+federal-usc|105
+wa-constitution|16
+
+=== CHECK 6: Recodification chain — pending vs applied ===
+sections_pending_recod=0
+sections_applied_recod=21
+
+=== CHECK 7: Class-distribution + Reserved ghost integrity ===
+class_a_image=30
+class_b1_partheading=41
+class_d_cfr=26
+class_d_external=124
+reserved_ghosts=284
+
+=== CHECK 8: CHECK constraint integrity ===
+invariant_violations=0
+CHECK 8: PASS
+
+=== CHECK 9: Sample reverse-authority query — WLAD enforcement WACs ===
+WAC 132V-305-010|Statement of policy
+WAC 132V-305-020|Objective and responsibilities
+WAC 132V-305-030|Definitions
+WAC 132V-305-040|Who may file a complaint
+WAC 132V-305-050|Confidentiality and right to privacy
+WAC 132V-305-060|Responsible employees and reporting responsibiliti
+WAC 132V-305-070|Investigation procedure, notice and appeal
+WAC 132V-305-080|Publication of antidiscrimination policies and pro
+WAC 132V-305-090|Limits to authority
+WAC 132V-305-100|Nonretaliation, intimidation and coercion
+
+=== CHECK 10: Cross-corpus integrity (RCW + USC unchanged) ===
+rcw_sections=51764
+usc_docs=11678
+wac_docs=73180

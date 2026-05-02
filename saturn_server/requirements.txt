@@ -1,0 +1,7 @@
+# Pin loosely; CUDA wheels are picked from the PyTorch index in install steps.
+fastapi>=0.110,<1
+uvicorn[standard]>=0.27
+pydantic>=2.5
+sentence-transformers>=2.7,<4
+transformers>=4.41
+# torch is installed separately with the CUDA-matching wheel — see README.

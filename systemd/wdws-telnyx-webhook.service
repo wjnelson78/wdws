@@ -1,0 +1,21 @@
+[Unit]
+Description=WDWS Telnyx SMS Webhook (port 9110)
+Documentation=file:///opt/wdws/PORTS.md
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+EnvironmentFile=/opt/wdws/.env
+Type=simple
+User=root
+WorkingDirectory=/opt/wdws
+ExecStart=/opt/wdws/venv/bin/python3 /opt/wdws/telnyx_webhook.py
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wdws-telnyx-webhook
+
+[Install]
+WantedBy=multi-user.target

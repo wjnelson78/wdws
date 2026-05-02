@@ -98,6 +98,7 @@ from ingestion_pipeline import (
     ingest as pipeline_ingest,
 )
 import blob_storage
+from ingest_attachments import extract_xlsx_text as _extract_xlsx_text, extract_xls_text as _extract_xls_text
 from agents.email_util import (
     build_notification_html as build_alert_notification_html,
     send_email as send_alert_email,
@@ -325,6 +326,11 @@ def _extract_docx_text(docx_path: Path) -> str:
                 return "\n".join(texts)
     except Exception as e:
         log.error(f"DOCX extraction failed for {docx_path.name}: {e}")
+        return ""
+
+
+    except Exception as e:
+        log.error(f"XLS extraction failed for {xls_path.name}: {e}")
         return ""
 
 
@@ -601,10 +607,16 @@ def extract_text_from_binary(filename: str, content_type: str, data: bytes) -> T
         elif ct == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or suffix == ".docx":
             text = _extract_docx_text(tmp_path)
             method = "docx_xml"
+        elif ct == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or suffix == ".xlsx":
+            text = _extract_xlsx_text(tmp_path)
+            method = "xlsx_openpyxl"
+        elif ct == "application/vnd.ms-excel" or suffix == ".xls":
+            text = _extract_xls_text(tmp_path)
+            method = "xls_soffice"
         elif ct in ("text/plain", "text/csv", "text/html") or suffix in (".txt", ".csv", ".html", ".htm"):
             text = data.decode("utf-8", errors="ignore")
             method = "text_direct"
-        elif suffix in (".doc", ".xls", ".xlsx", ".ppt", ".pptx"):
+        elif suffix in (".doc", ".ppt", ".pptx"):
             # Try as PDF fallback first (some .doc are actually PDFs)
             text = _extract_pdf_text(tmp_path)
             method = "ocr_pdf_fallback" if text.strip() else "unsupported"
@@ -1637,7 +1649,7 @@ async def process_email_attachments(
             # re-running on freshly-ingested attachments.
             _SONNET_V1_METHODS = {
                 "pdftotext_native", "sonnet_pdf", "sonnet_image",
-                "docx_xml", "text_direct",
+                "docx_xml", "xlsx_openpyxl", "xls_soffice", "text_direct",
             }
             metadata = {
                 "parent_email_doc_id": email_doc_id,

@@ -1,0 +1,26 @@
+{
+  "total_planned": 1039,
+  "fetched_this_run": 405,
+  "skipped_existing": 634,
+  "errors": [],
+  "bytes_total": 23523044,
+  "elapsed_sec": 438.9,
+  "by_set": {
+    "RAP": 180,
+    "CRLJ": 82,
+    "CrRLJ": 76,
+    "RALJ": 45,
+    "APR": 54,
+    "CJC": 4,
+    "ELC": 133,
+    "ER": 67,
+    "GR": 58,
+    "RPC": 64,
+    "CR": 95,
+    "CrR": 65,
+    "GALR": 7,
+    "JuCR": 82,
+    "SCCAR": 27
+  },
+  "completed_at": "2026-05-01T05:10:24.376721+00:00"
+}

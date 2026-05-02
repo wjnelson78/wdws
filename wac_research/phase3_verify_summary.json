@@ -1,0 +1,132 @@
+{
+  "wall_seconds": 113.37182423299964,
+  "files_total": 2853,
+  "status_counts": {
+    "ok": 2842,
+    "appendix_or_empty": 2,
+    "disposition_only": 1,
+    "title_redirect": 8
+  },
+  "totals": {
+    "active_sections": 51634,
+    "dispositions": 21746,
+    "authority_chain": 105983,
+    "history": 95924,
+    "cross_refs": 89214
+  },
+  "titles_with_sections": 175,
+  "titles_no_sections": 1,
+  "section_length_stats": {
+    "n": 51634,
+    "mean_chars": 1901.7,
+    "median_chars": 868,
+    "max_chars": 197431,
+    "mean_chunks": 1.584,
+    "total_chunks": 81779
+  },
+  "errors_count": 8,
+  "errors_sample": [
+    {
+      "cite": "365-06",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-12",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-14",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-22",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-24",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-31",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-40",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    },
+    {
+      "cite": "365-60",
+      "class": "title_redirect",
+      "msg": "H1 reads 'Title 365 WAC' \u2014 chapter slot returned title-level page (server fall-through). Skip this URL."
+    }
+  ],
+  "top_titles_by_sections": [
+    [
+      "296",
+      7002
+    ],
+    [
+      "246",
+      4747
+    ],
+    [
+      "388",
+      4088
+    ],
+    [
+      "173",
+      3268
+    ],
+    [
+      "16",
+      2078
+    ],
+    [
+      "284",
+      1547
+    ],
+    [
+      "392",
+      1529
+    ],
+    [
+      "110",
+      1451
+    ],
+    [
+      "182",
+      1445
+    ],
+    [
+      "308",
+      1409
+    ],
+    [
+      "480",
+      1094
+    ],
+    [
+      "51",
+      962
+    ],
+    [
+      "357",
+      917
+    ],
+    [
+      "220",
+      859
+    ],
+    [
+      "230",
+      770
+    ]
+  ]
+}

@@ -20,7 +20,7 @@ exposure is done via the `tukwila-colo-tunnel` Cloudflare tunnel (see
 | 9001  | (reserved)                       | —           | Reserved — historical use |
 | 9002  | (reserved)                       | —           | Reserved — historical use |
 | 9097  | (reserved, code ref)             | —           | Referenced in code |
-| 9098  | (reserved)                       | —           | Reserved |
+| 9098  | BGE GPU server (TEI-compat)      | 0.0.0.0     | Embedder + reranker on saturn (172.16.81.113) and sister box (172.16.81.187, 2× T4); source in `/opt/wdws/saturn_server/` |
 | 9099  | (reserved)                       | —           | Reserved |
 | 9100  | Athena dashboard (`app.py`)      | 127.0.0.1   | UI |
 | 9101  | Attachment server                | 127.0.0.1   | `attachment_server.py` |

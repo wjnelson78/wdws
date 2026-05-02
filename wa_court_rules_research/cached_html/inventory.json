@@ -1,0 +1,6175 @@
+[
+  {
+    "group": "aca",
+    "set_code": "SCAR",
+    "set_name": "Supplemental Court of Appeals Administrative Rule",
+    "rule_count": 0,
+    "rules": [],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=aca&set=SCAR"
+  },
+  {
+    "group": "am",
+    "set_code": "ATJ",
+    "set_name": "Access to Justice",
+    "rule_count": 0,
+    "rules": [],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=am&set=ATJ"
+  },
+  {
+    "group": "am",
+    "set_code": "BBP",
+    "set_name": "Bench-Bar-Press Committee Statement of Principles",
+    "rule_count": 0,
+    "rules": [],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=am&set=BBP"
+  },
+  {
+    "group": "am",
+    "set_code": "BJA",
+    "set_name": "Advisory Case Processing Time Standards",
+    "rule_count": 0,
+    "rules": [],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=am&set=BJA"
+  },
+  {
+    "group": "app",
+    "set_code": "RAP",
+    "set_name": "Rules of Appellate Procedure",
+    "rule_count": 180,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Interpretation and Waiver of Rules by Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_01_02_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Methods for Seeking Review of Trial Court Decision--Generally",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Decisions of the Superior Court That May be \n              Appealed",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Decisions of the Trial Court Which May Be Reviewed by Discretionary Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Scope of Review of a Trial Court Decision",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Circumstances Which May Affect Scope of Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_02_05_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Who May Seek Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Substitution of Parties",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Consolidation of Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Title of Case and Designation of Parties",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_03_04_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Review of Trial Court Decision by the Court of Appeals",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Direct Review of Superior Court Decision by Supreme Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Direct Review of Decisions of Courts of Limited Jurisdiction",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_04_03_00.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Transfer of Cases by Supreme Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_04_04_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Review Initiated by Filing Notice of Appeal or Notice for Discretionary Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Time Allowed To File Notice",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Content of Notice--Filing",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Filing and Service of Notice",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_05_04_00.pdf"
+      },
+      {
+        "num": "5.5",
+        "title": "Settlement Conference in Court of Appeals",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_05_05_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Appeal as a Matter of Right",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Discretionary Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Direct Review of a Final Decision of an Administrative Agency",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Direct Review of a Land Use Petition Act Proceeding",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_06_04_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Authority of Trial Court Before Review Accepted",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Authority of Trial Court After Review Accepted",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Authority of Appellate Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_07_03_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Supersedeas Procedure",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Application to Criminal or Juvenile Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Appellate Court Orders Needed for Effective Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Qualifications--Encumbrance",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "State as Obligee on Bond",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_05_00.pdf"
+      },
+      {
+        "num": "8.6",
+        "title": "Termination of Supersedeas, Injunctions, and Other Orders",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_08_06_00.pdf"
+      },
+      {
+        "num": "9.1",
+        "title": "Composition of Record on Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_01_00.pdf"
+      },
+      {
+        "num": "9.2",
+        "title": "Verbatim Report of Proceedings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_02_00.pdf"
+      },
+      {
+        "num": "9.3",
+        "title": "Narrative Report of Proceedings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_03_00.pdf"
+      },
+      {
+        "num": "9.4",
+        "title": "Agreed Report of Proceedings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_04_00.pdf"
+      },
+      {
+        "num": "9.5",
+        "title": "Filing and Service of Report of Proceedings--Objections",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_05_00.pdf"
+      },
+      {
+        "num": "9.6",
+        "title": "Designation of Clerk's Papers and Exhibits",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_06_00.pdf"
+      },
+      {
+        "num": "9.7",
+        "title": "Preparing Clerk's Papers and Exhibits for Appellate Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_07_00.pdf"
+      },
+      {
+        "num": "9.8",
+        "title": "Transmitting Clerk's Papers and Exhibits",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_08_00.pdf"
+      },
+      {
+        "num": "9.9",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_09_00.pdf"
+      },
+      {
+        "num": "9.10",
+        "title": "Correcting or Supplementing Record",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_10_00.pdf"
+      },
+      {
+        "num": "9.11",
+        "title": "Additional Evidence on Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_11_00.pdf"
+      },
+      {
+        "num": "9.12",
+        "title": "Special Rule for Order on Summary Judgment",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_12_00.pdf"
+      },
+      {
+        "num": "9.13",
+        "title": "Review of Decision Relating to Record",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_13_00.pdf"
+      },
+      {
+        "num": "9.14",
+        "title": "Appellate Counsel Access to Trial Court Record and Exhibits",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_09_14_00.pdf"
+      },
+      {
+        "num": "10.1",
+        "title": "Briefs Which May Be Filed",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_01_00.pdf"
+      },
+      {
+        "num": "10.2",
+        "title": "Time for Filing Briefs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_02_00.pdf"
+      },
+      {
+        "num": "10.3",
+        "title": "Content of Brief",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_03_00.pdf"
+      },
+      {
+        "num": "10.4",
+        "title": "Preparation and Filing of Brief by Party",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_04_00.pdf"
+      },
+      {
+        "num": "10.5",
+        "title": "Reproduction and Service of Briefs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_05_00.pdf"
+      },
+      {
+        "num": "10.6",
+        "title": "Amicus Curiae Brief",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_06_00.pdf"
+      },
+      {
+        "num": "10.7",
+        "title": "Submission of Improper Brief",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_07_00.pdf"
+      },
+      {
+        "num": "10.8",
+        "title": "Additional Authorities",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_08_00.pdf"
+      },
+      {
+        "num": "10.9",
+        "title": "Corresponding Briefs on CD-ROM",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_09_00.pdf"
+      },
+      {
+        "num": "10.10",
+        "title": "Statement of Additional Grounds for Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_10_10_00.pdf"
+      },
+      {
+        "num": "11.1",
+        "title": "Oral Arguments to Which Title Applies",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_01_00.pdf"
+      },
+      {
+        "num": "11.2",
+        "title": "Who May Present Oral Argument",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_02_00.pdf"
+      },
+      {
+        "num": "11.3",
+        "title": "Date of Argument",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_03_00.pdf"
+      },
+      {
+        "num": "11.4",
+        "title": "Time Allowed, Order, and Conduct of Oral Argument",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_04_00.pdf"
+      },
+      {
+        "num": "11.5",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_05_00.pdf"
+      },
+      {
+        "num": "11.6",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_11_06_00.pdf"
+      },
+      {
+        "num": "12.1",
+        "title": "Basis for Decision",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_01_00.pdf"
+      },
+      {
+        "num": "12.2",
+        "title": "Disposition on Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_02_00.pdf"
+      },
+      {
+        "num": "12.3",
+        "title": "Forms of Decision",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_03_00.pdf"
+      },
+      {
+        "num": "12.4",
+        "title": "Motions for Reconsideration of Decision Terminating \n              Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_04_00.pdf"
+      },
+      {
+        "num": "12.5",
+        "title": "Mandate",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_05_00.pdf"
+      },
+      {
+        "num": "12.6",
+        "title": "Stay of Mandate Pending Decision on Application for Review by United States Supreme Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_06_00.pdf"
+      },
+      {
+        "num": "12.7",
+        "title": "Finality of Decision",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_07_00.pdf"
+      },
+      {
+        "num": "12.8",
+        "title": "Effect of Reversal on Intervening Rights",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_08_00.pdf"
+      },
+      {
+        "num": "12.9",
+        "title": "Recall of Mandate or Certificate of Finality",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_12_09_00.pdf"
+      },
+      {
+        "num": "13.1",
+        "title": "Method of Seeking Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_01_00.pdf"
+      },
+      {
+        "num": "13.2",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_02_00.pdf"
+      },
+      {
+        "num": "13.3",
+        "title": "Decisions Reviewed as a Matter of Discretion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_03_00.pdf"
+      },
+      {
+        "num": "13.4",
+        "title": "Discretionary Review of Decision Terminating Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_04_00.pdf"
+      },
+      {
+        "num": "13.5",
+        "title": "Discretionary Review of Interlocutory Decision",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_05_00.pdf"
+      },
+      {
+        "num": "13.5A",
+        "title": "Motions for Discretionary Review of Specified Final \n              Decisions",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_05A_00.pdf"
+      },
+      {
+        "num": "13.6",
+        "title": "Acceptance of Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_06_00.pdf"
+      },
+      {
+        "num": "13.7",
+        "title": "Proceedings After Acceptance of Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_13_07_00.pdf"
+      },
+      {
+        "num": "14.1",
+        "title": "Costs Generally",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_01_00.pdf"
+      },
+      {
+        "num": "14.2",
+        "title": "Who Is Entitled to Costs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_02_00.pdf"
+      },
+      {
+        "num": "14.3",
+        "title": "Expenses Allowed as Costs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_03_00.pdf"
+      },
+      {
+        "num": "14.4",
+        "title": "Cost Bill",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_04_00.pdf"
+      },
+      {
+        "num": "14.5",
+        "title": "Objections to Cost Bill",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_05_00.pdf"
+      },
+      {
+        "num": "14.6",
+        "title": "Award of Costs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_14_06_00.pdf"
+      },
+      {
+        "num": "15.1",
+        "title": "Procedures to Which Title Applies",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_01_00.pdf"
+      },
+      {
+        "num": "15.2",
+        "title": "Determination of Indigency and Rights of Indigent Party",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_02_00.pdf"
+      },
+      {
+        "num": "15.3",
+        "title": "Payment of Charges for Reproducing Briefs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_03_00.pdf"
+      },
+      {
+        "num": "15.4",
+        "title": "Claim for Payment of Expense for Indigent Party",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_04_00.pdf"
+      },
+      {
+        "num": "15.5",
+        "title": "Allowance of Claim for Payment of Expense for Indigent Party",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_05_00.pdf"
+      },
+      {
+        "num": "15.6",
+        "title": "Recovery of Public Funds",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_15_06_00.pdf"
+      },
+      {
+        "num": "16.1",
+        "title": "Proceedings to Which Title Applies",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_01_00.pdf"
+      },
+      {
+        "num": "16.2",
+        "title": "Original Action Against State Officer",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_02_00.pdf"
+      },
+      {
+        "num": "16.3",
+        "title": "Personal Restraint Petition--Generally",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_03_00.pdf"
+      },
+      {
+        "num": "16.4",
+        "title": "Personal Restraint Petition--Grounds for Remedy",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_04_00.pdf"
+      },
+      {
+        "num": "16.5",
+        "title": "Personal Restraint Petition--Where To Seek Relief",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_05_00.pdf"
+      },
+      {
+        "num": "16.6",
+        "title": "Personal Restraint Petition--Parties",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_06_00.pdf"
+      },
+      {
+        "num": "16.7",
+        "title": "Personal Restraint Petition--Form of Petition",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_07_00.pdf"
+      },
+      {
+        "num": "16.8",
+        "title": "Personal Restraint Petition--Filing and Service",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_08_00.pdf"
+      },
+      {
+        "num": "16.8.1",
+        "title": "Personal Restraint Petition-Preliminary Review by \n              Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_08_01.pdf"
+      },
+      {
+        "num": "16.9",
+        "title": "Personal Restraint Petition--Response to Petition",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_09_00.pdf"
+      },
+      {
+        "num": "16.10",
+        "title": "Personal Restraint Petition--Briefs",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_10_00.pdf"
+      },
+      {
+        "num": "16.11",
+        "title": "Personal Restraint Petition--Consideration of Petition",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_11_00.pdf"
+      },
+      {
+        "num": "16.12",
+        "title": "Personal Restraint Petition--Superior Court Hearing",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_12_00.pdf"
+      },
+      {
+        "num": "16.13",
+        "title": "Personal Restraint Petition--Procedure After Reference Hearing",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_13_00.pdf"
+      },
+      {
+        "num": "16.14",
+        "title": "Personal Restraint Petition--Appellate Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_14_00.pdf"
+      },
+      {
+        "num": "16.15",
+        "title": "Personal Restraint Petition--Supplemental Provisions",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_15_00.pdf"
+      },
+      {
+        "num": "16.16",
+        "title": "Question Certified by Federal Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_16_00.pdf"
+      },
+      {
+        "num": "16.17",
+        "title": "Other Rules Applicable",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_17_00.pdf"
+      },
+      {
+        "num": "16.18",
+        "title": "Post-Sentence Petitions",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_18_00.pdf"
+      },
+      {
+        "num": "16.19",
+        "title": "Preparation of Report of Proceedings in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_19_00.pdf"
+      },
+      {
+        "num": "16.20",
+        "title": "Transmittal of Jury Questionnaires and Clerk's Papers in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_20_00.pdf"
+      },
+      {
+        "num": "16.21",
+        "title": "Clerk's Conference in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_21_00.pdf"
+      },
+      {
+        "num": "16.22",
+        "title": "Filing of Briefs in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_22_00.pdf"
+      },
+      {
+        "num": "16.23",
+        "title": "Oral Argument on Appeal in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_23_00.pdf"
+      },
+      {
+        "num": "16.24",
+        "title": "Stay of Execution in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_24_00.pdf"
+      },
+      {
+        "num": "16.25",
+        "title": "Appointment of Counsel on Personal Restraint Petition in Capital Cases",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_25_00.pdf"
+      },
+      {
+        "num": "16.26",
+        "title": "Personal Restraint Petitions in Capital Cases - Discovery",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_26_00.pdf"
+      },
+      {
+        "num": "16.27",
+        "title": "Personal Restraint Petition in Capital Cases - Investigative, Expert, and Other Services",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_16_27_00.pdf"
+      },
+      {
+        "num": "17.1",
+        "title": "Scope",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_01_00.pdf"
+      },
+      {
+        "num": "17.2",
+        "title": "Who Decides a Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_02_00.pdf"
+      },
+      {
+        "num": "17.3",
+        "title": "Content of Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_03_00.pdf"
+      },
+      {
+        "num": "17.4",
+        "title": "Filing and Service of Motion--Answer to Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_04_00.pdf"
+      },
+      {
+        "num": "17.5",
+        "title": "Oral Argument of Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_05_00.pdf"
+      },
+      {
+        "num": "17.6",
+        "title": "Motion Decided by Ruling or Order",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_06_00.pdf"
+      },
+      {
+        "num": "17.7",
+        "title": "Objection to Ruling--Review of Decision on Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_07_00.pdf"
+      },
+      {
+        "num": "17.8",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_17_08_00.pdf"
+      },
+      {
+        "num": "18.1",
+        "title": "Attorney Fees and Expenses",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_01_00.pdf"
+      },
+      {
+        "num": "18.2",
+        "title": "Voluntary Withdrawal of Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_02_00.pdf"
+      },
+      {
+        "num": "18.3",
+        "title": "Withdrawal by Counsel",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_03_00.pdf"
+      },
+      {
+        "num": "18.4",
+        "title": "Disposition of Exhibits",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_04_00.pdf"
+      },
+      {
+        "num": "18.5",
+        "title": "Service and Filing of Papers",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_05_00.pdf"
+      },
+      {
+        "num": "18.6",
+        "title": "Computation of Time",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_06_00.pdf"
+      },
+      {
+        "num": "18.7",
+        "title": "Signing and Dating Papers",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_07_00.pdf"
+      },
+      {
+        "num": "18.8",
+        "title": "Waiver of Rules and Extension and Reduction of Time",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_08_00.pdf"
+      },
+      {
+        "num": "18.9",
+        "title": "Violation of Rules",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_09_00.pdf"
+      },
+      {
+        "num": "18.10",
+        "title": "Forms",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_10_00.pdf"
+      },
+      {
+        "num": "18.11",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_11_00.pdf"
+      },
+      {
+        "num": "18.12",
+        "title": "Accelerated Review Generally",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_12_00.pdf"
+      },
+      {
+        "num": "18.13",
+        "title": "Accelerated Review of Dispositions in Juvenile Offense Proceedings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_13_00.pdf"
+      },
+      {
+        "num": "18.13A",
+        "title": "Accelerated Review of Juvenile Dependency Disposition Orders, Orders Terminating Parental Rights, Dependency Guardianship Orders, and Orders Entered in Dependency and Dependency Guardianship Proceedings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_13A_00.pdf"
+      },
+      {
+        "num": "18.14",
+        "title": "Motion on the Merits",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_14_00.pdf"
+      },
+      {
+        "num": "18.15",
+        "title": "Accelerated Review of Adult Sentencings",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_15_00.pdf"
+      },
+      {
+        "num": "18.17",
+        "title": "Word Limitations, Preparation, and Filing of Documents submitted to the Court of Appeals and Supreme Court",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_17_00.pdf"
+      },
+      {
+        "num": "18.18 - 18.20",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_18_00.pdf"
+      },
+      {
+        "num": "18.21",
+        "title": "Title and Citation of Rules",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_21_00.pdf"
+      },
+      {
+        "num": "18.22",
+        "title": "Statutes and Rules Superseded",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_22_00.pdf"
+      },
+      {
+        "num": "18.23",
+        "title": "Mail Addressed to Appellate Courts",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_23_00.pdf"
+      },
+      {
+        "num": "18.24",
+        "title": "Status of References",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_18_24_00.pdf"
+      },
+      {
+        "num": "1",
+        "title": "Notice of Appeal (Trial Court Decision)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM1.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Notice for Discretionary Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM2.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Motion for Discretionary Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM3.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Statement of Grounds for Direct Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM4.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Title Page for all Briefs and Petition for Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM5.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Brief of Appellant",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM6.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Notice of Intent To File Pro Se Supplemental Brief \n              (Deleted)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM7.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Notice of Appeal From Court of Appeals Decision (Obsolete)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM8.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Petition for Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM9.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Cost Bill",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM10.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Objections to Cost Bill",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM11.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Order of Indigency",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM12.pdf"
+      },
+      {
+        "num": "12A",
+        "title": "Findings of Indigency \u00a0(Obsolete)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM12A.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Motion for Order of Indigency",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM13.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Invoice of Court Reporter--Indigent Case (Deleted)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM14.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Statement of Arrangements",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM15.pdf"
+      },
+      {
+        "num": "15A",
+        "title": "Notice of Filing Verbatim Report of \n              Proceedings (RAP 9.5)",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM15A.pdf"
+      },
+      {
+        "num": "15B",
+        "title": "Statement of Arrangements in Appeals from Dependency Dispositional Orders and Orders Terminating Parental Rights",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM15B.pdf"
+      },
+      {
+        "num": "15C",
+        "title": "Designation of Clerk's Papers in Appeals from \n              Dependency Dispositional Orders and Orders Terminating Parental Rights",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM15C.pdf"
+      },
+      {
+        "num": "15D",
+        "title": "Notice of Intent to Deliver Consent to Adoption",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM15D.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Petition Against State Officer",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM16.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Personal Restraint Petition for Person Confined by \n              State or Local Government",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM17.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM18.pdf"
+      },
+      {
+        "num": "19",
+        "title": "Notice of Motion",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM19.pdf"
+      },
+      {
+        "num": "20",
+        "title": "Motion To Modify Ruling",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM20.pdf"
+      },
+      {
+        "num": "21",
+        "title": "Civil Appeal Statement",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM21.pdf"
+      },
+      {
+        "num": "22",
+        "title": "Notice to Appellant Re: Statement of \n              Additional Grounds for Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM22.pdf"
+      },
+      {
+        "num": "23",
+        "title": "Statement of Additional Grounds for \n              Review",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM23.pdf"
+      },
+      {
+        "num": "24",
+        "title": "Notice of Cash Supersedeas",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM24.pdf"
+      },
+      {
+        "num": "25",
+        "title": "Streamlined Request for Extension of Time to File Brief [Rule 18.8(a)]",
+        "pdf": "../court_rules/pdf/RAP/APP_RAP_FORM25.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=app&set=RAP"
+  },
+  {
+    "group": "clj",
+    "set_code": "ARLJ",
+    "set_name": "Administrative Rules for Courts of Limited Jurisdiction",
+    "rule_count": 16,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Definition of Terms",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Code of Judicial Conduct",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Presiding Judge, Multiple Judge Court \n              District, Multiple District Counties - \n              Rescinded",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Records: Separate Dockets--Contents",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Reporting of Criminal Cases",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Case Information Cover Sheet",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Misdemeanant Probation Department",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_11_00_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Registration by Courts of Limited \n              Jurisdiction",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_12_00_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Limited Jurisdiction Courts are required to \n              Record all Proceedings Electronically",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Mandatory Continuing Court Administrator Education",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_14_00_00.pdf"
+      },
+      {
+        "num": "14_Stds",
+        "title": "Washington State District and Municipal Court Administrator Mandatory Continuing Education Standards",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_14_Standards.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Appearances by Participants",
+        "pdf": "../court_rules/pdf/ARLJ/CLJ_ARLJ_15_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=clj&set=ARLJ"
+  },
+  {
+    "group": "clj",
+    "set_code": "CRLJ",
+    "set_name": "Civil Rules for Courts of Limited Jurisdiction",
+    "rule_count": 82,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "One Form of Action",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_02_00_00.pdf"
+      },
+      {
+        "num": "2A",
+        "title": "Stipulations",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_2A_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Commencement of Action",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Process",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_04_00_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Process - Limited Representation",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_04_02_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Service and Filing of Pleadings and Other Papers",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Time",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Pleadings Allowed: Form of Motions",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "General Rules of Pleading",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Pleading Special Matters",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Form of Pleadings",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Signing and Drafting of Pleadings, Motions, \n              and Legal Memoranda: Sanctions",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_11_00_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Defenses and Objections",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_12_00_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Counterclaim and Cross Claim",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_13_00_00.pdf"
+      },
+      {
+        "num": "13.04",
+        "title": "Setoffs Against Assignees (Rescinded)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_13_04_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Third Party Practice",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_14_00_00.pdf"
+      },
+      {
+        "num": "14A",
+        "title": "Removal to Superior Court",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_14A_00_00.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Amended and Supplemental Pleadings",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_15_00_00.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_16_00_00.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Parties Plaintiff and Defendant; Capacity",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_17_00_00.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Joinder of Claims and Remedies",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_18_00_00.pdf"
+      },
+      {
+        "num": "19",
+        "title": "Joinder of Persons Needed for Just Adjudication",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_19_00_00.pdf"
+      },
+      {
+        "num": "20",
+        "title": "Permissive Joinder of Parties",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_20_00_00.pdf"
+      },
+      {
+        "num": "21",
+        "title": "Misjoinder and Nonjoinder of Parties",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_21_00_00.pdf"
+      },
+      {
+        "num": "22",
+        "title": "Interpleader",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_22_00_00.pdf"
+      },
+      {
+        "num": "23",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_23_00_00.pdf"
+      },
+      {
+        "num": "24",
+        "title": "Intervention",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_24_00_00.pdf"
+      },
+      {
+        "num": "25",
+        "title": "Substitution of Parties",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_25_00_00.pdf"
+      },
+      {
+        "num": "26",
+        "title": "Discovery",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_26_00_00.pdf"
+      },
+      {
+        "num": "27-37",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_27-37.pdf"
+      },
+      {
+        "num": "38",
+        "title": "Jury Trial",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_38_00_00.pdf"
+      },
+      {
+        "num": "39",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_39_00_00.pdf"
+      },
+      {
+        "num": "40",
+        "title": "Assignment of Cases",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_40_00_00.pdf"
+      },
+      {
+        "num": "41",
+        "title": "Dismissal of Actions",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_41_00_00.pdf"
+      },
+      {
+        "num": "42",
+        "title": "Consolidation; Separate Trials",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_42_00_00.pdf"
+      },
+      {
+        "num": "43",
+        "title": "Taking of Testimony",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_43_00_00.pdf"
+      },
+      {
+        "num": "44",
+        "title": "Proof of Official Record",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_44_00_00.pdf"
+      },
+      {
+        "num": "44.1",
+        "title": "Determination of Foreign Law",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_44_01_00.pdf"
+      },
+      {
+        "num": "45",
+        "title": "Subpoena",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_45_00_00.pdf"
+      },
+      {
+        "num": "46",
+        "title": "Exceptions Unnecessary",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_46_00_00.pdf"
+      },
+      {
+        "num": "47",
+        "title": "Jurors",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_47_00_00.pdf"
+      },
+      {
+        "num": "48",
+        "title": "Juries of Fewer Than Six (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_48_00_00.pdf"
+      },
+      {
+        "num": "49",
+        "title": "Verdicts",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_49_00_00.pdf"
+      },
+      {
+        "num": "50",
+        "title": "Judgment as a Matter of Law in Jury Trials; \n              Alternative Motion for New Trial; Conditional Rulings",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_50_00_00.pdf"
+      },
+      {
+        "num": "51",
+        "title": "Instructions to Jury and Deliberation",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_51_00_00.pdf"
+      },
+      {
+        "num": "52",
+        "title": "Findings by the Court (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_52_00_00.pdf"
+      },
+      {
+        "num": "53",
+        "title": "Masters (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_53_00_00.pdf"
+      },
+      {
+        "num": "53.1",
+        "title": "Referees (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_53_01_00.pdf"
+      },
+      {
+        "num": "53.2",
+        "title": "Court Commissioners (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_53_02_00.pdf"
+      },
+      {
+        "num": "54",
+        "title": "Judgments; Costs",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_54_00_00.pdf"
+      },
+      {
+        "num": "55",
+        "title": "Default",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_55_00_00.pdf"
+      },
+      {
+        "num": "56",
+        "title": "Summary Judgment",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_56_00_00.pdf"
+      },
+      {
+        "num": "57",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_57_00_00.pdf"
+      },
+      {
+        "num": "58",
+        "title": "Entry of Judgment",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_58_00_00.pdf"
+      },
+      {
+        "num": "59",
+        "title": "New Trial, Reconsideration, and Amendment of Judgments",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_59_00_00.pdf"
+      },
+      {
+        "num": "60",
+        "title": "Relief From Judgment or Order",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_60_00_00.pdf"
+      },
+      {
+        "num": "61",
+        "title": "Harmless Error (Reserved)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_61_00_00.pdf"
+      },
+      {
+        "num": "62",
+        "title": "Stay of Proceedings To Enforce a Judgment",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_62_00_00.pdf"
+      },
+      {
+        "num": "63",
+        "title": "Judges--Disability",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_63_00_00.pdf"
+      },
+      {
+        "num": "64",
+        "title": "Garnishment (Rescinded)",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_64_00_00.pdf"
+      },
+      {
+        "num": "65-67",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_65-67.pdf"
+      },
+      {
+        "num": "68",
+        "title": "Offer of Judgment",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_68_00_00.pdf"
+      },
+      {
+        "num": "69-70",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_69-70.pdf"
+      },
+      {
+        "num": "70.1",
+        "title": "Appearance by Attorney",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_70_01_00.pdf"
+      },
+      {
+        "num": "71",
+        "title": "Withdrawal by Attorney",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_71_00_00.pdf"
+      },
+      {
+        "num": "72",
+        "title": "Appeal to Superior Court",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_72_00_00.pdf"
+      },
+      {
+        "num": "73",
+        "title": "Trial de Novo",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_73_00_00.pdf"
+      },
+      {
+        "num": "74",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_74_00_00.pdf"
+      },
+      {
+        "num": "75",
+        "title": "Record on Trial de Novo",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_75_00_00.pdf"
+      },
+      {
+        "num": "75 A",
+        "title": "Electronic Recording of Small Claims \n              Proceedings",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_75A_00_00.pdf"
+      },
+      {
+        "num": "76",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_76_00_00.pdf"
+      },
+      {
+        "num": "77",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_77_00_00.pdf"
+      },
+      {
+        "num": "77.04",
+        "title": "Administration of Oath",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_77_04_00.pdf"
+      },
+      {
+        "num": "78-80",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_78-80.pdf"
+      },
+      {
+        "num": "81",
+        "title": "Applicability in General",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_81_00_00.pdf"
+      },
+      {
+        "num": "82",
+        "title": "Jurisdiction and Venue--Unaffected",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_82_00_00.pdf"
+      },
+      {
+        "num": "83",
+        "title": "Local Rules",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_83_00_00.pdf"
+      },
+      {
+        "num": "84",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_84_00_00.pdf"
+      },
+      {
+        "num": "85",
+        "title": "Title",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_85_00_00.pdf"
+      },
+      {
+        "num": "86",
+        "title": "Effective Date",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_86_00_00.pdf"
+      },
+      {
+        "num": "86.04--99.04",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CRLJ/CLJ_CRLJ_86.04-99.04.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=clj&set=CRLJ"
+  },
+  {
+    "group": "clj",
+    "set_code": "CrRLJ",
+    "set_name": "Criminal Rules for Courts of Limited Jurisdiction",
+    "rule_count": 76,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Purpose and Construction",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Effect",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_04_00.pdf"
+      },
+      {
+        "num": "1.5",
+        "title": "Style and Form",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_05_00.pdf"
+      },
+      {
+        "num": "1.6",
+        "title": "Conduct of Court",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_06_00.pdf"
+      },
+      {
+        "num": "1.7",
+        "title": "Local Court Rules--Availability",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_07_00.pdf"
+      },
+      {
+        "num": "1.8",
+        "title": "Title of Rules",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_01_08_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Complaint--Citation and Notice",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Warrant of Arrest or Summons Upon Complaint",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Search and Seizure",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Complaint--Citation and Notice--Sufficiencies",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Procedure on Failure To Obey Citation and Notice",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_02_05_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Right to and Assignment of Lawyer",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_03_01_00.pdf"
+      },
+      {
+        "num": "3.1 Stds",
+        "title": "Standards for Indigent Defense",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_03_01_Standards.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Release of Accused",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_03_02_00.pdf"
+      },
+      {
+        "num": "3.2.1",
+        "title": "Procedure Following Warrantless Arrest--\n              Preliminary Hearing",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_03_02_01.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Time for Trial",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Appearance of the Defendant",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Confession Procedure",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Suppression Procedure",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_03_06_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Arraignment",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Pleas and Pretrial Dispositions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Joinder of Offenses and Defendants",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_03_00.pdf"
+      },
+      {
+        "num": "4.3.1",
+        "title": "Consolidation for Trial",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_03_01.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Severance of Offenses and Defendants",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_04_00.pdf"
+      },
+      {
+        "num": "4.5",
+        "title": "Pretrial Hearing",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_05_00.pdf"
+      },
+      {
+        "num": "4.6",
+        "title": "Depositions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_06_00.pdf"
+      },
+      {
+        "num": "4.7",
+        "title": "Discovery",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_07_00.pdf"
+      },
+      {
+        "num": "4.8",
+        "title": "Subpoenas",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_08_00.pdf"
+      },
+      {
+        "num": "4.9",
+        "title": "Process--Criminal",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_09_00.pdf"
+      },
+      {
+        "num": "4.10",
+        "title": "Material Witness",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_04_10_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Commencement of Actions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Change of Venue",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Several Charging Documents for Same Offense--Different Courts",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_05_03_00.pdf"
+      },
+      {
+        "num": "6.1.1",
+        "title": "Trial by Jury",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_01_01.pdf"
+      },
+      {
+        "num": "6.1.2",
+        "title": "Trial by the Court",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_01_02.pdf"
+      },
+      {
+        "num": "6.1.3",
+        "title": "Order of Trial",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_01_03.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Jurors' Orientation",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Selecting the Jury",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Challenges",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Alternate Jurors",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_05_00.pdf"
+      },
+      {
+        "num": "6.6",
+        "title": "Jurors' Oath",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_06_00.pdf"
+      },
+      {
+        "num": "6.7",
+        "title": "Custody of Jury",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_07_00.pdf"
+      },
+      {
+        "num": "6.8",
+        "title": "Note-Taking by Jurors",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_08_00.pdf"
+      },
+      {
+        "num": "6.9",
+        "title": "View of Premises by Jury",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_09_00.pdf"
+      },
+      {
+        "num": "6.10",
+        "title": "Discharge of the Jury",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_10_00.pdf"
+      },
+      {
+        "num": "6.11",
+        "title": "Judge--Disability",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_11_00.pdf"
+      },
+      {
+        "num": "6.12",
+        "title": "Witnesses",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_12_00.pdf"
+      },
+      {
+        "num": "6.13",
+        "title": "Evidence",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_06_13_00.pdf"
+      },
+      {
+        "num": "6.14",
+        "title": "Immunity",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_14_00.pdf"
+      },
+      {
+        "num": "6.15",
+        "title": "Instructions and Argument",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_06_15_00.pdf"
+      },
+      {
+        "num": "6.16",
+        "title": "Jury Verdicts and Findings",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CrRLJ_06_16_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Sentencing",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Judgment",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_03_00.pdf"
+      },
+      {
+        "num": "7.4",
+        "title": "Arrest of Judgment",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_04_00.pdf"
+      },
+      {
+        "num": "7.5",
+        "title": "New Trial",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_05_00.pdf"
+      },
+      {
+        "num": "7.6",
+        "title": "Probation",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_06_00.pdf"
+      },
+      {
+        "num": "7.7",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_07_00.pdf"
+      },
+      {
+        "num": "7.8",
+        "title": "Relief From Judgment or Order",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_07_08_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Time",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Motions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Dismissal",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Service, Filing, and Signing of Papers",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_05_00.pdf"
+      },
+      {
+        "num": "8.6",
+        "title": "Objections and Exceptions",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_06_00.pdf"
+      },
+      {
+        "num": "8.7",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_07_00.pdf"
+      },
+      {
+        "num": "8.8",
+        "title": "Discharge",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_08_00.pdf"
+      },
+      {
+        "num": "8.9",
+        "title": "Disqualification of Judge",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_09_00.pdf"
+      },
+      {
+        "num": "8.10",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_10_00.pdf"
+      },
+      {
+        "num": "8.11",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_11_00.pdf"
+      },
+      {
+        "num": "8.12",
+        "title": "Reporting Traffic Offenses",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_08_12_00.pdf"
+      },
+      {
+        "num": "9.1",
+        "title": "Perfecting of Appeal",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_09_01_00.pdf"
+      },
+      {
+        "num": "9.2",
+        "title": "Imposition of Sentence Pending Appeal",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_09_02_00.pdf"
+      },
+      {
+        "num": "9.3",
+        "title": "Prosecution of Appeal",
+        "pdf": "../court_rules/pdf/CrRLJ/CLJ_CRRLJ_09_03_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=clj&set=CrRLJ"
+  },
+  {
+    "group": "clj",
+    "set_code": "IRLJ",
+    "set_name": "Infraction Rules for Courts of Limited Jurisdiction",
+    "rule_count": 26,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope and Purpose of Rules",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Local Court Rules",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_01_03_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Notice of Infraction",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Initiation of Infraction Cases",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Venue",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Response to Notice",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Failure To Respond",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_05_00.pdf"
+      },
+      {
+        "num": "2.6",
+        "title": "Scheduling of Hearings",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_02_06_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Contested Hearings--Preliminary Proceedings",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Failure To Appear",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Procedure at Contested Hearing",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Hearing on Mitigating Circumstances",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Local Rule Options",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Payment Plans",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_03_06_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Notification to Department of Licensing of Traffic Infraction",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Failure to Pay or Complete Community Restitution  \n              for Traffic Infraction",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_04_02_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "What Orders May Be Appealed",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Appeal to Superior Court",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_05_02_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Time",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Monetary Penalty Schedule for Infractions",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Title and Citation of Rules",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Effective Date",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Rules Superseded",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_05_00.pdf"
+      },
+      {
+        "num": "6.6",
+        "title": "Speed and Weight Measuring Device: Design and Construction Certification",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_06_00.pdf"
+      },
+      {
+        "num": "6.7",
+        "title": "Identity Challenges and Relief from Judgment",
+        "pdf": "../court_rules/pdf/IRLJ/CLJ_IRLJ_06_07_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=clj&set=IRLJ"
+  },
+  {
+    "group": "clj",
+    "set_code": "RALJ",
+    "set_name": "Rules for Appeal of Decisions of Courts of Limited Jurisdiction",
+    "rule_count": 45,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Interpretation and Application of Rules",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_01_02_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Who May Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "What May Be Appealed",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Where To Appeal--Change of Venue",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "How To Initiate an Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Time Allowed To Initiate Appeal by Filing Notice",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_05_00.pdf"
+      },
+      {
+        "num": "2.6",
+        "title": "Content of Notice of Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_06_00.pdf"
+      },
+      {
+        "num": "2.7",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_02_07_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Change of Superior Court Judge",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_03_02_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Authority of Courts Pending Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Enforcement of Judgment",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Stay of Enforcement of Judgment",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_04_03_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Recording Generally",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Statements To Be Made on the Record",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Log",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Loss or Damage of Electronic Record",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_05_04_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Contents of Record",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Transmittal of Record of Proceedings",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Copy of Recording for Parties",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_06_03_00.pdf"
+      },
+      {
+        "num": "6.3.1",
+        "title": "Transcript of Electronic Record",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_06_03_01.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Transmittal of Record of Proceedings on \n              Discretionary Review and Return of Record \n              Following Termination of Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_06_04_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Generally",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Time for Filing Briefs",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Format of Briefs",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_07_03_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Who May Present Argument",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Postponement of Argument",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Time Allowed and Order of Argument",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Waiver of Oral Argument",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_08_04_00.pdf"
+      },
+      {
+        "num": "9.1",
+        "title": "Basis for Decision on Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_09_01_00.pdf"
+      },
+      {
+        "num": "9.2",
+        "title": "Entry of Decision, Issuance of Mandate, and Enforcement of Judgment",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_09_02_00.pdf"
+      },
+      {
+        "num": "9.3",
+        "title": "Costs",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_09_03_00.pdf"
+      },
+      {
+        "num": "10.1",
+        "title": "Violation of Rules Generally",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_10_01_00.pdf"
+      },
+      {
+        "num": "10.2",
+        "title": "Dismissal of Appeal",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_10_02_00.pdf"
+      },
+      {
+        "num": "10.3",
+        "title": "Extension and Reduction of Time",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_10_03_00.pdf"
+      },
+      {
+        "num": "11.1",
+        "title": "Review of Decisions of a Court of Limited Jurisdiction on Matters of Appellate Procedure",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_01_00.pdf"
+      },
+      {
+        "num": "11.2",
+        "title": "Lawyer's Fees and Expenses",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_02_00.pdf"
+      },
+      {
+        "num": "11.3",
+        "title": "Title of Case",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_03_00.pdf"
+      },
+      {
+        "num": "11.4",
+        "title": "Effect of Reversal on Intervening Rights",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_04_00.pdf"
+      },
+      {
+        "num": "11.5",
+        "title": "Forms",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_05_00.pdf"
+      },
+      {
+        "num": "11.6",
+        "title": "Service, Filing, and Signing of Papers",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_06_00.pdf"
+      },
+      {
+        "num": "11.7",
+        "title": "Application of Other Court Rules",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_07_00.pdf"
+      },
+      {
+        "num": "11.8",
+        "title": "Local Court Rules--Availability",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_08_00.pdf"
+      },
+      {
+        "num": "11.9",
+        "title": "Title and Citation of Rules",
+        "pdf": "../court_rules/pdf/RALJ/CLJ_RALJ_11_09_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=clj&set=RALJ"
+  },
+  {
+    "group": "ga",
+    "set_code": "APR",
+    "set_name": "Admission and Practice Rules",
+    "rule_count": 54,
+    "rules": [
+      {
+        "num": "1",
+        "title": "In General; Supreme Court; Prerequisites to the \n                    Practice of Law; Communications to the Bar; \n                    Confidentiality; Definitions",
+        "pdf": "../court_rules/pdf/APR/GA_APR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Board of Governors",
+        "pdf": "../court_rules/pdf/APR/GA_APR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Applicants for Admission to Practice Law",
+        "pdf": "../court_rules/pdf/APR/GA_APR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Examinations for Admission; Notification of Results",
+        "pdf": "../court_rules/pdf/APR/GA_APR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Preadmission Requirements; Oath: Recommendation for Admission; Order Admitting to Practice Law",
+        "pdf": "../court_rules/pdf/APR/GA_APR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Law Clerk Program",
+        "pdf": "../court_rules/pdf/APR/GA_APR_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/APR/GA_APR_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Nonmember Lawyer Licenses to Practice Law",
+        "pdf": "../court_rules/pdf/APR/GA_APR_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Licensed Legal Interns",
+        "pdf": "../court_rules/pdf/APR/GA_APR_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/APR/GA_APR_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Mandatory Continuing Legal Education (MCLE)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_11_00_00.pdf"
+      },
+      {
+        "num": "Regs",
+        "title": "Regulations of the Washington State Continuing \n                    Legal Education Board - Deleted",
+        "pdf": "../court_rules/pdf/APR/GA_APR_11_REGS 101-112.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Limited Practice Rule for Limited Practice Officers",
+        "pdf": "../court_rules/pdf/APR/GA_APR_12_00_00.pdf"
+      },
+      {
+        "num": "LP_REGS",
+        "title": "Regulations of the APR 12 Limited Practice Board \n                    (RESERVED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_12 RegulationsLPO.pdf"
+      },
+      {
+        "num": "LP_DIS_REGS",
+        "title": "Disciplinary Regulations Applicable to ELPOC Title \n                    15 (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_12_ Applicable Disciplinary Regulations.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Signing of Pleadings and Other Papers;  Address of \n                    Record; Electronic Mail Address; Notice of Change \n                    of Address, Telephone Number, or Name",
+        "pdf": "../court_rules/pdf/APR/GA_APR_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Limited Practice Rule for Foreign Law Consultants",
+        "pdf": "../court_rules/pdf/APR/GA_APR_14_00_00.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Client Protection Fund",
+        "pdf": "../court_rules/pdf/APR/GA_APR_15_00_00.pdf"
+      },
+      {
+        "num": "15P",
+        "title": "Client Protection Fund (APR 15) Procedural \n                    Regulations",
+        "pdf": "../court_rules/pdf/APR/GA_APR_15_Client Protection Fund Procedural Regulations.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/APR/GA_APR_16_00_00.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Administrative Suspension from Practice",
+        "pdf": "../court_rules/pdf/APR/GA_APR_17_00_00.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/APR/GA_APR_18_00_00.pdf"
+      },
+      {
+        "num": "19",
+        "title": "Lawyer, LLLT, and LPO Services",
+        "pdf": "../court_rules/pdf/APR/GA_APR_19_00_00.pdf"
+      },
+      {
+        "num": "20",
+        "title": "Definitions Relating to Character and Fitness Determinations\n                    Determinations",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_00_00.pdf"
+      },
+      {
+        "num": "20.1",
+        "title": "Application of Rules",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_01_00.pdf"
+      },
+      {
+        "num": "20.2",
+        "title": "Meetings (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_02_00.pdf"
+      },
+      {
+        "num": "20.3",
+        "title": "Bar Counsel (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_03_00.pdf"
+      },
+      {
+        "num": "20.4",
+        "title": "Clerk (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_04_00.pdf"
+      },
+      {
+        "num": "20.5",
+        "title": "Service (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_20_05_00.pdf"
+      },
+      {
+        "num": "21",
+        "title": "Factors Considered when Determining character and \n                    Fitness",
+        "pdf": "../court_rules/pdf/APR/GA_APR_21_00_00.pdf"
+      },
+      {
+        "num": "22",
+        "title": "Character and Fitness Review of Applications for \n                    Admission:  Applicant Duties and Rights",
+        "pdf": "../court_rules/pdf/APR/GA_APR_22_00_00.pdf"
+      },
+      {
+        "num": "22.1",
+        "title": "Review of Applications",
+        "pdf": "../court_rules/pdf/APR/GA_APR_22_01_00.pdf"
+      },
+      {
+        "num": "22.2",
+        "title": "Applicant Duties and Rights",
+        "pdf": "../court_rules/pdf/APR/GA_APR_22_02_00.pdf"
+      },
+      {
+        "num": "23",
+        "title": "Character and Fitness Board",
+        "pdf": "../court_rules/pdf/APR/GA_APR_23_00_00.pdf"
+      },
+      {
+        "num": "23.1",
+        "title": "Authority of Character and Fitness Board",
+        "pdf": "../court_rules/pdf/APR/GA_APR_23_01_00.pdf"
+      },
+      {
+        "num": "23.2",
+        "title": "Meetings",
+        "pdf": "../court_rules/pdf/APR/GA_APR_23_02_00.pdf"
+      },
+      {
+        "num": "23.3",
+        "title": "Clerk",
+        "pdf": "../court_rules/pdf/APR/GA_APR_23_03_00.pdf"
+      },
+      {
+        "num": "23.4",
+        "title": "Service",
+        "pdf": "../court_rules/pdf/APR/GA_APR_23_04_00.pdf"
+      },
+      {
+        "num": "24",
+        "title": "Character and Fitness Board Hearings",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_00_00.pdf"
+      },
+      {
+        "num": "24.1",
+        "title": "Hearing Procedure",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_01_00.pdf"
+      },
+      {
+        "num": "24.2",
+        "title": "Decision and Recommendation",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_02_00.pdf"
+      },
+      {
+        "num": "24.3",
+        "title": "Action on Supreme Court's Determination",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_03_00.pdf"
+      },
+      {
+        "num": "24.4",
+        "title": "Decision and Recommendation (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_04_00.pdf"
+      },
+      {
+        "num": "24.5",
+        "title": "Action on Supreme Court's Determination (DELETED)",
+        "pdf": "../court_rules/pdf/APR/GA_APR_24_05_00.pdf"
+      },
+      {
+        "num": "25",
+        "title": "Petitions for Reinstatement after Disbarment",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_00_00.pdf"
+      },
+      {
+        "num": "25.1",
+        "title": "Restrictions on Reinstatement",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_01_00.pdf"
+      },
+      {
+        "num": "25.2",
+        "title": "Reversal of Conviction",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_02_00.pdf"
+      },
+      {
+        "num": "25.3",
+        "title": "Petitions and Investigations",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_03_00.pdf"
+      },
+      {
+        "num": "25.4",
+        "title": "Hearing Before Character and Fitness Board",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_04_00.pdf"
+      },
+      {
+        "num": "25.5",
+        "title": "Action by Character and Fitness Board",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_05_00.pdf"
+      },
+      {
+        "num": "25.6",
+        "title": "Action on Supreme Court's Determination",
+        "pdf": "../court_rules/pdf/APR/GA_APR_25_06_00.pdf"
+      },
+      {
+        "num": "26",
+        "title": "Insurance Disclosure",
+        "pdf": "../court_rules/pdf/APR/GA_APR_26_00_00.pdf"
+      },
+      {
+        "num": "27",
+        "title": "Provision of Legal Services Following Determination \n                    of Major Disaster",
+        "pdf": "../court_rules/pdf/APR/GA_APR_27_00_00.pdf"
+      },
+      {
+        "num": "28",
+        "title": "Limited Practice Rule for Limited License Legal \n                    Technicians",
+        "pdf": "../court_rules/pdf/APR/GA_APR_28_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=APR"
+  },
+  {
+    "group": "ga",
+    "set_code": "BJAR",
+    "set_name": "Board for Judicial Administration Rules",
+    "rule_count": 5,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Board for Judicial Administration",
+        "pdf": "../court_rules/pdf/BJAR/GA_BJAR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Composition",
+        "pdf": "../court_rules/pdf/BJAR/GA_BJAR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Structure",
+        "pdf": "../court_rules/pdf/BJAR/GA_BJAR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Staff",
+        "pdf": "../court_rules/pdf/BJAR/GA_BJAR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Bylaws",
+        "pdf": "../court_rules/pdf/BJAR/GA_BJAR_05_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=BJAR"
+  },
+  {
+    "group": "ga",
+    "set_code": "CJC",
+    "set_name": "Code of Judicial Conduct",
+    "rule_count": 4,
+    "rules": [
+      {
+        "num": "Canon 1",
+        "title": "A Judge Shall Uphold and Promote the \n            Independence, Integrity, and Impartiality of the \n            Judiciary, and Shall Avoid Impropriety and the \n            Appearance of Impropriety",
+        "pdf": "../court_rules/pdf/CJC/GA_CJC_canon1.pdf"
+      },
+      {
+        "num": "Canon 2",
+        "title": "A Judge Should Perform the Duties of Judicial Office \n            Impartially, Competently, and Diligently",
+        "pdf": "../court_rules/pdf/CJC/GA_CJC_canon2.pdf"
+      },
+      {
+        "num": "Canon 3",
+        "title": "A Judge Shall Conduct the Judge's Personal and \n            Extrajudicial Activities to Minimize the Risk of \n            Conflict with the Obligations of Judicial Office",
+        "pdf": "../court_rules/pdf/CJC/GA_CJC_canon3.pdf"
+      },
+      {
+        "num": "Canon 4",
+        "title": "A Judge or Candidate for Judicial Office Shall not \n            Engage in Political or Campaign Activity that is \n            Inconsistent with the Independence, Integrity, or \n            Impartiality of the Judiciary",
+        "pdf": "../court_rules/pdf/CJC/GA_CJC_canon4.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=CJC"
+  },
+  {
+    "group": "ga",
+    "set_code": "DRJ",
+    "set_name": "Discipline Rules for Judges",
+    "rule_count": 14,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Scope of Rules; Parties",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Initiating Supreme Court Consideration",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Contesting Commission Decision",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Record on Review",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Briefs",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Hearing",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Additional Evidence or Findings--Remand",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Motion",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Decision and Reconsideration",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Effect of Discipline",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Reinstatement of Eligibility to Hold Judicial Office",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_11_00_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Stipulated Resolutions by Commission",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_12_00_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Substitute Panel",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Supplemental Provisions",
+        "pdf": "../court_rules/pdf/DRJ/GA_DRJ_14_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=DRJ"
+  },
+  {
+    "group": "ga",
+    "set_code": "ELC",
+    "set_name": "Rules for Enforcement of Lawyer Conduct",
+    "rule_count": 133,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Disciplinary Authority",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "No Statute of Limitation",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_01_04_00.pdf"
+      },
+      {
+        "num": "1.5",
+        "title": "Violation of Duties Imposed by These Rules",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_01_05_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Supreme Court",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Board of Governors; Disciplinary Selection Panel",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Disciplinary Board",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Review Committees",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Hearing Officers",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_05_00.pdf"
+      },
+      {
+        "num": "2.6",
+        "title": "Hearing Officer Conduct",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_06_00.pdf"
+      },
+      {
+        "num": "2.7",
+        "title": "Conflicts Review Officer",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_07_00.pdf"
+      },
+      {
+        "num": "2.8",
+        "title": "Disciplinary Counsel; Special Disciplinary \n                    Counsel",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_08_00.pdf"
+      },
+      {
+        "num": "2.9",
+        "title": "Adjunct Disciplinary Counsel",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_09_00.pdf"
+      },
+      {
+        "num": "2.10",
+        "title": "Removal of Appointees",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_10_00.pdf"
+      },
+      {
+        "num": "2.11",
+        "title": "Compensation and Expenses",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_11_00.pdf"
+      },
+      {
+        "num": "2.12",
+        "title": "Communications to the Association Privileged",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_12_00.pdf"
+      },
+      {
+        "num": "2.13",
+        "title": "Respondent Lawyer",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_13_00.pdf"
+      },
+      {
+        "num": "2.14",
+        "title": "Restrictions on Representing or Advising \n                    Respondents or Grievants",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_02_14_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Open Meetings and Public Disciplinary \n                    Information",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Confidential Disciplinary Information",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Application to Stipulations, Disability Proceedings, \n                    Custodianships, and Diversion Contracts",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Release or Disclosure of Otherwise \n                    Confidential Information",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Notice of Disciplinary Action, Interim Suspension, or \n                    Transfer to Disability Inactive Status",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Maintenance of Records",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_03_06_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Service of Papers",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Filing; Orders",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Papers",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_03_00.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Computation of Time",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_04_00.pdf"
+      },
+      {
+        "num": "4.5",
+        "title": "Stipulation to Extension or Reduction of Time",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_05_00.pdf"
+      },
+      {
+        "num": "4.6",
+        "title": "Subpoena Under the Law of Another \n                    Jurisdiction",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_06_00.pdf"
+      },
+      {
+        "num": "4.7",
+        "title": "Enforcement of Subpoenas",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_07_00.pdf"
+      },
+      {
+        "num": "4.8",
+        "title": "Declarations in Lieu of Affidavits",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_08_00.pdf"
+      },
+      {
+        "num": "4.9",
+        "title": "Service and Filing by an Incarcerated Person",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_09_00.pdf"
+      },
+      {
+        "num": "4.10",
+        "title": "Redaction or Omission of Confidential Identifiers",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_04_10_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Grievants",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Confidential Sources",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Investigation of Grievance",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Privileges",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_04_00.pdf"
+      },
+      {
+        "num": "5.5",
+        "title": "Investigatory Subpoenas",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_05_00.pdf"
+      },
+      {
+        "num": "5.6",
+        "title": "Review of Objections to Inquiries and Motions to \n                    Disclose",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_06_00.pdf"
+      },
+      {
+        "num": "5.7",
+        "title": "Disposition of Grievance",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_07_00.pdf"
+      },
+      {
+        "num": "5.8",
+        "title": "Advisory Letter",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_05_08_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Referral to Diversion",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Less Serious Misconduct",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Factors for Diversion",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Notice to Grievant",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Diversion Contract",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_05_00.pdf"
+      },
+      {
+        "num": "6.6",
+        "title": "Affidavit Supporting Diversion",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_06_00.pdf"
+      },
+      {
+        "num": "6.7",
+        "title": "Effect of Non-Participation in Diversion",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_07_00.pdf"
+      },
+      {
+        "num": "6.8",
+        "title": "Status of Grievance",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_08_00.pdf"
+      },
+      {
+        "num": "6.9",
+        "title": "Termination of Diversion",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_06_09_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Interim Suspension for Conviction of A Crime",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Interim Suspension in Other Circumstances",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Automatic Suspension When Respondent \n                    Asserting Incapacity",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_03_00.pdf"
+      },
+      {
+        "num": "7.4",
+        "title": "Stipulation to Interim Suspension",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_04_00.pdf"
+      },
+      {
+        "num": "7.5",
+        "title": "Interim Suspensions Expedited",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_05_00.pdf"
+      },
+      {
+        "num": "7.6",
+        "title": "Effective Date of Interim Suspensions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_06_00.pdf"
+      },
+      {
+        "num": "7.7",
+        "title": "Appointment of Custodian to Protect Clients' \n                    Interests",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_07_07_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Action on Adjudication of Incompetency or \n                    Incapacity",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Determination of Incapacity to Practice Law",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Disability Proceedings During the Course of \n                    Disciplinary Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Appeal of Disability Determinations",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "Stipulated Transfer to Disability Inactive \n                    Status",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_05_00.pdf"
+      },
+      {
+        "num": "8.6",
+        "title": "Costs in Disability Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_06_00.pdf"
+      },
+      {
+        "num": "8.7",
+        "title": "Burden and Standard of Proof",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_07_00.pdf"
+      },
+      {
+        "num": "8.8",
+        "title": "Reinstatement to Active Status",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_08_00.pdf"
+      },
+      {
+        "num": "8.9",
+        "title": "Petition for Limited Guardianship",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_09_00.pdf"
+      },
+      {
+        "num": "8.10",
+        "title": "Appointment of Counsel for Respondent",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_08_10_00.pdf"
+      },
+      {
+        "num": "9.1",
+        "title": "Stipulations",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_09_01_00.pdf"
+      },
+      {
+        "num": "9.2",
+        "title": "Reciprocal Discipline and Disability \n                    Inactive Status; Duty to Self-Report",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_09_02_00.pdf"
+      },
+      {
+        "num": "9.3",
+        "title": "Resignation in Lieu of Discipline",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_09_03_00.pdf"
+      },
+      {
+        "num": "9.4",
+        "title": "Reciprocal Resignation in Lieu of Discipline",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_09_04_00.pdf"
+      },
+      {
+        "num": "10.1",
+        "title": "General Procedure",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_01_00.pdf"
+      },
+      {
+        "num": "10.2",
+        "title": "Hearing Officer Assignment",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_02_00.pdf"
+      },
+      {
+        "num": "10.3",
+        "title": "Commencement of Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_03_00.pdf"
+      },
+      {
+        "num": "10.4",
+        "title": "Notice to Answer",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_04_00.pdf"
+      },
+      {
+        "num": "10.5",
+        "title": "Answer",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_05_00.pdf"
+      },
+      {
+        "num": "10.6",
+        "title": "Default Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_06_00.pdf"
+      },
+      {
+        "num": "10.7",
+        "title": "Amendment of Formal Complaint",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_07_00.pdf"
+      },
+      {
+        "num": "10.8",
+        "title": "Motions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_08_00.pdf"
+      },
+      {
+        "num": "10.9",
+        "title": "Interim Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_09_00.pdf"
+      },
+      {
+        "num": "10.10",
+        "title": "Prehearing Dispositive Motions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_10_00.pdf"
+      },
+      {
+        "num": "10.11",
+        "title": "Discovery and Prehearing Procedures",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_11_00.pdf"
+      },
+      {
+        "num": "10.12",
+        "title": "Scheduling Hearing",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_12_00.pdf"
+      },
+      {
+        "num": "10.13",
+        "title": "Disciplinary Hearing",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_13_00.pdf"
+      },
+      {
+        "num": "10.14",
+        "title": "Evidence and Burden of Proof",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_14_00.pdf"
+      },
+      {
+        "num": "10.15",
+        "title": "Bifurcated Hearings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_15_00.pdf"
+      },
+      {
+        "num": "10.16",
+        "title": "Decision of Hearing Officer",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_10_16_00.pdf"
+      },
+      {
+        "num": "11.1",
+        "title": "Scope of Title",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_01_00.pdf"
+      },
+      {
+        "num": "11.2",
+        "title": "Decisions Subject to Board Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_02_00.pdf"
+      },
+      {
+        "num": "11.3",
+        "title": "Sua Sponte Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_03_00.pdf"
+      },
+      {
+        "num": "11.4",
+        "title": "Transcript of Hearing",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_04_00.pdf"
+      },
+      {
+        "num": "11.5",
+        "title": "Record on Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_05_00.pdf"
+      },
+      {
+        "num": "11.6",
+        "title": "Designation of Bar File Documents and \n                    Exhibits",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_06_00.pdf"
+      },
+      {
+        "num": "11.7",
+        "title": "Preparation of Bar File Documents and \n                    Exhibits",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_07_00.pdf"
+      },
+      {
+        "num": "11.8",
+        "title": "Deleted",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_08_00.pdf"
+      },
+      {
+        "num": "11.9",
+        "title": "Briefs",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_09_00.pdf"
+      },
+      {
+        "num": "11.10",
+        "title": "Supplementing Record on Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_10_00.pdf"
+      },
+      {
+        "num": "11.11",
+        "title": "Request for Additional Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_11_00.pdf"
+      },
+      {
+        "num": "11.12",
+        "title": "Decision of Board",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_12_00.pdf"
+      },
+      {
+        "num": "11.13",
+        "title": "Chair May Modify Requirements",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_13_00.pdf"
+      },
+      {
+        "num": "11.14",
+        "title": "Motions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_11_14_00.pdf"
+      },
+      {
+        "num": "12.1",
+        "title": "Applicability of Rules of Appellate Procedure",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_01_00.pdf"
+      },
+      {
+        "num": "12.2",
+        "title": "Methods of Seeking Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_02_00.pdf"
+      },
+      {
+        "num": "12.3",
+        "title": "Appeal",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_03_00.pdf"
+      },
+      {
+        "num": "12.4",
+        "title": "Discretionary Review",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_04_00.pdf"
+      },
+      {
+        "num": "12.5",
+        "title": "Record to Supreme Court",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_05_00.pdf"
+      },
+      {
+        "num": "12.6",
+        "title": "Briefs",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_06_00.pdf"
+      },
+      {
+        "num": "12.7",
+        "title": "Argument",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_07_00.pdf"
+      },
+      {
+        "num": "12.8",
+        "title": "Motion for Reconsideration",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_08_00.pdf"
+      },
+      {
+        "num": "12.9",
+        "title": "Violation of Rules",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_12_09_00.pdf"
+      },
+      {
+        "num": "13.1",
+        "title": "Sanctions and Remedies",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_01_00.pdf"
+      },
+      {
+        "num": "13.2",
+        "title": "Effective Date of Suspensions and Disbarments",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_02_00.pdf"
+      },
+      {
+        "num": "13.3",
+        "title": "Suspension",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_03_00.pdf"
+      },
+      {
+        "num": "13.4",
+        "title": "Reprimand",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_04_00.pdf"
+      },
+      {
+        "num": "13.5",
+        "title": "Admonition",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_05_00.pdf"
+      },
+      {
+        "num": "13.6",
+        "title": "Discipline for Cumulative Admonitions",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_06_00.pdf"
+      },
+      {
+        "num": "13.7",
+        "title": "Restitution",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_07_00.pdf"
+      },
+      {
+        "num": "13.8",
+        "title": "Probation",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_08_00.pdf"
+      },
+      {
+        "num": "13.9",
+        "title": "Costs and Expenses",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_13_09_00.pdf"
+      },
+      {
+        "num": "14.1",
+        "title": "Notice to Clients and Others; Providing \n                    Client Property",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_14_01_00.pdf"
+      },
+      {
+        "num": "14.2",
+        "title": "Lawyer to Discontinue Practice",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_14_02_00.pdf"
+      },
+      {
+        "num": "14.3",
+        "title": "Affidavit of Compliance",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_14_03_00.pdf"
+      },
+      {
+        "num": "14.4",
+        "title": "Lawyer to Keep Records of Compliance",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_14_04_00.pdf"
+      },
+      {
+        "num": "15.1",
+        "title": "Random Examination of Books and Records",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_01_00.pdf"
+      },
+      {
+        "num": "15.2",
+        "title": "Cooperation of Lawyer and Law Firm",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_02_00.pdf"
+      },
+      {
+        "num": "15.3",
+        "title": "Confidentiality",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_03_00.pdf"
+      },
+      {
+        "num": "15.4",
+        "title": "Trust Account Overdraft Notification",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_04_00.pdf"
+      },
+      {
+        "num": "15.5",
+        "title": "Declaration",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_05_00.pdf"
+      },
+      {
+        "num": "15.6",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_06_00.pdf"
+      },
+      {
+        "num": "15.7",
+        "title": "Trust Accounts and the Legal Foundation of \n                    Washington",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_15_07_00.pdf"
+      },
+      {
+        "num": "16.1",
+        "title": "Effect on Pending Proceedings",
+        "pdf": "../court_rules/pdf/ELC/GA_ELC_16_01_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=ELC"
+  },
+  {
+    "group": "ga",
+    "set_code": "ELLLTC",
+    "set_name": "Rules for Enforcement of Limited License Legal Technician Conduct",
+    "rule_count": 1,
+    "rules": [
+      {
+        "num": "ELLLTC",
+        "title": "Rules for Enforcement of Limited License Legal Technician Conduct",
+        "pdf": "../court_rules/pdf/ELLLTC/GA_ELLLTC.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=ELLLTC"
+  },
+  {
+    "group": "ga",
+    "set_code": "ELPOC",
+    "set_name": "Rules for Enforcement of Limited Practice Officer Conduct (ELPOC)",
+    "rule_count": 1,
+    "rules": [
+      {
+        "num": "ELPOC",
+        "title": "Rules for Enforcement of Limited Practice Officer Conduct (ELPOC)",
+        "pdf": "../court_rules/pdf/ELPOC/GA_ELPOC.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=ELPOC"
+  },
+  {
+    "group": "ga",
+    "set_code": "ER",
+    "set_name": "Rules of Evidence",
+    "rule_count": 67,
+    "rules": [
+      {
+        "num": "101",
+        "title": "Scope",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_01_00.pdf"
+      },
+      {
+        "num": "102",
+        "title": "Purpose and Construction",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_02_00.pdf"
+      },
+      {
+        "num": "103",
+        "title": "Rulings on Evidence",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_03_00.pdf"
+      },
+      {
+        "num": "104",
+        "title": "Preliminary Questions",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_04_00.pdf"
+      },
+      {
+        "num": "105",
+        "title": "Limited Admissibility",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_05_00.pdf"
+      },
+      {
+        "num": "106",
+        "title": "Remainder of or Related Writings or Recorded Statements",
+        "pdf": "../court_rules/pdf/ER/GA_ER_01_06_00.pdf"
+      },
+      {
+        "num": "201",
+        "title": "Judicial Notice of Adjudicative Facts",
+        "pdf": "../court_rules/pdf/ER/GA_ER_02_01_00.pdf"
+      },
+      {
+        "num": "301",
+        "title": "Presumptions in General in Civil Actions and Proceedings (Reserved)",
+        "pdf": "../court_rules/pdf/ER/GA_ER_03_01_00.pdf"
+      },
+      {
+        "num": "302",
+        "title": "Applicability of State Law in Civil Actions and Proceedings (Reserved)",
+        "pdf": "../court_rules/pdf/ER/GA_ER_03_02_00.pdf"
+      },
+      {
+        "num": "401",
+        "title": "Definition of \"Relevant Evidence\"",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_01_00.pdf"
+      },
+      {
+        "num": "402",
+        "title": "Relevant Evidence Generally Admissible; Irrelevant Evidence Inadmissible",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_02_00.pdf"
+      },
+      {
+        "num": "403",
+        "title": "Exclusion of Relevant Evidence on Grounds of Prejudice, Confusion, or Waste of Time",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_03_00.pdf"
+      },
+      {
+        "num": "404",
+        "title": "Character Evidence Not Admissible To Prove Conduct; Exceptions; Other Crimes",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_04_00.pdf"
+      },
+      {
+        "num": "405",
+        "title": "Methods of Proving Character",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_05_00.pdf"
+      },
+      {
+        "num": "406",
+        "title": "Habit; Routine Practice",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_06_00.pdf"
+      },
+      {
+        "num": "407",
+        "title": "Subsequent Remedial Measures",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_07_00.pdf"
+      },
+      {
+        "num": "408",
+        "title": "Compromise and Offers To Compromise",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_08_00.pdf"
+      },
+      {
+        "num": "409",
+        "title": "Payment of Medical and Similar Expenses",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_09_00.pdf"
+      },
+      {
+        "num": "410",
+        "title": "Inadmissibility of Pleas, Offers of Pleas, and Related Statements",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_10_00.pdf"
+      },
+      {
+        "num": "411",
+        "title": "Liability Insurance",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_11_00.pdf"
+      },
+      {
+        "num": "412",
+        "title": "Sexual Offenses--Victim's Past Behavior",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_12_00.pdf"
+      },
+      {
+        "num": "413",
+        "title": "Immigration Status",
+        "pdf": "../court_rules/pdf/ER/GA_ER_04_13_00.pdf"
+      },
+      {
+        "num": "501",
+        "title": "General Rule",
+        "pdf": "../court_rules/pdf/ER/GA_ER_05_01_00.pdf"
+      },
+      {
+        "num": "502",
+        "title": "Attorney-Client Privilege and Work Product; \n              Limitations on Waiver",
+        "pdf": "../court_rules/pdf/ER/GA_ER_05_02_00.pdf"
+      },
+      {
+        "num": "601",
+        "title": "General Rule of Competency",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_01_00.pdf"
+      },
+      {
+        "num": "602",
+        "title": "Lack of Personal Knowledge",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_02_00.pdf"
+      },
+      {
+        "num": "603",
+        "title": "Oath or Affirmation",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_03_00.pdf"
+      },
+      {
+        "num": "604",
+        "title": "Interpreters",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_04_00.pdf"
+      },
+      {
+        "num": "605",
+        "title": "Competency of Judge as Witness",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_05_00.pdf"
+      },
+      {
+        "num": "606",
+        "title": "Competency of Juror as Witness",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_06_00.pdf"
+      },
+      {
+        "num": "607",
+        "title": "Who May Impeach",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_07_00.pdf"
+      },
+      {
+        "num": "608",
+        "title": "Evidence of Character and Conduct of Witness",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_08_00.pdf"
+      },
+      {
+        "num": "609",
+        "title": "Impeachment by Evidence of Conviction of Crime",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_09_00.pdf"
+      },
+      {
+        "num": "610",
+        "title": "Religious Beliefs or Opinions",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_10_00.pdf"
+      },
+      {
+        "num": "611",
+        "title": "Mode and Order of Interrogation and Presentation",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_11_00.pdf"
+      },
+      {
+        "num": "612",
+        "title": "Writing Used To Refresh Memory",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_12_00.pdf"
+      },
+      {
+        "num": "613",
+        "title": "Prior Statements of Witnesses",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_13_00.pdf"
+      },
+      {
+        "num": "614",
+        "title": "Calling and Interrogation of Witnesses by Court",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_14_00.pdf"
+      },
+      {
+        "num": "615",
+        "title": "Exclusion of Witnesses",
+        "pdf": "../court_rules/pdf/ER/GA_ER_06_15_00.pdf"
+      },
+      {
+        "num": "701",
+        "title": "Opinion Testimony by Lay Witnesses",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_01_00.pdf"
+      },
+      {
+        "num": "702",
+        "title": "Testimony by Experts",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_02_00.pdf"
+      },
+      {
+        "num": "703",
+        "title": "Bases of Opinion Testimony by Experts",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_03_00.pdf"
+      },
+      {
+        "num": "704",
+        "title": "Opinion on Ultimate Issue",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_04_00.pdf"
+      },
+      {
+        "num": "705",
+        "title": "Disclosure of Facts or Data Underlying Expert Opinion",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_05_00.pdf"
+      },
+      {
+        "num": "706",
+        "title": "Court Appointed Experts",
+        "pdf": "../court_rules/pdf/ER/GA_ER_07_06_00.pdf"
+      },
+      {
+        "num": "801",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_01_00.pdf"
+      },
+      {
+        "num": "802",
+        "title": "Hearsay Rule",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_02_00.pdf"
+      },
+      {
+        "num": "803",
+        "title": "Hearsay Exceptions; Availability of Declarant Immaterial",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_03_00.pdf"
+      },
+      {
+        "num": "804",
+        "title": "Hearsay Exceptions; Declarant Unavailable",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_04_00.pdf"
+      },
+      {
+        "num": "805",
+        "title": "Hearsay Within Hearsay",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_05_00.pdf"
+      },
+      {
+        "num": "806",
+        "title": "Attacking and Supporting Credibility of Declarant",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_06_00.pdf"
+      },
+      {
+        "num": "807",
+        "title": "Child Victims or Witnesses (Reserved)",
+        "pdf": "../court_rules/pdf/ER/GA_ER_08_07_00.pdf"
+      },
+      {
+        "num": "901",
+        "title": "Requirement of Authentication or Identification",
+        "pdf": "../court_rules/pdf/ER/GA_ER_09_01_00.pdf"
+      },
+      {
+        "num": "902",
+        "title": "Self-Authentication",
+        "pdf": "../court_rules/pdf/ER/GA_ER_09_02_00.pdf"
+      },
+      {
+        "num": "903",
+        "title": "Subscribing Witness' Testimony Unnecessary",
+        "pdf": "../court_rules/pdf/ER/GA_ER_09_03_00.pdf"
+      },
+      {
+        "num": "904",
+        "title": "Admissibility of Documents",
+        "pdf": "../court_rules/pdf/ER/GA_ER_09_04_00.pdf"
+      },
+      {
+        "num": "1001",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_01_00.pdf"
+      },
+      {
+        "num": "1002",
+        "title": "Requirement of Original",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_02_00.pdf"
+      },
+      {
+        "num": "1003",
+        "title": "Admissibility of Duplicates",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_03_00.pdf"
+      },
+      {
+        "num": "1004",
+        "title": "Admissibility of Other Evidence of Contents",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_04_00.pdf"
+      },
+      {
+        "num": "1005",
+        "title": "Public Records",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_05_00.pdf"
+      },
+      {
+        "num": "1006",
+        "title": "Summaries",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_06_00.pdf"
+      },
+      {
+        "num": "1007",
+        "title": "Testimony or Written Admission of Party",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_07_00.pdf"
+      },
+      {
+        "num": "1008",
+        "title": "Functions of Court and Jury",
+        "pdf": "../court_rules/pdf/ER/GA_ER_10_08_00.pdf"
+      },
+      {
+        "num": "1101",
+        "title": "Applicability of Rules",
+        "pdf": "../court_rules/pdf/ER/GA_ER_11_01_00.pdf"
+      },
+      {
+        "num": "1102",
+        "title": "Amendments (Reserved)",
+        "pdf": "../court_rules/pdf/ER/GA_ER_11_02_00.pdf"
+      },
+      {
+        "num": "1103",
+        "title": "Title",
+        "pdf": "../court_rules/pdf/ER/GA_ER_11_03_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=ER"
+  },
+  {
+    "group": "ga",
+    "set_code": "GR",
+    "set_name": "General Rules",
+    "rule_count": 58,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Classification System for Court Rules",
+        "pdf": "../court_rules/pdf/GR/GA_GR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Holidays",
+        "pdf": "../court_rules/pdf/GR/GA_GR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Filings and Hearings--Time Extended",
+        "pdf": "../court_rules/pdf/GR/GA_GR_03_00_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Service and Filing by an Incarcerated Person",
+        "pdf": "../court_rules/pdf/GR/GA_GR_03_01_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Law Librarian",
+        "pdf": "../court_rules/pdf/GR/GA_GR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Audits",
+        "pdf": "../court_rules/pdf/GR/GA_GR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Sessions of Courts",
+        "pdf": "../court_rules/pdf/GR/GA_GR_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Local Rules--Filing and Effective Date",
+        "pdf": "../court_rules/pdf/GR/GA_GR_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Reserved, Chapter 136, Laws 2002",
+        "pdf": "../court_rules/pdf/GR/GA_GR_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Supreme Court Rulemaking Procedure",
+        "pdf": "../court_rules/pdf/GR/GA_GR_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Ethics Advisory Committee Regarding Advisory Opinions on Judicial Conduct",
+        "pdf": "../court_rules/pdf/GR/GA_GR_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Court Interpreters",
+        "pdf": "../court_rules/pdf/GR/GA_GR_11_00_00.pdf"
+      },
+      {
+        "num": "11.1",
+        "title": "Purpose and Scope of Interpreter Commission",
+        "pdf": "../court_rules/pdf/GR/GA_GR_11_01_00.pdf"
+      },
+      {
+        "num": "11.2",
+        "title": "Code of Conduct for Court Interpreters",
+        "pdf": "../court_rules/pdf/GR/GA_GR_11_02_00.pdf"
+      },
+      {
+        "num": "11.3",
+        "title": "Remote Interpretation",
+        "pdf": "../court_rules/pdf/GR/GA_GR_11_03_00.pdf"
+      },
+      {
+        "num": "11.4",
+        "title": "Team Interpretation",
+        "pdf": "../court_rules/pdf/GR/GA_GR_11_04_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Regulation of the Practice of Law",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_00_00.pdf"
+      },
+      {
+        "num": "12.1",
+        "title": "Regulatory Objectives",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_01_00.pdf"
+      },
+      {
+        "num": "12.2",
+        "title": "Washington State Bar Association: Purposes, \n            Authorized Activities, and Prohibited Activities",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_02_00.pdf"
+      },
+      {
+        "num": "12.3",
+        "title": "Washington State Bar Association Administration of \n            Supreme Court-Created Boards and Committees",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_03_00.pdf"
+      },
+      {
+        "num": "12.4",
+        "title": "Washington State Bar Association Access to Records",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_04_00.pdf"
+      },
+      {
+        "num": "12.5",
+        "title": "Immunity",
+        "pdf": "../court_rules/pdf/GR/GA_GR_12_05_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Use of Unsworn Statement in Lieu of Affidavit",
+        "pdf": "../court_rules/pdf/GR/GA_GR_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Format for Pleadings and Other Papers",
+        "pdf": "../court_rules/pdf/GR/GA_GR_14_00_00.pdf"
+      },
+      {
+        "num": "14_Appx",
+        "title": "GR 14 - Appendix 1 - Office of Reporter of Decisions \n            Style Sheet",
+        "pdf": "../court_rules/pdf/GR/GA_GR_14_Appendix.pdf"
+      },
+      {
+        "num": "14.1",
+        "title": "Citation to Unpublished Opinions",
+        "pdf": "../court_rules/pdf/GR/GA_GR_14_01_00.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Destruction, Sealing, and Redaction of Court \n            Records",
+        "pdf": "../court_rules/pdf/GR/GA_GR_15_00_00.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Courtroom Photography and Recording by the \n            News Media",
+        "pdf": "../court_rules/pdf/GR/GA_GR_16_00_00.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Facsimile Transmission",
+        "pdf": "../court_rules/pdf/GR/GA_GR_17_00_00.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Jury Source List",
+        "pdf": "../court_rules/pdf/GR/GA_GR_18_00_00.pdf"
+      },
+      {
+        "num": "19",
+        "title": "Video Conference Proceedings",
+        "pdf": "../court_rules/pdf/GR/GA_GR_19_00_00.pdf"
+      },
+      {
+        "num": "20",
+        "title": "Security in Handling Court Exhibits",
+        "pdf": "../court_rules/pdf/GR/GA_GR_20_00_00.pdf"
+      },
+      {
+        "num": "21",
+        "title": "Emergency Court Closure",
+        "pdf": "../court_rules/pdf/GR/GA_GR_21_00_00.pdf"
+      },
+      {
+        "num": "22",
+        "title": "Access to Family Law, Protection Order, Guardianship, and Therapeutic Court Records",
+        "pdf": "../court_rules/pdf/GR/GA_GR_22_00_00.pdf"
+      },
+      {
+        "num": "23",
+        "title": "Rule for Certifying Professional Guardians and Conservators",
+        "pdf": "../court_rules/pdf/GR/GA_GR_23_00_00.pdf"
+      },
+      {
+        "num": "24",
+        "title": "Definition of the Practice of Law",
+        "pdf": "../court_rules/pdf/GR/GA_GR_24_00_00.pdf"
+      },
+      {
+        "num": "25",
+        "title": "Practice of Law Board",
+        "pdf": "../court_rules/pdf/GR/GA_GR_25_00_00.pdf"
+      },
+      {
+        "num": "25_Appx",
+        "title": "Practice of Law Board - Regulations",
+        "pdf": "../court_rules/pdf/GR/GA_GR_25_Appendix.pdf"
+      },
+      {
+        "num": "26",
+        "title": "Mandatory Continuing Judicial Education",
+        "pdf": "../court_rules/pdf/GR/GA_GR_26_00_00.pdf"
+      },
+      {
+        "num": "26_Stds",
+        "title": "Washington State Judicial Education Mandatory \n            Continuing Judicial Education Standards",
+        "pdf": "../court_rules/pdf/GR/GA_GR_26_Standards.pdf"
+      },
+      {
+        "num": "27",
+        "title": "Courthouse Facilitators",
+        "pdf": "../court_rules/pdf/GR/GA_GR_27_00_00.pdf"
+      },
+      {
+        "num": "28",
+        "title": "Jury Service Postponement, Excusal, and \n            Disqualification",
+        "pdf": "../court_rules/pdf/GR/GA_GR_28_00_00.pdf"
+      },
+      {
+        "num": "29",
+        "title": "Presiding Judge in Superior Court District \n            and Limited Jurisdiction Court District",
+        "pdf": "../court_rules/pdf/GR/GA_GR_29_00_00.pdf"
+      },
+      {
+        "num": "30",
+        "title": "Electronic Filing and Service",
+        "pdf": "../court_rules/pdf/GR/GA_GR_30_00_00.pdf"
+      },
+      {
+        "num": "31",
+        "title": "Access to Court Records",
+        "pdf": "../court_rules/pdf/GR/GA_GR_31_00_00.pdf"
+      },
+      {
+        "num": "31.1",
+        "title": "Access to Administrative Records",
+        "pdf": "../court_rules/pdf/GR/GA_GR_31_01_00.pdf"
+      },
+      {
+        "num": "32",
+        "title": "Court Performance Audits",
+        "pdf": "../court_rules/pdf/GR/GA_GR_32_00_00.pdf"
+      },
+      {
+        "num": "33",
+        "title": "Requests for Accommodation by Persons with \n            Disabilities",
+        "pdf": "../court_rules/pdf/GR/GA_GR_33_00_00.pdf"
+      },
+      {
+        "num": "34",
+        "title": "Waiver of Court and Clerk's Fees and Charges in \n            Civil Matters on the Basis of Indigency",
+        "pdf": "../court_rules/pdf/GR/GA_GR_34_00_00.pdf"
+      },
+      {
+        "num": "35",
+        "title": "Official Certified Superior Court Transcripts",
+        "pdf": "../court_rules/pdf/GR/GA_GR_35_00_00.pdf"
+      },
+      {
+        "num": "36",
+        "title": "Trial Court Security",
+        "pdf": "../court_rules/pdf/GR/GA_GR_36_00_00.pdf"
+      },
+      {
+        "num": "37",
+        "title": "Jury Selection",
+        "pdf": "../court_rules/pdf/GR/GA_GR_37_00_00.pdf"
+      },
+      {
+        "num": "38",
+        "title": "Open Access to Courts",
+        "pdf": "../court_rules/pdf/GR/GA_GR_38_00_00.pdf"
+      },
+      {
+        "num": "39",
+        "title": "Legal Financial Obligations",
+        "pdf": "../court_rules/pdf/GR/GA_GR_39_00_00.pdf"
+      },
+      {
+        "num": "40",
+        "title": "Informal Family Law Trials (IFLT)",
+        "pdf": "../court_rules/pdf/GR/GA_GR_40_00_00.pdf"
+      },
+      {
+        "num": "41",
+        "title": "Jury Selection by Using Remote Technology",
+        "pdf": "../court_rules/pdf/GR/GA_GR_41_00_00.pdf"
+      },
+      {
+        "num": "42",
+        "title": "Independence of Public Defense Services",
+        "pdf": "../court_rules/pdf/GR/GA_GR_42_00_00.pdf"
+      },
+      {
+        "num": "43",
+        "title": "Personal Pronouns",
+        "pdf": "../court_rules/pdf/GR/GA_GR_43_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=GR"
+  },
+  {
+    "group": "ga",
+    "set_code": "JISCR",
+    "set_name": "Judicial Information System Committee Rules",
+    "rule_count": 18,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Judicial Information Systems",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Composition",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Staff",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Budgets",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Standard Data Elements",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Reports",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Codes and Case Numbers",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "Retention",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Communications Link With Other Systems",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Attorney Identification Numbers",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Security, Privacy, and Confidentiality",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_11_00_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Dissemination of Court Information",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_12_00_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Local Court Systems",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Control of Data Processing Equipment",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_14_00_00.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Data Dissemination of Computer-Based Court Information",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_15_00_00.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Record and Dissemination Data Processing",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_16_00_00.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Effective Date",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_17_00_00.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Adding Records to the Judicial Information System",
+        "pdf": "../court_rules/pdf/JISCR/GA_JISCR_18_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=JISCR"
+  },
+  {
+    "group": "ga",
+    "set_code": "LPORPC",
+    "set_name": "Limited Practice Officer Rules of Professional Conduct (LPORPC)",
+    "rule_count": 1,
+    "rules": [
+      {
+        "num": "LPORPC",
+        "title": "Limited Practice Officer Rules of Professional Conduct (LPORPC)",
+        "pdf": "../court_rules/pdf/LPORPC/GA_LPORPC.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=LPORPC"
+  },
+  {
+    "group": "ga",
+    "set_code": "RPC",
+    "set_name": "Rules of Professional Conduct",
+    "rule_count": 64,
+    "rules": [
+      {
+        "num": "1.0A",
+        "title": "Terminology",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_0A_00.pdf"
+      },
+      {
+        "num": "1.0B",
+        "title": "Additional Washington Terminology",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_0B_00.pdf"
+      },
+      {
+        "num": "1.1",
+        "title": "Competence",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Scope of Representation and Allocation of Authority \n              Between Client and Lawyer",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Diligence",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "Communication",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_04_00.pdf"
+      },
+      {
+        "num": "1.5",
+        "title": "Fees",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_05_00.pdf"
+      },
+      {
+        "num": "1.6",
+        "title": "Confidentiality of Information",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_06_00.pdf"
+      },
+      {
+        "num": "1.7",
+        "title": "Conflict of Interest: Current Clients",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_07_00.pdf"
+      },
+      {
+        "num": "1.8",
+        "title": "Conflict of Interest: Current Clients: Specific Rules",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_08_00.pdf"
+      },
+      {
+        "num": "1.9",
+        "title": "Duties to Former Clients",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_09_00.pdf"
+      },
+      {
+        "num": "1.10",
+        "title": "Imputation of Conflicts of Interest:  General Rule",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_10_00.pdf"
+      },
+      {
+        "num": "1.11",
+        "title": "Special Conflicts of Interest for Former and Current \n              Government Officers and Employees",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_11_00.pdf"
+      },
+      {
+        "num": "1.12",
+        "title": "Former Judge, Arbitrator, Mediator or Other \n              Third-Party Neutral",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_12_00.pdf"
+      },
+      {
+        "num": "1.13",
+        "title": "Organization as Client",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_13_00.pdf"
+      },
+      {
+        "num": "1.14",
+        "title": "Client with Diminished Capacity",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_14_00.pdf"
+      },
+      {
+        "num": "1.15A",
+        "title": "Safeguarding Property",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_15A_00.pdf"
+      },
+      {
+        "num": "1.15B",
+        "title": "Required Trust Account Records",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_15B_00.pdf"
+      },
+      {
+        "num": "1.16",
+        "title": "Declining or Terminating Representation",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_16_00.pdf"
+      },
+      {
+        "num": "1.17",
+        "title": "Sale of Law Practice",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_17_00.pdf"
+      },
+      {
+        "num": "1.18",
+        "title": "Duties to Prospective Client",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_01_18_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Advisor",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "(Deleted)",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Evaluation for Use by Third Persons",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Lawyer Serving as Third-Party Neutral",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_02_04_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Meritorious Claims and Contentions",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Expediting Litigation",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Candor Toward the Tribunal",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Fairness to Opposing Party",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Impartiality and Decorum of the Tribunal",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Trial Publicity",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_06_00.pdf"
+      },
+      {
+        "num": "3.7",
+        "title": "Lawyer as Witness",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_07_00.pdf"
+      },
+      {
+        "num": "3.8",
+        "title": "Special Responsibilities of a Prosecutor",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_08_00.pdf"
+      },
+      {
+        "num": "3.9",
+        "title": "Advocate in Nonadjudicative Proceedings",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_03_09_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Truthfulness in Statements to Others",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Communication With Person Represented by a \n              Lawyer",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Dealing With Person Not Represented by a Lawyer",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_04_03_00.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Respect for Rights of Third Person",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_04_04_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Responsibilities of Partners, Managers, and \n              Supervisory Lawyers",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Responsibilities of a Subordinate Lawyer",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Responsibilities Regarding Nonlawyer Assistants",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Professional Independence of a Lawyer",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_04_00.pdf"
+      },
+      {
+        "num": "5.5",
+        "title": "Unauthorized Practice of Law; Multijurisdictional Practice of Law",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_05_00.pdf"
+      },
+      {
+        "num": "5.6",
+        "title": "Restrictions on Right to Practice",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_06_00.pdf"
+      },
+      {
+        "num": "5.7",
+        "title": "Responsibilities Regarding Law-Related Services",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_07_00.pdf"
+      },
+      {
+        "num": "5.8",
+        "title": "Misconduct Involving Lawyers and LLLTs Not \n              Actively Licensed to Practice Law",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_08_00.pdf"
+      },
+      {
+        "num": "5.9",
+        "title": "Business Structures Involving LLLT and Lawyer \n              Ownership",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_09_00.pdf"
+      },
+      {
+        "num": "5.10",
+        "title": "Responsibilities Regarding Other Legal Practitioners",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_05_10_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Pro Bono Publico Service",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Accepting Appointments",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Membership in Legal Services Organization",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Law Reform Activities Affecting Client Interests",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Nonprofit and Court-Annexed Limited Legal Service Programs",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_06_05_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Communications Concerning a Lawyer's Services",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Solicitation of Clients",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_03_00.pdf"
+      },
+      {
+        "num": "7.4",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_04_00.pdf"
+      },
+      {
+        "num": "7.5",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_05_00.pdf"
+      },
+      {
+        "num": "7.6",
+        "title": "Political Contributions to Obtain Government Legal \n              Engagements or Appointments by Judges",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_07_06_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Bar Admission and Disciplinary Matters",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Judicial and Legal Officials",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Reporting Professional Misconduct",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Misconduct",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "Disciplinary Authority; Choice of Law",
+        "pdf": "../court_rules/pdf/RPC/GA_RPC_08_05_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=RPC"
+  },
+  {
+    "group": "ga",
+    "set_code": "LLLT RPC",
+    "set_name": "Limited License Legal Technician Rules of Professional Conduct",
+    "rule_count": 0,
+    "rules": [],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=ga&set=LLLT%20RPC"
+  },
+  {
+    "group": "sup",
+    "set_code": "AR",
+    "set_name": "Superior Court Administrative Rules",
+    "rule_count": 6,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Reporting of Criminal Cases",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Case Information Cover Sheet",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "One Defendant Per Case",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Presiding Judge, More Than One Judge in \n              Superior Court District - Repealed",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Offender Financial Information",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Elected Judges Pro Tempore",
+        "pdf": "../court_rules/pdf/AR/SUP_AR_06_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=AR"
+  },
+  {
+    "group": "sup",
+    "set_code": "CCR",
+    "set_name": "Superior Court Civil Commitment Rules",
+    "rule_count": 34,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Notice--General",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Continuance or Postponement",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "Alternative Less Restrictive Treatment",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_01_04_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Summons",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_01_00.pdf"
+      },
+      {
+        "num": "2.1 Stds",
+        "title": "CCR Standards for Indigent Defense (SID)",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_01_00 Standards.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Authorization and Notice of Detention",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_02_00.pdf"
+      },
+      {
+        "num": "2.2A",
+        "title": "Notice of Emergency Detention",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_02A_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Right To Copy Court Files",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Probable Cause Hearing",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_02_05_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "First Court Appearance",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Preliminary Appearance",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Jury Demand",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Hearing",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Notice of Restrictions",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_03_05_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Notice of Conditions",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Authorization for Apprehension and Detention",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Petition and Order of Apprehension and Detention--Service",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_04_03_00.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Petition for Initial Detention",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_04_04_00.pdf"
+      },
+      {
+        "num": "4.5",
+        "title": "Burden of Proof",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_04_05_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "General",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Conditional Release Hearing",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Release of Records",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_05_04_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Petition for Initial Detention",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_01_00.pdf"
+      },
+      {
+        "num": "6.1A",
+        "title": "Petition for Initial Detention of a Minor",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_01A_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Petition for Fourteen-Day Involuntary Treatment",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_02_00.pdf"
+      },
+      {
+        "num": "6.2A",
+        "title": "Petition for Fourteen-Day Commitment of Minors",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_02A_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Petition for Ninety-Day Involuntary Treatment",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Petition for One Hundred Eighty-Day Involuntary Treatment",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_04_00.pdf"
+      },
+      {
+        "num": "6.4A",
+        "title": "Petition for One Hundred Eighty-Day Involuntary Treatment of a Minor",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_04A_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Petition for Revocation of Conditional Release or Less Restrictive Treatment",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_05_00.pdf"
+      },
+      {
+        "num": "6.5A",
+        "title": "Petition for Revocation of Conditional Release or Less Restrictive Treatment of a Minor",
+        "pdf": "../court_rules/pdf/CCR/SUP_CCR_06_05A_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=CCR"
+  },
+  {
+    "group": "sup",
+    "set_code": "CR",
+    "set_name": "Superior Court Civil Rules",
+    "rule_count": 96,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "One Form of Action",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_02_00_00.pdf"
+      },
+      {
+        "num": "2A",
+        "title": "Stipulations",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_2A_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Commencement of Action",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Process",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_04_00_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Process--Domestic Relations Actions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Process - Limited Representation",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_04_02_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Service and Filing of Pleadings and Other Papers",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Time",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Pleadings Allowed; Form of Motions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_07_00_00.pdf"
+      },
+      {
+        "num": "8",
+        "title": "General Rules of Pleading",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_08_00_00.pdf"
+      },
+      {
+        "num": "9",
+        "title": "Pleading Special Matters",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_09_00_00.pdf"
+      },
+      {
+        "num": "10",
+        "title": "Form of Pleadings and Other Papers",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_10_00_00.pdf"
+      },
+      {
+        "num": "11",
+        "title": "Signing and Drafting of Pleadings, Motions, \n            and Legal Memoranda: Sanctions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_11_00_00.pdf"
+      },
+      {
+        "num": "12",
+        "title": "Defenses and Objections",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_12_00_00.pdf"
+      },
+      {
+        "num": "13",
+        "title": "Counterclaim and Cross Claim",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_13_00_00.pdf"
+      },
+      {
+        "num": "14",
+        "title": "Third Party Practice",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_14_00_00.pdf"
+      },
+      {
+        "num": "15",
+        "title": "Amended and Supplemental Pleadings",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_15_00_00.pdf"
+      },
+      {
+        "num": "16",
+        "title": "Pretrial Procedure and Formulating Issues",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_16_00_00.pdf"
+      },
+      {
+        "num": "17",
+        "title": "Parties Plaintiff and Defendant; Capacity",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_17_00_00.pdf"
+      },
+      {
+        "num": "18",
+        "title": "Joinder of Claims and Remedies",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_18_00_00.pdf"
+      },
+      {
+        "num": "19",
+        "title": "Joinder of Persons Needed for Just Adjudication",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_19_00_00.pdf"
+      },
+      {
+        "num": "20",
+        "title": "Permissive Joinder of Parties",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_20_00_00.pdf"
+      },
+      {
+        "num": "21",
+        "title": "Misjoinder and Nonjoinder of Parties",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_21_00_00.pdf"
+      },
+      {
+        "num": "22",
+        "title": "Interpleader",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_22_00_00.pdf"
+      },
+      {
+        "num": "23",
+        "title": "Class Actions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_23_00_00.pdf"
+      },
+      {
+        "num": "23.1",
+        "title": "Derivative Actions by Shareholders",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_23_01_00.pdf"
+      },
+      {
+        "num": "23.2",
+        "title": "Actions Relating to Unincorporated Associations",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_23_02_00.pdf"
+      },
+      {
+        "num": "24",
+        "title": "Intervention",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_24_00_00.pdf"
+      },
+      {
+        "num": "25",
+        "title": "Substitution of Parties",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_25_00_00.pdf"
+      },
+      {
+        "num": "26",
+        "title": "General Provisions Governing Discovery",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_26_00_00.pdf"
+      },
+      {
+        "num": "27",
+        "title": "Perpetuation of Testimony",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_27_00_00.pdf"
+      },
+      {
+        "num": "28",
+        "title": "Persons Before Whom Depositions May Be Taken",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_28_00_00.pdf"
+      },
+      {
+        "num": "29",
+        "title": "Stipulations Regarding Discovery Procedure",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_29_00_00.pdf"
+      },
+      {
+        "num": "30",
+        "title": "Depositions Upon Oral Examination",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_30_00_00.pdf"
+      },
+      {
+        "num": "31",
+        "title": "Depositions Upon Written Questions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_31_00_00.pdf"
+      },
+      {
+        "num": "32",
+        "title": "Use of Depositions in Court Proceedings",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_32_00_00.pdf"
+      },
+      {
+        "num": "33",
+        "title": "Interrogatories to Parties",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_33_00_00.pdf"
+      },
+      {
+        "num": "34",
+        "title": "Producing Documents, Electronically Stored \n            Information, and Things or Entry onto Land for \n            Inspection and Other Purposes",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_34_00_00.pdf"
+      },
+      {
+        "num": "35",
+        "title": "Physical and Mental Examination of Persons",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_35_00_00.pdf"
+      },
+      {
+        "num": "36",
+        "title": "Requests for Admission",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_36_00_00.pdf"
+      },
+      {
+        "num": "37",
+        "title": "Failure To Make Discovery: Sanctions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_37_00_00.pdf"
+      },
+      {
+        "num": "38",
+        "title": "Jury Trial of Right",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_38_00_00.pdf"
+      },
+      {
+        "num": "39",
+        "title": "Trial by Jury or by the Court",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_39_00_00.pdf"
+      },
+      {
+        "num": "40",
+        "title": "Assignment of Cases",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_40_00_00.pdf"
+      },
+      {
+        "num": "41",
+        "title": "Dismissal of Actions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_41_00_00.pdf"
+      },
+      {
+        "num": "42",
+        "title": "Consolidation; Separate Trials",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_42_00_00.pdf"
+      },
+      {
+        "num": "43",
+        "title": "Taking of Testimony",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_43_00_00.pdf"
+      },
+      {
+        "num": "44",
+        "title": "Proof of Official Record",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_44_00_00.pdf"
+      },
+      {
+        "num": "44.1",
+        "title": "Determination of Foreign Law",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_44_01_00.pdf"
+      },
+      {
+        "num": "45",
+        "title": "Subpoena\n            Includes Form - \n            Subpoena in a Civil Case",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_45_00_00.pdf"
+      },
+      {
+        "num": "46",
+        "title": "Exceptions Unnecessary",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_46_00_00.pdf"
+      },
+      {
+        "num": "47",
+        "title": "Jurors",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_47_00_00.pdf"
+      },
+      {
+        "num": "48",
+        "title": "Juries of Less Than Twelve",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_48_00_00.pdf"
+      },
+      {
+        "num": "49",
+        "title": "Verdicts",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_49_00_00.pdf"
+      },
+      {
+        "num": "50",
+        "title": "Judgment as a Matter of Law in Jury Trials; \n            Alternative Motion for New Trial; Conditional Rulings",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_50_00_00.pdf"
+      },
+      {
+        "num": "51",
+        "title": "Instructions to Jury and Deliberation",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_51_00_00.pdf"
+      },
+      {
+        "num": "52",
+        "title": "Decisions, Findings and Conclusions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_52_00_00.pdf"
+      },
+      {
+        "num": "53",
+        "title": "Masters (Reserved)",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_53_00_00.pdf"
+      },
+      {
+        "num": "53.1",
+        "title": "Referees",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_53_01_00.pdf"
+      },
+      {
+        "num": "53.2",
+        "title": "Court Commissioners",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_53_02_00.pdf"
+      },
+      {
+        "num": "53.3",
+        "title": "Appointment of Masters in Discovery Matters",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_53_03_00.pdf"
+      },
+      {
+        "num": "53.4",
+        "title": "Procedures for Mandatory Mediation of Health Care Claims",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_53_04_00.pdf"
+      },
+      {
+        "num": "54",
+        "title": "Judgments and Costs",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_54_00_00.pdf"
+      },
+      {
+        "num": "55",
+        "title": "Default and Judgment",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_55_00_00.pdf"
+      },
+      {
+        "num": "56",
+        "title": "Summary Judgment",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_56_00_00.pdf"
+      },
+      {
+        "num": "57",
+        "title": "Declaratory Judgments",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_57_00_00.pdf"
+      },
+      {
+        "num": "58",
+        "title": "Entry of Judgment",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_58_00_00.pdf"
+      },
+      {
+        "num": "59",
+        "title": "New Trial, Reconsideration, and Amendment of Judgments",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_59_00_00.pdf"
+      },
+      {
+        "num": "60",
+        "title": "Relief From Judgment or Order",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_60_00_00.pdf"
+      },
+      {
+        "num": "61",
+        "title": "Harmless Error Reserved",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_61_00_00.pdf"
+      },
+      {
+        "num": "62",
+        "title": "Stay of Proceedings To Enforce a Judgment",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_62_00_00.pdf"
+      },
+      {
+        "num": "63",
+        "title": "Judges",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_63_00_00.pdf"
+      },
+      {
+        "num": "64",
+        "title": "Seizure of Person or Property",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_64_00_00.pdf"
+      },
+      {
+        "num": "65",
+        "title": "Injunctions",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_65_00_00.pdf"
+      },
+      {
+        "num": "65.1",
+        "title": "Security--Proceedings Against Sureties",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_65_01_00.pdf"
+      },
+      {
+        "num": "66",
+        "title": "Receivership Proceedings",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_66_00_00.pdf"
+      },
+      {
+        "num": "67",
+        "title": "Deposit in Court",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_67_00_00.pdf"
+      },
+      {
+        "num": "68",
+        "title": "Offer of Judgment",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_68_00_00.pdf"
+      },
+      {
+        "num": "69",
+        "title": "Execution",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_69_00_00.pdf"
+      },
+      {
+        "num": "70",
+        "title": "Judgment for Specific Acts; Vesting Title",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_70_00_00.pdf"
+      },
+      {
+        "num": "70.1",
+        "title": "Appearance by Attorney",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_70_01_00.pdf"
+      },
+      {
+        "num": "71",
+        "title": "Withdrawal by Attorney",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_71_00_00.pdf"
+      },
+      {
+        "num": "72-76",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_72-76.pdf"
+      },
+      {
+        "num": "77",
+        "title": "Superior Courts and Judicial Officers",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_77_00_00.pdf"
+      },
+      {
+        "num": "78",
+        "title": "Clerks",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_78_00_00.pdf"
+      },
+      {
+        "num": "79",
+        "title": "Books and Records Kept by the Clerk",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_79_00_00.pdf"
+      },
+      {
+        "num": "80",
+        "title": "Court Reporters",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_80_00_00.pdf"
+      },
+      {
+        "num": "80.1",
+        "title": "Electronic Recording Log",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_80_01_00.pdf"
+      },
+      {
+        "num": "81",
+        "title": "Applicability in General",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_81_00_00.pdf"
+      },
+      {
+        "num": "82",
+        "title": "Venue",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_82_00_00.pdf"
+      },
+      {
+        "num": "82.5",
+        "title": "Tribal Court Jurisdiction",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_82_05_00.pdf"
+      },
+      {
+        "num": "83",
+        "title": "Local Rules of Court",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_83_00_00.pdf"
+      },
+      {
+        "num": "84",
+        "title": "Forms (Reserved)",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_84_00_00.pdf"
+      },
+      {
+        "num": "85",
+        "title": "Title of Rules",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_85_00_00.pdf"
+      },
+      {
+        "num": "86",
+        "title": "Effective Dates",
+        "pdf": "../court_rules/pdf/CR/SUP_CR_86_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=CR"
+  },
+  {
+    "group": "sup",
+    "set_code": "CrR",
+    "set_name": "Superior Court Criminal Rules",
+    "rule_count": 65,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Purpose and Construction",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Effect",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "Prosecuting Attorney Definition",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_01_04_00.pdf"
+      },
+      {
+        "num": "1.5",
+        "title": "Style and Form",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_01_05_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "The Indictment and the Information",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Warrant of Arrest and Summons",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Search and Seizure",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_02_03_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Right to and Assignment of Lawyer",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_01_00.pdf"
+      },
+      {
+        "num": "3.1 Stds",
+        "title": "Standards for Indigent Defense",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_01_Standards.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Release of Accused",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_02_00.pdf"
+      },
+      {
+        "num": "3.2.1",
+        "title": "Procedure Following Warrantless Arrest - \n            Preliminary Appearance",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_02_01.pdf"
+      },
+      {
+        "num": "3.2A",
+        "title": "Repealed",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_02A_00.pdf"
+      },
+      {
+        "num": "3.2B",
+        "title": "Repealed",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_02B_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Time for Trial",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Presence of the Defendant",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Confession Procedure",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Suppression Hearings--Duty of Court",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_03_06_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Arraignment",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Pleas",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Joinder of Offenses and Defendants",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_03_00.pdf"
+      },
+      {
+        "num": "4.3.1",
+        "title": "Consolidation For Trial",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_03_01.pdf"
+      },
+      {
+        "num": "4.4",
+        "title": "Severance of Offenses and Defendants",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_04_00.pdf"
+      },
+      {
+        "num": "4.5",
+        "title": "Omnibus Hearing",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_05_00.pdf"
+      },
+      {
+        "num": "4.6",
+        "title": "Depositions",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_06_00.pdf"
+      },
+      {
+        "num": "4.7",
+        "title": "Discovery",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_07_00.pdf"
+      },
+      {
+        "num": "4.8",
+        "title": "Subpoenas",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_08_00.pdf"
+      },
+      {
+        "num": "4.9",
+        "title": "Pretrial Conference (Rescinded)",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_09_00.pdf"
+      },
+      {
+        "num": "4.10",
+        "title": "Material Witness",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_04_10_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Commencement of Actions",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Change of Venue",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_05_02_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Trial by Jury or by the Court",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Jurors' Orientation",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Selecting the Jury",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Challenges",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Alternate Jurors",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_05_00.pdf"
+      },
+      {
+        "num": "6.6",
+        "title": "Jurors' Oath",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_06_00.pdf"
+      },
+      {
+        "num": "6.7",
+        "title": "Custody of Jury",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_07_00.pdf"
+      },
+      {
+        "num": "6.8",
+        "title": "Notetaking by Jurors",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_08_00.pdf"
+      },
+      {
+        "num": "6.9",
+        "title": "View of Premises by Jury",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_09_00.pdf"
+      },
+      {
+        "num": "6.10",
+        "title": "Discharge of Jury",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_10_00.pdf"
+      },
+      {
+        "num": "6.11",
+        "title": "Judge--Disability",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_11_00.pdf"
+      },
+      {
+        "num": "6.12",
+        "title": "Witnesses",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_12_00.pdf"
+      },
+      {
+        "num": "6.13",
+        "title": "Testimony in Lieu of Witnesses",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_13_00.pdf"
+      },
+      {
+        "num": "6.14",
+        "title": "Immunity",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_14_00.pdf"
+      },
+      {
+        "num": "6.15",
+        "title": "Instructions and Argument",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_15_00.pdf"
+      },
+      {
+        "num": "6.16",
+        "title": "Verdicts and Findings",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_06_16_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Procedures Before Sentencing",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Sentencing",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Judgment",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_03_00.pdf"
+      },
+      {
+        "num": "7.4",
+        "title": "Arrest of Judgment",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_04_00.pdf"
+      },
+      {
+        "num": "7.5",
+        "title": "New Trial",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_05_00.pdf"
+      },
+      {
+        "num": "7.6",
+        "title": "Probation",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_06_00.pdf"
+      },
+      {
+        "num": "7.7",
+        "title": "Post-Conviction Relief (Rescinded)",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_07_00.pdf"
+      },
+      {
+        "num": "7.8",
+        "title": "Relief From Judgment or Order",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_07_08_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Time",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Motions",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Dismissal",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Service, Filing, and Signing of Papers",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "Calendars",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_05_00.pdf"
+      },
+      {
+        "num": "8.6",
+        "title": "Exceptions Unnecessary",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_06_00.pdf"
+      },
+      {
+        "num": "8.7",
+        "title": "Objections",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_07_00.pdf"
+      },
+      {
+        "num": "8.8",
+        "title": "Discharge",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_08_00.pdf"
+      },
+      {
+        "num": "8.9",
+        "title": "Change of Judge",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_09_00.pdf"
+      },
+      {
+        "num": "8.10",
+        "title": "Electronic Recording Log",
+        "pdf": "../court_rules/pdf/CrR/SUP_CrR_08_10_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=CrR"
+  },
+  {
+    "group": "sup",
+    "set_code": "GALR",
+    "set_name": "Superior Court Guardian ad Litem Rules",
+    "rule_count": 7,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Scope and Definitions",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "General Responsibilities of Guardian ad Litem",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Roles and Responsibilities of Guardian ad \n            Litem in Title 13 RCW Juvenile Court \n            Proceedings",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Authority of Guardian ad Litem",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Appointments of Guardian ad Litem",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Limited Appointments",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Grievance Procedures",
+        "pdf": "../court_rules/pdf/GALR/SUP_GALR_07_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=GALR"
+  },
+  {
+    "group": "sup",
+    "set_code": "JuCR",
+    "set_name": "Juvenile Court Rules",
+    "rule_count": 82,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Jurisdiction of Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Definitions",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_03_00.pdf"
+      },
+      {
+        "num": "1.4",
+        "title": "Applicability of Other Rules",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_04_00.pdf"
+      },
+      {
+        "num": "1.5",
+        "title": "Continuation of Actions",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_05_00.pdf"
+      },
+      {
+        "num": "1.6",
+        "title": "Physical Restraints in the Courtroom",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_01_06_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Placement of Juvenile in Shelter Care Generally",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Release of Juvenile From Shelter Care Without Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Right to and Notice of Shelter Care Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_02_03_00.pdf"
+      },
+      {
+        "num": "2.4",
+        "title": "Procedure at Shelter Care Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_02_04_00.pdf"
+      },
+      {
+        "num": "2.5",
+        "title": "Amendment of Shelter Care Order",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_02_05_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Invoking Jurisdiction of Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Who May File Petition--Venue",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_02_00.pdf"
+      },
+      {
+        "num": "3.3",
+        "title": "Content of Dependency Petition",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_03_00.pdf"
+      },
+      {
+        "num": "3.4",
+        "title": "Notice and Summons--Scheduling of \n            Factfinding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_04_00.pdf"
+      },
+      {
+        "num": "3.5",
+        "title": "Amendment of Petition",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_05_00.pdf"
+      },
+      {
+        "num": "3.6",
+        "title": "Answer to Petition",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_06_00.pdf"
+      },
+      {
+        "num": "3.7",
+        "title": "Factfinding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_07_00.pdf"
+      },
+      {
+        "num": "3.8",
+        "title": "Disposition Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_08_00.pdf"
+      },
+      {
+        "num": "3.9",
+        "title": "Review Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_09_00.pdf"
+      },
+      {
+        "num": "3.10",
+        "title": "Modification of Order",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_10_00.pdf"
+      },
+      {
+        "num": "3.11",
+        "title": "Guardianship in Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_03_11_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Invoking Jurisdiction of Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Pleadings",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Notice of Termination Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_04_03_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Invoking Jurisdiction of Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Pleadings",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Scheduling of Factfinding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Notice of Factfinding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_04_00.pdf"
+      },
+      {
+        "num": "5.5",
+        "title": "Procedure at Factfinding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_05_00.pdf"
+      },
+      {
+        "num": "5.6",
+        "title": "Disposition Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_06_00.pdf"
+      },
+      {
+        "num": "5.7",
+        "title": "Review Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05_07_00.pdf"
+      },
+      {
+        "num": "5A.1",
+        "title": "Invoking Jurisdiction of Juvenile Court",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_01_00.pdf"
+      },
+      {
+        "num": "5A.2",
+        "title": "Scheduling of Fact-Finding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_02_00.pdf"
+      },
+      {
+        "num": "5A.3",
+        "title": "Notice of Fact-Finding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_03_00.pdf"
+      },
+      {
+        "num": "5A.4",
+        "title": "Procedure at Fact-Finding Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_04_00.pdf"
+      },
+      {
+        "num": "5A.5",
+        "title": "Disposition Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_05_00.pdf"
+      },
+      {
+        "num": "5A.6",
+        "title": "Review Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_05A_06_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Eligibility for Diversion",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Right To Consult With a Lawyer",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Waiver of Right to Lawyer",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Advice About Diversion Process",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_04_00.pdf"
+      },
+      {
+        "num": "6.5",
+        "title": "Rescinded",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_05_00.pdf"
+      },
+      {
+        "num": "6.6",
+        "title": "Termination of Diversion Agreement",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_06_06_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Invoking Juvenile Court Jurisdiction",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Information",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Detention and Release",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_03_00.pdf"
+      },
+      {
+        "num": "7.4",
+        "title": "Detention Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_04_00.pdf"
+      },
+      {
+        "num": "7.5",
+        "title": "Issuance of Summons or Warrant",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_05_00.pdf"
+      },
+      {
+        "num": "7.6",
+        "title": "Arraignment and Pleas",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_06_00.pdf"
+      },
+      {
+        "num": "7.7",
+        "title": "Statement of Juvenile on Plea of Guilty",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JuCR_07_07_00.pdf"
+      },
+      {
+        "num": "7.8",
+        "title": "Time for Adjudicatory Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_08_00.pdf"
+      },
+      {
+        "num": "7.9",
+        "title": "Joinder of Offenses and Consolidation of Adjudicatory Hearings",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_09_00.pdf"
+      },
+      {
+        "num": "7.10",
+        "title": "Severance of Offenses and Consolidated \n            Hearings",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_10_00.pdf"
+      },
+      {
+        "num": "7.11",
+        "title": "Adjudicatory Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_11_00.pdf"
+      },
+      {
+        "num": "7.12",
+        "title": "Disposition Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_12_00.pdf"
+      },
+      {
+        "num": "7.13",
+        "title": "Release Pending Appellate Review",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_13_00.pdf"
+      },
+      {
+        "num": "7.14",
+        "title": "Modification of Disposition Order",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_14_00.pdf"
+      },
+      {
+        "num": "7.15",
+        "title": "Waiver of Right to Counsel",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_07_15_00.pdf"
+      },
+      {
+        "num": "7.16",
+        "title": "Quashing and Issuing Warrants",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JuCR_7_16_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Time for Decline Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Procedure at Decline Hearing",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_08_02_00.pdf"
+      },
+      {
+        "num": "9.1",
+        "title": "Child in Need of Services and at Risk Youth Petition-Mandatory Appointment of Layer",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_09_01_00.pdf"
+      },
+      {
+        "num": "9.2",
+        "title": "Additional Right to Representation by Lawyer",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JuCR_09_02_00.pdf"
+      },
+      {
+        "num": "9.2 Stds",
+        "title": "Standards for Indigent Defense",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JuCR_09_02_Standards.pdf"
+      },
+      {
+        "num": "9.3",
+        "title": "Right to Appointment of Experts in Juvenile Offense Proceedings and Assignment of Lawyer",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_09_03_00.pdf"
+      },
+      {
+        "num": "10.1",
+        "title": "Scope of Title 10",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_01_00.pdf"
+      },
+      {
+        "num": "10.2",
+        "title": "Recording Juvenile Court Proceedings",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_02_00.pdf"
+      },
+      {
+        "num": "10.3",
+        "title": "Access of Parent to Records (Rescinded)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_03_00.pdf"
+      },
+      {
+        "num": "10.4",
+        "title": "Motions Concerning Juvenile Records (Rescinded)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_04_00.pdf"
+      },
+      {
+        "num": "10.5",
+        "title": "Access to Official Juvenile Court Files (Reserved)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_05_00.pdf"
+      },
+      {
+        "num": "10.6",
+        "title": "Challenging Juvenile Court Records (Reserved)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_06_00.pdf"
+      },
+      {
+        "num": "10.7",
+        "title": "Sealing Juvenile Court Records (Reserved)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_07_00.pdf"
+      },
+      {
+        "num": "10.8",
+        "title": "Destruction of Juvenile Court Records (Reserved)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_08_00.pdf"
+      },
+      {
+        "num": "10.9",
+        "title": "Only Complete Information Released (Reserved)",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_10_09_00.pdf"
+      },
+      {
+        "num": "11.1",
+        "title": "Computing Time",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_01_00.pdf"
+      },
+      {
+        "num": "11.2",
+        "title": "Notice of Proceeding",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_02_00.pdf"
+      },
+      {
+        "num": "11.3",
+        "title": "Notice to Foster Parents, Preadoptive Parents, \n            Nonrelative Caregivers, or Relative Caregivers",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_03_00.pdf"
+      },
+      {
+        "num": "11.21",
+        "title": "Title and Citation of Rules",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_21_00.pdf"
+      },
+      {
+        "num": "11.22",
+        "title": "Rules Superseded",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_22_00.pdf"
+      },
+      {
+        "num": "11.23",
+        "title": "Proceedings Using Remote Technology Authorized",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11_23_00.pdf"
+      },
+      {
+        "num": "11.4-11.20",
+        "title": "Reserved",
+        "pdf": "../court_rules/pdf/JuCR/SUP_JUCR_11.4-11.20.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=JuCR"
+  },
+  {
+    "group": "sup",
+    "set_code": "SCCAR",
+    "set_name": "Superior Court Civil Arbitration Rules",
+    "rule_count": 27,
+    "rules": [
+      {
+        "num": "1.1",
+        "title": "Application of Rules",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_01_01_00.pdf"
+      },
+      {
+        "num": "1.2",
+        "title": "Matters Subject to Arbitration",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_01_02_00.pdf"
+      },
+      {
+        "num": "1.3",
+        "title": "Relationship to Superior Court Jurisdiction and Other Rules",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_01_03_00.pdf"
+      },
+      {
+        "num": "2.1",
+        "title": "Transfer to Arbitration",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_02_01_00.pdf"
+      },
+      {
+        "num": "2.2",
+        "title": "Court May Determine Arbitrability",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_02_02_00.pdf"
+      },
+      {
+        "num": "2.3",
+        "title": "Assignment to Arbitrator",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_02_03_00.pdf"
+      },
+      {
+        "num": "3.1",
+        "title": "Qualifications",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_03_01_00.pdf"
+      },
+      {
+        "num": "3.2",
+        "title": "Authority of Arbitrators",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_03_02_00.pdf"
+      },
+      {
+        "num": "4.1",
+        "title": "Restrictions on Communication Between Arbitrator and Parties",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_04_01_00.pdf"
+      },
+      {
+        "num": "4.2",
+        "title": "Discovery",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_04_02_00.pdf"
+      },
+      {
+        "num": "4.3",
+        "title": "Subpoena",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_04_03_00.pdf"
+      },
+      {
+        "num": "5.1",
+        "title": "Notice of Hearing",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_05_01_00.pdf"
+      },
+      {
+        "num": "5.2",
+        "title": "Prehearing Statement of Proof",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_05_02_00.pdf"
+      },
+      {
+        "num": "5.3",
+        "title": "Conduct of Hearing--Witnesses--Rules of Evidence",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_05_03_00.pdf"
+      },
+      {
+        "num": "5.4",
+        "title": "Absence of Party at Hearing",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_05_04_00.pdf"
+      },
+      {
+        "num": "6.1",
+        "title": "Form and Content of Award",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_06_01_00.pdf"
+      },
+      {
+        "num": "6.2",
+        "title": "Filing of Award",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_06_02_00.pdf"
+      },
+      {
+        "num": "6.3",
+        "title": "Judgment on Award",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_06_03_00.pdf"
+      },
+      {
+        "num": "6.4",
+        "title": "Costs and Attorney Fees",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_06_04_00.pdf"
+      },
+      {
+        "num": "7.1",
+        "title": "Request for Trial de Novo",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_07_01_00.pdf"
+      },
+      {
+        "num": "7.2",
+        "title": "Procedure After Request for Trial de Novo",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_07_02_00.pdf"
+      },
+      {
+        "num": "7.3",
+        "title": "Costs and Attorney Fees",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_07_03_00.pdf"
+      },
+      {
+        "num": "8.1",
+        "title": "Stipulations",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_08_01_00.pdf"
+      },
+      {
+        "num": "8.2",
+        "title": "Local Rules",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_08_02_00.pdf"
+      },
+      {
+        "num": "8.3",
+        "title": "Effective Date",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_08_03_00.pdf"
+      },
+      {
+        "num": "8.4",
+        "title": "Title and Citation",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_08_04_00.pdf"
+      },
+      {
+        "num": "8.5",
+        "title": "Status of Comments",
+        "pdf": "../court_rules/pdf/SCCAR/SUP_SCCAR_08_05_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=SCCAR"
+  },
+  {
+    "group": "sup",
+    "set_code": "SPR",
+    "set_name": "Superior Court Special Proceedings",
+    "rule_count": 9,
+    "rules": [
+      {
+        "num": "90.04W",
+        "title": "Attachments--Duties of the Sheriff",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_90_04W_00.pdf"
+      },
+      {
+        "num": "91.04W",
+        "title": "Garnishments--Service, Objections, etc. (Rescinded)",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_91_04W_00.pdf"
+      },
+      {
+        "num": "93.04W",
+        "title": "Disposition of Reports--Adoptions",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_93_04W_00.pdf"
+      },
+      {
+        "num": "98.08W",
+        "title": "Estates--Settlement of Claims by Guardian, Receiver, or Personal Representative",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_08W_00.pdf"
+      },
+      {
+        "num": "98.10W",
+        "title": "Estates--Receivership--Reports",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_10W_00.pdf"
+      },
+      {
+        "num": "98.12W",
+        "title": "Estates Generally--Fees",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_12W_00.pdf"
+      },
+      {
+        "num": "98.16W",
+        "title": "Estates--Guardianship--Settlement of Claims of Minors and Incapacitated Persons",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_16W_00.pdf"
+      },
+      {
+        "num": "98.20W",
+        "title": "Estates--Guardianships--Authorization of Expenditures (Rescinded)",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_20W_00.pdf"
+      },
+      {
+        "num": "98.24W",
+        "title": "Unlawful Detainers--Appointment of Attorney",
+        "pdf": "../court_rules/pdf/SPR/SUP_SPR_98_24W_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=SPR"
+  },
+  {
+    "group": "sup",
+    "set_code": "SPRC",
+    "set_name": "Superior Court Special Proceedings Rules -- Criminal",
+    "rule_count": 7,
+    "rules": [
+      {
+        "num": "1",
+        "title": "Scope of Rules",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_01_00_00.pdf"
+      },
+      {
+        "num": "2",
+        "title": "Appointment of Counsel",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_02_00_00.pdf"
+      },
+      {
+        "num": "3",
+        "title": "Court Reporters; Filing of Notes",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_03_00_00.pdf"
+      },
+      {
+        "num": "4",
+        "title": "Discovery - Special Sentencing Proceeding",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_04_00_00.pdf"
+      },
+      {
+        "num": "5",
+        "title": "Mental Examination of Defendant",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_05_00_00.pdf"
+      },
+      {
+        "num": "6",
+        "title": "Proportionality Questionnaires",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_06_00_00.pdf"
+      },
+      {
+        "num": "7",
+        "title": "Destruction of Records, Exhibits, and Stenographic Notes",
+        "pdf": "../court_rules/pdf/SPRC/SUP_SPRC_07_00_00.pdf"
+      }
+    ],
+    "list_url": "https://www.courts.wa.gov/court_rules/?fa=court_rules.list&group=sup&set=SPRC"
+  }
+]

@@ -1,0 +1,28 @@
+[Unit]
+Description=Athena BGE-M3 GPU server — cuda:1 worker (TEI-compatible, port 9099)
+Documentation=file:///opt/bge-server/README.md
+After=network-online.target bge-embedding.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bge-server
+EnvironmentFile=/opt/bge-server/.env
+# Pin embedder to cuda:1; reranker also on cuda:1 (reranker runs on cuda:0 already
+# via bge-embedding.service; this second worker is embedder-only on the second GPU).
+Environment=BGE_PORT=9099
+Environment=BGE_EMBED_DEVICE=cuda:1
+Environment=BGE_RERANK_DEVICE=cuda:1
+ExecStart=/opt/bge-server/venv/bin/python /opt/bge-server/gpu_embedding_server.py
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bge-embedding-cuda1
+
+[Install]
+WantedBy=multi-user.target
