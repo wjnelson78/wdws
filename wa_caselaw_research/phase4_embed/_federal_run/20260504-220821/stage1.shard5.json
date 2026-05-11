@@ -1,0 +1,213 @@
+{
+  "stage1": {
+    "documents_created": 82098,
+    "chunks_created": 259314,
+    "opinions_attempted": 124859,
+    "opinions_skipped": 42761,
+    "opinions_failed": 0,
+    "skip_reasons": {
+      "below_threshold": 42733,
+      "no_text": 28
+    },
+    "wall_seconds": 13502.6,
+    "per_opinion_ms": {
+      "n": 82098,
+      "min_ms": 2.2,
+      "p50_ms": 13.1,
+      "p95_ms": 259.1,
+      "max_ms": 2876722.9
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "12b62c3c-28ea-4f06-999c-63d0517ce9ee_0",
+      "document_id": "12b62c3c-28ea-4f06-999c-63d0517ce9ee",
+      "chunk_index": 0,
+      "total_chunks": 15,
+      "content_preview_500": "Henry v. A. B. Dick Co. | (1912-03-11) | U.S. | Lead Opinion\n\nMe. Justice Lueton\n\ndelivered the opinion of the court.\n\nThis cause comes to this court upon a certificate under the sixth section of the Court of Appeals Act of March 31, 1891.\n\nThe facts and the questions certified, omitting the terms*of the injunction awarded by the Circuit Court, are these:\n\n\u201cThis action was brought by the complainant, an Illinois corporation, for the infringement of two letters patent, owned by the complainant, c",
+      "token_count": 974,
+      "embedding_first5": [
+        -0.057678223,
+        0.0013952255,
+        -0.039245605,
+        0.0184021,
+        0.015090942
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1912-03-11",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 97584,
+        "cl_opinion_id": 9841899,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0bc03379-2338-42ec-8862-d432f1ea1273_4",
+      "document_id": "0bc03379-2338-42ec-8862-d432f1ea1273",
+      "chunk_index": 4,
+      "total_chunks": 5,
+      "content_preview_500": "Allied World National Assurance Company v. Foremost Insurance Company | (2021-02-01) | W.D. Wash. | 100trialcourt\n\n15  51 at 6.) But functionally Foremost did wrongfully deny full coverage given its unilateral \n16  decision to pay only 50% of the costs and 100% of the self-insured retention. Additionally, there \n17  is no evidence that Allied acquiesced to the split of coverage, notwithstanding Foremost\u2019s \n18  arguments about this in its reply. (See Def. Reply ISO MSJ at 6 & 7 (Dkt. No. 51).) In",
+      "token_count": 738,
+      "embedding_first5": [
+        -0.012748718,
+        0.03604126,
+        0.0011873245,
+        -0.012779236,
+        -0.0057296753
+      ],
+      "metadata": {
+        "court_id": "wawd",
+        "date_filed": "2021-02-01",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10236378,
+        "cl_opinion_id": 10702968,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0e23a24f-1d08-496d-a47e-102b20b2249b_0",
+      "document_id": "0e23a24f-1d08-496d-a47e-102b20b2249b",
+      "chunk_index": 0,
+      "total_chunks": 6,
+      "content_preview_500": "(2025-12-08) | E.D. Cal. | 100trialcourt\n\n1                                                                        \n2                                                                        \n3                                                                        \n4                                                                        \n5                                                                        \n6                                                                        \n7             ",
+      "token_count": 747,
+      "embedding_first5": [
+        0.03765869,
+        -0.003227234,
+        -0.056243896,
+        0.04397583,
+        -0.004081726
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-12-08",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10757708,
+        "cl_opinion_id": 11224293,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0bc03379-2338-42ec-8862-d432f1ea1273_2",
+      "document_id": "0bc03379-2338-42ec-8862-d432f1ea1273",
+      "chunk_index": 2,
+      "total_chunks": 5,
+      "content_preview_500": "Allied World National Assurance Company v. Foremost Insurance Company | (2021-02-01) | W.D. Wash. | 100trialcourt\n\n15  Shelland lawsuit. (See Edmundson Decl. \u00b6 2 (Dkt. No. 25-1).) Given the allegations Shelland \n16  made against Smart Circle, Foremost owed a duty to defend \u201cwith respect to liability for \u2018bodily \n17  injury\u2019 \u2026 caused, in whole or in part, by [Revel\u2019s] acts or omissions or the acts or omissions of those \n18  acting on [Revel\u2019s] behalf.\u201d (Dkt. No. 1-3 at 72); see Am. Best Food, Inc",
+      "token_count": 744,
+      "embedding_first5": [
+        -0.0132751465,
+        0.013656616,
+        -0.004360199,
+        -0.016326904,
+        -0.013374329
+      ],
+      "metadata": {
+        "court_id": "wawd",
+        "date_filed": "2021-02-01",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10236378,
+        "cl_opinion_id": 10702968,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0bc03379-2338-42ec-8862-d432f1ea1273_3",
+      "document_id": "0bc03379-2338-42ec-8862-d432f1ea1273",
+      "chunk_index": 3,
+      "total_chunks": 5,
+      "content_preview_500": "Allied World National Assurance Company v. Foremost Insurance Company | (2021-02-01) | W.D. Wash. | 100trialcourt\n\n15  MSJ at 13 (Dkt. No. 57 at 13).) But Foremost fails to cite a single case in support of this \n16  argument and it did not plead waiver or estoppel as a defense in its answer. Even if it had, \n17  Foremost has not identified any material facts that could support a claim of waiver or estoppel. \n18  Smart Circle\u2019s declarant states that it demanded full defense coverage from Foremost",
+      "token_count": 745,
+      "embedding_first5": [
+        0.0034179688,
+        0.03439331,
+        -0.018920898,
+        -0.015579224,
+        -0.0071525574
+      ],
+      "metadata": {
+        "court_id": "wawd",
+        "date_filed": "2021-02-01",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10236378,
+        "cl_opinion_id": 10702968,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

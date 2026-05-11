@@ -10,9 +10,10 @@ Routes queries to the optimal LLM provider based on:
 Provider tiers:
   1. Ollama (local)     — llama3.2:3b for triage, classification, private queries
   2. Claude Haiku       — fast cloud tier for summaries, simple Q&A
-  3. Claude Sonnet      — standard reasoning, drafting
-  4. GPT-5.4            — existing default, complex tasks
-  5. Claude Opus / o3   — deep legal/medical reasoning, high-stakes analysis
+  3. Grok 4.3           — high-quality reasoning, coding, creative tasks (xAI)
+  4. Claude Sonnet      — standard reasoning, drafting
+  5. GPT-5.4            — existing default, complex tasks
+  6. Claude Opus / o3   — deep legal/medical reasoning, high-stakes analysis
 
 Usage:
     router = ModelRouter()
@@ -55,6 +56,8 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_ENABLED = os.getenv("DEEPSEEK_ENABLED", "false").lower() in ("true", "1", "yes")
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
 
 
 class TaskType(str, Enum):
@@ -252,6 +255,19 @@ PROVIDERS: dict[str, ProviderConfig] = {
         avg_latency_ms=1200,
         context_window=128000,
     ),
+    # Grok 4.3 via xAI OpenAI-compatible API (https://api.x.ai/v1)
+    # Excellent for reasoning, coding, and creative workloads; cost-effective
+    # alternative to Claude Sonnet for many tasks.
+    "xai:grok-4.3": ProviderConfig(
+        name="Grok 4.3",
+        model="grok-4.3",
+        provider="xai",
+        max_tokens=8192,
+        cost_per_1k_input=0.002,
+        cost_per_1k_output=0.01,
+        avg_latency_ms=600,
+        context_window=128000,
+    ),
 }
 
 # ── Routing Tables ───────────────────────────────────────────
@@ -270,33 +286,39 @@ ROUTING_TABLE: dict[TaskType, list[str]] = {
         "ollama:llama3.2:3b",
     ],
     TaskType.REASONING: [
+        "xai:grok-4.3",
         "anthropic:claude-sonnet-4-6",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.CODE: [
+        "xai:grok-4.3",
         "anthropic:claude-sonnet-4-6",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.LEGAL: [
         "anthropic:claude-opus-4-7",
+        "xai:grok-4.3",
         "anthropic:claude-sonnet-4-6",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.MEDICAL: [
         "anthropic:claude-opus-4-7",
+        "xai:grok-4.3",
         "anthropic:claude-sonnet-4-6",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.CREATIVE: [
+        "xai:grok-4.3",
         "anthropic:claude-sonnet-4-6",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
     ],
     TaskType.CONVERSATION: [
+        "xai:grok-4.3",
         "anthropic:claude-haiku-4-5",
         "openai:gpt-5.4",
         "ollama:llama3.2:3b",
@@ -352,6 +374,13 @@ class ModelRouter:
         else:
             for key in PROVIDERS:
                 if PROVIDERS[key].provider == "deepseek":
+                    self._circuits[key].is_open = True
+
+        if XAI_API_KEY:
+            available.append("xai")
+        else:
+            for key in PROVIDERS:
+                if PROVIDERS[key].provider == "xai":
                     self._circuits[key].is_open = True
 
         log.info("ModelRouter initialized. Available providers: %s", available)
@@ -473,6 +502,8 @@ class ModelRouter:
                 result = await self._call_openai(config, messages, temp, max_tok, tools)
             elif config.provider == "deepseek":
                 result = await self._call_deepseek(config, messages, temp, max_tok, tools)
+            elif config.provider == "xai":
+                result = await self._call_xai(config, messages, temp, max_tok, tools)
             else:
                 raise ValueError(f"Unknown provider: {config.provider}")
 
@@ -696,6 +727,45 @@ class ModelRouter:
             "https://api.openai.com/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        choice = data["choices"][0]
+        content = choice.get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+
+        return RoutingResult(
+            provider=config.name,
+            model=config.model,
+            content=content,
+            tokens_in=usage.get("prompt_tokens", 0),
+            tokens_out=usage.get("completion_tokens", 0),
+        )
+
+    async def _call_xai(
+        self, config: ProviderConfig, messages: list[dict],
+        temperature: float, max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> RoutingResult:
+        """Call Grok via xAI OpenAI-compatible endpoint."""
+        body: dict[str, Any] = {
+            "model": config.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools:
+            body["tools"] = tools
+
+        resp = await self._http.post(
+            f"{XAI_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {XAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json=body,

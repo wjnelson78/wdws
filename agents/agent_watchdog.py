@@ -96,13 +96,17 @@ LATENCY_REGRESSION_AGENT_EXCLUDE = {
 }
 
 # ── Services to monitor ─────────────────────────────────────
+# Updated 2026-05-08: athena-dashboard / wdws-* legacy units replaced by ace-*
+# during the /opt/wdws → /opt/ace migration. Monitoring the legacy names caused
+# this watchdog to repeatedly auto-restart masked/dead units, racing with the
+# ace-* services already holding the ports → port-9100/9350 ENOSPC inotify flap.
 MONITORED_SERVICES = [
-    "wdws-mcp", "athena-dashboard", "wdws-agents",
+    "ace-mcp", "ace-dashboard", "ace-chat-api", "wdws-agents",
     "postgresql@17-main", "ssh",
 ]
 
 MONITORED_TIMERS = [
-    "wdws-email-sync", "wdws-attach-ingest",
+    "ace-email-sync", "ace-attach-ingest",
 ]
 
 # ── Agent routing: issue type → which agent should handle it ─
@@ -140,7 +144,7 @@ You are the eyes and ears of the entire platform. You monitor everything.
 
 SYSTEM ARCHITECTURE:
 - Server: 172.16.32.207 (Ubuntu), hostname dtg-mcp-server
-- Services: wdws-mcp (9200), athena-dashboard (9100), wdws-agents, postgresql@17-main
+- Services: ace-mcp (9200), ace-dashboard (9100), ace-chat-api (9350), wdws-agents, postgresql@17-main
 - Timers: wdws-email-sync (15 min), wdws-attach-ingest (30 min)
 - Database: PostgreSQL 'wdws', schemas: core, legal, medical, ops, paperless
 - Tunnel: klunky.12432.net → Cloudflare Tunnel (runs on another server)
@@ -531,7 +535,7 @@ WHEN TO ESCALATE TO HUMAN:
             return False
 
         try:
-            if name == "wdws-mcp":
+            if name == "ace-mcp":
                 await self._resolve_wdws_mcp_port_conflict(ctx)
             subprocess.run(
                 ["systemctl", "restart", name], timeout=15, check=True)
@@ -550,9 +554,9 @@ WHEN TO ESCALATE TO HUMAN:
             return False
 
     async def _resolve_wdws_mcp_port_conflict(self, ctx) -> bool:
-        """Kill stray unmanaged MCP listeners blocking the wdws-mcp systemd unit."""
-        status = await ctx.service_status("wdws-mcp")
-        journal = await ctx.journal("wdws-mcp", lines=60, since="15 minutes ago")
+        """Kill stray unmanaged MCP listeners blocking the ace-mcp systemd unit."""
+        status = await ctx.service_status("ace-mcp")
+        journal = await ctx.journal("ace-mcp", lines=60, since="15 minutes ago")
         if "address already in use" not in journal:
             return False
 
@@ -577,9 +581,9 @@ WHEN TO ESCALATE TO HUMAN:
             await ctx.finding(
                 "critical",
                 "service-port-conflict",
-                f"wdws-mcp is blocked by another process on port {MCP_PORT}",
+                f"ace-mcp is blocked by another process on port {MCP_PORT}",
                 owner_cmd or f"Unknown process owns port {MCP_PORT}",
-                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+                {"service": "ace-mcp", "port": MCP_PORT, "pid": pid},
             )
             return False
 
@@ -588,21 +592,21 @@ WHEN TO ESCALATE TO HUMAN:
             await ctx.finding(
                 "critical",
                 "service-port-conflict",
-                f"Failed to clear wdws-mcp port conflict on {MCP_PORT}",
+                f"Failed to clear ace-mcp port conflict on {MCP_PORT}",
                 kill.get("stderr", "")[:500] or f"Could not kill PID {pid}",
-                {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+                {"service": "ace-mcp", "port": MCP_PORT, "pid": pid},
             )
             return False
 
         await ctx.action(
-            f"Killed stray MCP process PID {pid} blocking wdws-mcp on port {MCP_PORT}"
+            f"Killed stray MCP process PID {pid} blocking ace-mcp on port {MCP_PORT}"
         )
         await ctx.finding(
             "warning",
             "service-port-conflict",
-            "Cleared stray MCP listener blocking wdws-mcp",
+            "Cleared stray MCP listener blocking ace-mcp",
             owner_cmd,
-            {"service": "wdws-mcp", "port": MCP_PORT, "pid": pid},
+            {"service": "ace-mcp", "port": MCP_PORT, "pid": pid},
         )
         return True
 

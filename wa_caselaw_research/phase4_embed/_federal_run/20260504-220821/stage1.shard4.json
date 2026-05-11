@@ -1,0 +1,213 @@
+{
+  "stage1": {
+    "documents_created": 82243,
+    "chunks_created": 260433,
+    "opinions_attempted": 125036,
+    "opinions_skipped": 42793,
+    "opinions_failed": 0,
+    "skip_reasons": {
+      "below_threshold": 42753,
+      "no_text": 40
+    },
+    "wall_seconds": 17161.8,
+    "per_opinion_ms": {
+      "n": 82243,
+      "min_ms": 2.1,
+      "p50_ms": 12.6,
+      "p95_ms": 258.0,
+      "max_ms": 6291105.3
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "1550dc9a-64cc-4f1a-9edd-bd1f060038a8_1",
+      "document_id": "1550dc9a-64cc-4f1a-9edd-bd1f060038a8",
+      "chunk_index": 1,
+      "total_chunks": 2,
+      "content_preview_500": "(PC) Cole v. California Department of Corrections and Rehabilitation | (2025-04-03) | E.D. Cal. | 100trialcourt\n\n7                                                                        \n\n8                                                                        \n9                                                                        \n10                                                                        \n11                                                                        \n12            ",
+      "token_count": 38,
+      "embedding_first5": [
+        -0.02897644,
+        0.0067977905,
+        -0.010604858,
+        -0.0129776,
+        -0.05633545
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-04-03",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10372721,
+        "cl_opinion_id": 10839309,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "154d06b7-a2e1-41f9-96dc-851835d40c36_0",
+      "document_id": "154d06b7-a2e1-41f9-96dc-851835d40c36",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Ronald Rafael Bean, Sr. v. Rick Rimmer | (1993-02-24) | 9th Cir. | Per Curiam\n\n988 F.2d 117\n\n NOTICE: Ninth Circuit Rule 36-3 provides that dispositions other than opinions or orders designated for publication are not precedential and should not be cited except when relevant under the doctrines of law of the case, res judicata, or collateral estoppel.Ronald Rafael BEAN, Sr., Plaintiff-Appellant,v.Rick RIMMER, Defendant-Appellee.\n\n No. 92-16106.\n\n United States Court of Appeals, Ninth Circuit.\n\n ",
+      "token_count": 912,
+      "embedding_first5": [
+        -0.04373169,
+        0.019165039,
+        -0.0025978088,
+        0.02154541,
+        -0.037628174
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1993-02-24",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 601941,
+        "cl_opinion_id": 601941,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "154c0ccd-75c2-4540-89f3-1eb802aa0ef4_5",
+      "document_id": "154c0ccd-75c2-4540-89f3-1eb802aa0ef4",
+      "chunk_index": 5,
+      "total_chunks": 10,
+      "content_preview_500": "Bryan v. Del Monte Foods, Inc. | (2023-07-25) | N.D. Cal. | 100trialcourt\n\nhased, namely, fruit cups, \u201cthe same labels \n7   for all of the products,\u201d see id., namely, the front label containing the \u201cfruit naturals\u201d \n8   phrase, and an \u201cidentical\u201d injury, namely, payment that otherwise would not have been \n9   made, see Ang, 2014 WL 1024182, at *8.                                \n10        As to the \u201cproducts that are similarly deceptively marketed\u201d (see CAC \u00b6 1 n.1), \n11   however, Bryan\u2019s \u201cfail",
+      "token_count": 891,
+      "embedding_first5": [
+        -0.002521515,
+        0.0234375,
+        -0.007472992,
+        -0.01083374,
+        -0.020767212
+      ],
+      "metadata": {
+        "court_id": "cand",
+        "date_filed": "2023-07-25",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 9609258,
+        "cl_opinion_id": 10075871,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "1550dc9a-64cc-4f1a-9edd-bd1f060038a8_0",
+      "document_id": "1550dc9a-64cc-4f1a-9edd-bd1f060038a8",
+      "chunk_index": 0,
+      "total_chunks": 2,
+      "content_preview_500": "(PC) Cole v. California Department of Corrections and Rehabilitation | (2025-04-03) | E.D. Cal. | 100trialcourt\n\n1                                                                        \n2                                                                        \n3                                                                        \n4                                                                        \n5                                                                        \n6                ",
+      "token_count": 597,
+      "embedding_first5": [
+        -0.025283813,
+        0.016708374,
+        -0.017028809,
+        0.01675415,
+        0.0031833649
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-04-03",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10372721,
+        "cl_opinion_id": 10839309,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "154c0ccd-75c2-4540-89f3-1eb802aa0ef4_4",
+      "document_id": "154c0ccd-75c2-4540-89f3-1eb802aa0ef4",
+      "chunk_index": 4,
+      "total_chunks": 10,
+      "content_preview_500": "Bryan v. Del Monte Foods, Inc. | (2023-07-25) | N.D. Cal. | 100trialcourt\n\n24          4.  Standing to Assert Claims Under Non-Oregon Consumer Protection \n              Statutes (Counts I, II, and V)                              \n25                                                                         \n         Del Monte further contends Bryan does \u201cnot have standing to bring non-Oregon \n26                                                                         \n27                             ",
+      "token_count": 886,
+      "embedding_first5": [
+        0.008956909,
+        0.011817932,
+        -0.012062073,
+        0.01953125,
+        -0.013191223
+      ],
+      "metadata": {
+        "court_id": "cand",
+        "date_filed": "2023-07-25",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 9609258,
+        "cl_opinion_id": 10075871,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

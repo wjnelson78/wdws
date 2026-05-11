@@ -1,0 +1,213 @@
+{
+  "stage1": {
+    "documents_created": 82446,
+    "chunks_created": 260243,
+    "opinions_attempted": 124955,
+    "opinions_skipped": 42509,
+    "opinions_failed": 0,
+    "skip_reasons": {
+      "below_threshold": 42480,
+      "no_text": 29
+    },
+    "wall_seconds": 11911.5,
+    "per_opinion_ms": {
+      "n": 82446,
+      "min_ms": 2.1,
+      "p50_ms": 11.6,
+      "p95_ms": 306.5,
+      "max_ms": 899708.5
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "09d3a33d-650e-4b47-952c-7adebdea8d04_4",
+      "document_id": "09d3a33d-650e-4b47-952c-7adebdea8d04",
+      "chunk_index": 4,
+      "total_chunks": 6,
+      "content_preview_500": "Mitchell Thomas Blazak, Petitioner-Appellee-Cross-Appellant v. James R. Ricketts, Donald Wawrzaszek, Respondents-Ap Pellants-Cross-Appellees | (1993-08-02) | 9th Cir. | Lead Opinion\n\nBlazak argues that he engaged in bizarre *899conduct in pretrial hearings.9 On,September 10, 1974, the State attempted to enforce an order requiring Blazak to provide handwriting exemplars. Blazak stated: \u201cYour honor, I do not refuse the court order. I do refuse to let a lie be created and made into the evidence.\u201d W",
+      "token_count": 894,
+      "embedding_first5": [
+        0.010635376,
+        0.050079346,
+        -0.022888184,
+        -0.004650116,
+        0.014228821
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1993-08-02",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 627449,
+        "cl_opinion_id": 9485761,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "09d3a33d-650e-4b47-952c-7adebdea8d04_5",
+      "document_id": "09d3a33d-650e-4b47-952c-7adebdea8d04",
+      "chunk_index": 5,
+      "total_chunks": 6,
+      "content_preview_500": "Mitchell Thomas Blazak, Petitioner-Appellee-Cross-Appellant v. James R. Ricketts, Donald Wawrzaszek, Respondents-Ap Pellants-Cross-Appellees | (1993-08-02) | 9th Cir. | Lead Opinion\n\nIf before or during the trial the court has reasonable ground to believe that the defendant, against whom an indictment has been found or information filed, is insane or mental*896ly defective, to the extent that he is unable to understand the proceedings against him or to assist in his defense, the court shall imme",
+      "token_count": 769,
+      "embedding_first5": [
+        0.006668091,
+        0.03668213,
+        -0.018478394,
+        -0.021713257,
+        -0.0047035217
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1993-08-02",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 627449,
+        "cl_opinion_id": 9485761,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "09aae191-aab1-4b8b-9027-e0321ac22109_3",
+      "document_id": "09aae191-aab1-4b8b-9027-e0321ac22109",
+      "chunk_index": 3,
+      "total_chunks": 5,
+      "content_preview_500": "Linda Wheeler Tarpeh-Doe, Individually and as Mother and Next Friend of Nyenpan Tarpeh-Doe, II v. United States of America | (1994-07-05) | D.C. Cir. | Lead Opinion\n\nBy the same token, there is no evidence that, had the Department taken steps to ensure Dr. Lefton\u2019s availability or improve his attitude, as the district court found them bound to do, Nyenpan\u2019s medical treatment or condition would have been any different. The district court concluded the \u201c[d]efen-dants could and should have directed",
+      "token_count": 892,
+      "embedding_first5": [
+        0.0011701584,
+        0.0071907043,
+        -0.035064697,
+        -0.013587952,
+        0.00097227097
+      ],
+      "metadata": {
+        "court_id": "cadc",
+        "date_filed": "1994-07-05",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 673404,
+        "cl_opinion_id": 9486961,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "09d3a33d-650e-4b47-952c-7adebdea8d04_3",
+      "document_id": "09d3a33d-650e-4b47-952c-7adebdea8d04",
+      "chunk_index": 3,
+      "total_chunks": 6,
+      "content_preview_500": "Mitchell Thomas Blazak, Petitioner-Appellee-Cross-Appellant v. James R. Ricketts, Donald Wawrzaszek, Respondents-Ap Pellants-Cross-Appellees | (1993-08-02) | 9th Cir. | Lead Opinion\n\nIn Morris v. United States, 414 F.2d 258, 259 (9th Cir.1969), we held that \u201csufficient doubt\u201d of competency was raised by the pre-sentence report which disclosed a history of mental illness and' a prior finding of insanity, although the defendant had apparently since recovered his sanity. In Rhay v. White, 385 F.2d ",
+      "token_count": 960,
+      "embedding_first5": [
+        -0.005859375,
+        0.047027588,
+        -0.029846191,
+        0.0029773712,
+        0.001288414
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1993-08-02",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 627449,
+        "cl_opinion_id": 9485761,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0bc1b3e9-c78a-4a7b-85d3-315ce331bf58_4",
+      "document_id": "0bc1b3e9-c78a-4a7b-85d3-315ce331bf58",
+      "chunk_index": 4,
+      "total_chunks": 6,
+      "content_preview_500": "(2025-12-23) | W.D. Wash. | 100trialcourt\n\n23   remain in place were discontinued. Kaiser\u2019s objections to Interrogatory 11 are overruled and its \n24                                                                             \n1   failure to answer fully was not substantially justified. Kaiser must provide a complete answer no \n2   later than January 5, 2026.                                               \n3   D.   Interrogatories 14, 15, and 16                                       \n\n4        Int",
+      "token_count": 741,
+      "embedding_first5": [
+        -0.01360321,
+        0.01802063,
+        -0.01876831,
+        0.03111267,
+        -0.0049438477
+      ],
+      "metadata": {
+        "court_id": "wawd",
+        "date_filed": "2025-12-23",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10765274,
+        "cl_opinion_id": 11231859,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

@@ -188,13 +188,16 @@ def stage1_extract_and_chunk(conn, *, limit: Optional[int] = None) -> int:
             cur.execute("""
                 INSERT INTO core.documents (id, domain, source_path, document_type, title,
                                             content_hash, total_chunks, full_content, metadata,
-                                            classification, classified_at)
+                                            classification, classified_at,
+                                            privilege, confidentiality,
+                                            privilege_classified_at, privilege_classified_by)
                 VALUES (%s, 'legal', %s, 'case-opinion', %s, %s, %s, %s,
                         jsonb_build_object('cl_opinion_id', %s, 'cl_cluster_id', %s,
                                            'court_id', %s, 'opinion_type', %s,
                                            'date_filed', %s::text, 'text_source', %s,
                                            'canonical_citation', %s),
-                        'public', now())
+                        'public', now(),
+                        'none', 'public', now(), 'rule:public_record')
                 ON CONFLICT DO NOTHING
                 RETURNING id
             """, (doc_id, source_path, title, content_hash, len(chunks), text,

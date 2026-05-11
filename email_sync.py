@@ -2040,6 +2040,118 @@ async def fetch_target_emails(
     return results
 
 
+async def fetch_all_mailbox_emails(
+    graph: GraphClient,
+    mailbox: str,
+    since: Optional[str] = None,
+    existing_msg_ids: Optional[Set[str]] = None,
+    max_pages: int = 50,
+) -> List[Tuple[dict, bytes]]:
+    """
+    Full-mailbox fetch: ingest every message regardless of sender/domain.
+
+    Used for mailboxes with ingest_strategy='full' (e.g. athena@), where the
+    domain allowlist would otherwise drop legitimate correspondence from
+    senders we haven't pre-registered. Walks /users/{mb}/messages newest-first
+    with pagination, deduping against existing_msg_ids.
+    """
+    existing_msg_ids = existing_msg_ids or set()
+    results: List[Tuple[dict, bytes]] = []
+    seen_ids: Set[str] = set()
+
+    log.info(f"  📧 Full-mailbox sync of {mailbox} (ingest_strategy=full)...")
+
+    fetched = 0
+    skipped_existing = 0
+    skipped_known_failed = 0
+    next_link: Optional[str] = None
+    page_count = 0
+    tracker = _mime_tracker()
+
+    while page_count < max_pages:
+        if next_link:
+            data = await graph._get(next_link)
+        else:
+            data = await graph.list_messages(
+                mailbox=mailbox,
+                top=250,
+                order_by="receivedDateTime desc",
+                select="id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,hasAttachments,internetMessageId",
+            )
+
+        if not data:
+            break
+
+        messages = data.get("value", [])
+        if not messages:
+            break
+
+        for msg in messages:
+            graph_id = msg.get("id", "")
+            inet_msg_id = msg.get("internetMessageId", "")
+
+            if graph_id in seen_ids:
+                continue
+            seen_ids.add(graph_id)
+
+            if inet_msg_id and inet_msg_id in existing_msg_ids:
+                skipped_existing += 1
+                continue
+
+            if since:
+                recv_date = msg.get("receivedDateTime", "")[:10]
+                if recv_date and recv_date < since:
+                    continue
+
+            if tracker is not None and tracker.should_skip(mailbox, graph_id):
+                skipped_known_failed += 1
+                continue
+
+            mime, mime_error = await graph.get_message_mime(mailbox, graph_id)
+            if mime:
+                results.append((msg, mime))
+                fetched += 1
+            else:
+                if tracker is not None:
+                    tracker.record(
+                        mailbox, graph_id,
+                        subject=msg.get("subject"),
+                        http_status=(mime_error or {}).get("status"),
+                        error=(mime_error or {}).get("message") or "Graph /$value returned no bytes",
+                        permanent=bool(mime_error and mime_error.get("permanent")),
+                    )
+
+            if fetched % 50 == 0 and fetched > 0:
+                await asyncio.sleep(1)
+
+        next_link = data.get("@odata.nextLink")
+        page_count += 1
+
+        if not next_link:
+            break
+
+        log.info(
+            f"    Page {page_count}: {fetched} new, {skipped_existing} already in DB..."
+        )
+
+    capped = page_count >= max_pages and bool(next_link)
+    log.info(
+        f"  ✓ {mailbox}: {fetched} new emails fetched"
+        + (f", {skipped_existing} already in DB" if skipped_existing else "")
+        + (f", {skipped_known_failed} skipped (known MIME failures)" if skipped_known_failed else "")
+        + (f" — page cap {max_pages} hit; more pages remain" if capped else "")
+    )
+    if capped:
+        _record_run_issue(
+            "warning",
+            "Full-mailbox sync page cap hit",
+            f"{mailbox}: walked {max_pages} pages × 250 msgs and more remained. "
+            "Increase max_pages or run a one-off backfill.",
+        )
+
+    return results
+
+
 async def fetch_domain_emails(
     graph: GraphClient,
     mailbox: str,
@@ -2192,12 +2304,11 @@ async def process_and_ingest_email(
     result = await pipeline_ingest(spec, pool=pool)
 
     if result.was_existing:
+        # Pipeline dedup on source_path is the designed behavior — auto-handled,
+        # not an alertable condition. Keep the log line for forensics; don't
+        # surface to the run-summary email. (Mirrors attachment-dedup pattern
+        # at process_email_attachments.)
         log.info(f"  Duplicate graph source_path already exists, skipping {source_path}")
-        _record_run_issue(
-            "warning",
-            "Duplicate graph email skipped",
-            f"source_path: {source_path}\nexisting_document_id: {result.doc_id}",
-        )
         return None
 
     if result.error:
@@ -2294,11 +2405,16 @@ async def main(
     # Read sync config from database (if management tables exist)
     db_mailboxes = []
     db_rules = []
+    mailbox_strategies: Dict[str, str] = {}
     try:
         db_mbs = await pool.fetch(
-            "SELECT email FROM ops.sync_mailboxes WHERE is_active = true ORDER BY id"
+            "SELECT email, ingest_strategy FROM ops.sync_mailboxes "
+            "WHERE is_active = true ORDER BY id"
         )
         db_mailboxes = [r["email"] for r in db_mbs]
+        for r in db_mbs:
+            strategy = (r["ingest_strategy"] or "filtered").strip().lower()
+            mailbox_strategies[r["email"].strip().lower()] = strategy
         db_rules = await pool.fetch(
             "SELECT pattern, rule_type FROM ops.sync_rules WHERE is_active = true "
             "AND rule_type IN ('domain', 'email_address') ORDER BY priority DESC"
@@ -2406,12 +2522,22 @@ async def main(
         log.info(f"  Fetching from {mb}")
         log.info(f"{'='*60}")
 
-        emails = await fetch_target_emails(
-            graph, mb, domains,
-            specific_emails=specific_emails,
-            since=since,
-            existing_msg_ids=existing_msg_ids,
-        )
+        strategy = mailbox_strategies.get(mb.strip().lower(), "filtered")
+        log.info(f"  Strategy: {strategy}")
+
+        if strategy == "full":
+            emails = await fetch_all_mailbox_emails(
+                graph, mb,
+                since=since,
+                existing_msg_ids=existing_msg_ids,
+            )
+        else:
+            emails = await fetch_target_emails(
+                graph, mb, domains,
+                specific_emails=specific_emails,
+                since=since,
+                existing_msg_ids=existing_msg_ids,
+            )
 
         for meta, mime in emails:
             all_emails.append((meta, mime, mb))

@@ -1,0 +1,213 @@
+{
+  "stage1": {
+    "documents_created": 82351,
+    "chunks_created": 259377,
+    "opinions_attempted": 124991,
+    "opinions_skipped": 42640,
+    "opinions_failed": 0,
+    "skip_reasons": {
+      "below_threshold": 42609,
+      "no_text": 31
+    },
+    "wall_seconds": 11023.8,
+    "per_opinion_ms": {
+      "n": 82351,
+      "min_ms": 2.2,
+      "p50_ms": 11.4,
+      "p95_ms": 293.3,
+      "max_ms": 143472.9
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "0e34e186-b5f5-4c37-8db3-b9c237cca81f_1",
+      "document_id": "0e34e186-b5f5-4c37-8db3-b9c237cca81f",
+      "chunk_index": 1,
+      "total_chunks": 2,
+      "content_preview_500": "(2025-12-17) | E.D. Cal. | 100trialcourt\n\nh relief can be granted, the court must accept the allegations as true, Erickson v. \n11  Pardus, 551 U.S. 89 (2007), and construe the complaint in the light most favorable to the \n12  plaintiff, see Scheuer v. Rhodes, 416 U.S. 232, 236 (1974).           \n13   III.  Screening Order                                                \n14       Plaintiff\u2019s complaint challenges various aspects of his criminal trial.  ECF No. 1.  In Heck \n15  v. Humphrey and its p",
+      "token_count": 361,
+      "embedding_first5": [
+        -0.026260376,
+        0.003917694,
+        -0.0026493073,
+        0.010223389,
+        -0.017578125
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-12-17",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10762905,
+        "cl_opinion_id": 11229490,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "015601a3-2d70-45d1-a062-aa3fd95693d6_2",
+      "document_id": "015601a3-2d70-45d1-a062-aa3fd95693d6",
+      "chunk_index": 2,
+      "total_chunks": 4,
+      "content_preview_500": "(2025-12-19) | N.D. Cal. | 100trialcourt\n\ns in conclusory fashion that X Corp. \u201cgave [f]raudulent reason[s]\u201d about \n6   its \u201cconcerns\u201d regarding his e-book advertisement.  Dkt. 1-1 at 18.  This allegation fails to identify \n7   any allegedly fraudulent reasons about X Corp.\u2019s \u201cconcerns,\u201d and it fails to plausibly allege the \n8   statement was false when made.  Moreover, Boose also does not allege any facts that would show \n9   X Corp.\u2019s concerns were false or that it intended to defraud him.  No",
+      "token_count": 523,
+      "embedding_first5": [
+        -0.03161621,
+        0.012481689,
+        -0.030166626,
+        -0.0069732666,
+        -0.017089844
+      ],
+      "metadata": {
+        "court_id": "cand",
+        "date_filed": "2025-12-19",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10763641,
+        "cl_opinion_id": 11230226,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0e19dc0c-9bea-4845-bf4f-d6ad16973d8e_3",
+      "document_id": "0e19dc0c-9bea-4845-bf4f-d6ad16973d8e",
+      "chunk_index": 3,
+      "total_chunks": 4,
+      "content_preview_500": "(2026-01-08) | N.D. Cal. | 100trialcourt\n\nnd deposition testimony that speak to that effect.\u201d  (Dkt. No. \na    16    535 at 7.)  To the extent ISL seeks to present additional evidence or argument regarding the \n3    17    Shields class action, the parties shall work together on how it may be presented to the jury. \n   18          So, the Court DENIES ISL\u2019s motion to preclude evidence or argument this lawsuit \n  19  || contributed to ISL\u2019s damages. \n  20          This Order disposes of Docket Nos",
+      "token_count": 107,
+      "embedding_first5": [
+        -0.0061531067,
+        0.0033779144,
+        -0.019195557,
+        0.0007133484,
+        -0.016174316
+      ],
+      "metadata": {
+        "court_id": "cand",
+        "date_filed": "2026-01-08",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10775313,
+        "cl_opinion_id": 11241898,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "0e34e186-b5f5-4c37-8db3-b9c237cca81f_0",
+      "document_id": "0e34e186-b5f5-4c37-8db3-b9c237cca81f",
+      "chunk_index": 0,
+      "total_chunks": 2,
+      "content_preview_500": "(2025-12-17) | E.D. Cal. | 100trialcourt\n\n1                                                                        \n2                                                                        \n3                                                                        \n4                                                                        \n5                                                                        \n6                                                                        \n7             ",
+      "token_count": 761,
+      "embedding_first5": [
+        -0.03918457,
+        0.022903442,
+        -0.0309906,
+        0.0043945312,
+        -0.0013637543
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-12-17",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10762905,
+        "cl_opinion_id": 11229490,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "015601a3-2d70-45d1-a062-aa3fd95693d6_3",
+      "document_id": "015601a3-2d70-45d1-a062-aa3fd95693d6",
+      "chunk_index": 3,
+      "total_chunks": 4,
+      "content_preview_500": "(2025-12-19) | N.D. Cal. | 100trialcourt\n\n12             All persons within the jurisdiction of this state are free and equal, \n              and no matter what their sex, race, color, religion, ancestry, national \n13             origin, or disability are entitled to the full and equal    \n              accommodations, advantages, facilities, privileges, or services in all \n14             business establishments of every kind whatsoever.           \n15   Cal. Civ. Code \u00a7 51.  \u201cThus, by its own te",
+      "token_count": 790,
+      "embedding_first5": [
+        -0.012435913,
+        0.028808594,
+        -0.018035889,
+        0.022979736,
+        0.0014305115
+      ],
+      "metadata": {
+        "court_id": "cand",
+        "date_filed": "2025-12-19",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10763641,
+        "cl_opinion_id": 11230226,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "stage1": {
+    "documents_created": 15911,
+    "chunks_created": 68202,
+    "opinions_attempted": 58554,
+    "opinions_skipped": 42643,
+    "opinions_failed": 0,
+    "skip_reasons": {
+      "below_threshold": 42621,
+      "no_text": 21,
+      "chunks_outside_range:213": 1
+    },
+    "wall_seconds": 2394.1,
+    "per_opinion_ms": {
+      "n": 15911,
+      "min_ms": 3.0,
+      "p50_ms": 22.5,
+      "p95_ms": 206.9,
+      "max_ms": 148804.5
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "0c173bbf-366e-40a4-8ead-26f1ad4a3d87_1",
+      "document_id": "0c173bbf-366e-40a4-8ead-26f1ad4a3d87",
+      "chunk_index": 1,
+      "total_chunks": 4,
+      "content_preview_500": "Kings River Packing LP v. WKS AG Consultants Inc. | (2025-02-14) | E.D. Cal. | 100trialcourt\n\n   1 Plaintiff\u2019s Counsel indicates that Defendants may be in the process of entering bankruptcy. (See Declaration of Steven M \n27                                                                            \n   DeFalco, Doc. 7-3, \u00b6\u00b6 7\u20139.) The Court has queried the Electronic Case Filing system for the Eastern District of California \n   Bankruptcy Court on several occasions since the motion was filed, but ",
+      "token_count": 860,
+      "embedding_first5": [
+        -0.019607544,
+        0.010910034,
+        -0.024520874,
+        0.03765869,
+        -0.0022468567
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2025-02-14",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10334312,
+        "cl_opinion_id": 10800900,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "14de99d7-effc-482f-985b-78c0efc815c0_24",
+      "document_id": "14de99d7-effc-482f-985b-78c0efc815c0",
+      "chunk_index": 24,
+      "total_chunks": 51,
+      "content_preview_500": "San Antonio Independent School District v. Rodriguez | (1973-04-23) | U.S. | Per Curiam\n\nA\nTo begin, I must once more voice my disagreement with the Court's rigidified approach to equal protection analysis. See Dandridge v. Williams, 397 U. S. 471, 519-521 (1970) (dissenting opinion); Richardson v. Belcher, 404 U. S. 78, 90 (1971) (dissenting opinion). The Court apparently seeks to establish today that equal protection cases fall into one of two neat categories which dictate the appropriate stan",
+      "token_count": 924,
+      "embedding_first5": [
+        -0.01234436,
+        0.013473511,
+        -0.024353027,
+        0.035369873,
+        -0.024597168
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1973-04-23",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 108751,
+        "cl_opinion_id": 108751,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "14de99d7-effc-482f-985b-78c0efc815c0_26",
+      "document_id": "14de99d7-effc-482f-985b-78c0efc815c0",
+      "chunk_index": 26,
+      "total_chunks": 51,
+      "content_preview_500": "San Antonio Independent School District v. Rodriguez | (1973-04-23) | U.S. | Per Curiam\n\nA similar process of analysis with respect to the invidiousness of the basis on which a particular classification is drawn has also influenced the Court as to the *105 appropriate degree of scrutiny to be accorded any particular case. The highly suspect character of classifications based on race,[63] nationality,[64] or alienage[65] is well established. The reasons why such classifications call for close jud",
+      "token_count": 889,
+      "embedding_first5": [
+        -0.06274414,
+        -0.008796692,
+        -0.017044067,
+        0.023452759,
+        -0.01789856
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1973-04-23",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 108751,
+        "cl_opinion_id": 108751,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "14de99d7-effc-482f-985b-78c0efc815c0_25",
+      "document_id": "14de99d7-effc-482f-985b-78c0efc815c0",
+      "chunk_index": 25,
+      "total_chunks": 51,
+      "content_preview_500": "San Antonio Independent School District v. Rodriguez | (1973-04-23) | U.S. | Per Curiam\n\n*102 Finally, it is likewise \"true that a State is not required by the Federal Constitution to provide appellate courts or a right to appellate review at all.\" Griffin v. Illinois, 351 U. S., at 18. Nevertheless, discrimination adversely affecting access to an appellate process which a State has chosen to provide has been considered to require close judicial scrutiny. See, e. g., Griffin v. Illinois, supra; ",
+      "token_count": 789,
+      "embedding_first5": [
+        -0.010910034,
+        0.0034656525,
+        -0.011428833,
+        0.008018494,
+        -0.024963379
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1973-04-23",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 108751,
+        "cl_opinion_id": 108751,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "14de99d7-effc-482f-985b-78c0efc815c0_27",
+      "document_id": "14de99d7-effc-482f-985b-78c0efc815c0",
+      "chunk_index": 27,
+      "total_chunks": 51,
+      "content_preview_500": "San Antonio Independent School District v. Rodriguez | (1973-04-23) | U.S. | Per Curiam\n\nIn Weber, the Court struck down a portion of a state workmen's compensation statute that relegated unacknowledged illegitimate children of the deceased to a lesser status with respect to benefits than that occupied by legitimate children of the deceased. The Court acknowledged the true nature of its inquiry in cases such as these: \"What legitimate state interest does the classification promote? What fundamen",
+      "token_count": 794,
+      "embedding_first5": [
+        -0.027938843,
+        -0.008201599,
+        -0.04437256,
+        0.017730713,
+        -0.028579712
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1973-04-23",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 108751,
+        "cl_opinion_id": 108751,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

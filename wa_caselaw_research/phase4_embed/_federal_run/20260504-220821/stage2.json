@@ -1,0 +1,210 @@
+{
+  "stage1": {
+    "documents_created": 0,
+    "chunks_created": 0,
+    "opinions_attempted": 0,
+    "opinions_skipped": 0,
+    "opinions_failed": 0,
+    "skip_reasons": {},
+    "wall_seconds": 0,
+    "per_opinion_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "f07440fc-d19d-410b-9eb5-2b1846e91009_1",
+      "document_id": "f07440fc-d19d-410b-9eb5-2b1846e91009",
+      "chunk_index": 1,
+      "total_chunks": 3,
+      "content_preview_500": "Securities and Exchange Commission v. Matthew J. Skinner | (2022-06-17) | C.D. Cal. | 100trialcourt\n\n1       (a)  to employ any device, scheme, or artifice to defraud;           \n2       (b)  to obtain money or property by means of any untrue statement of a \n3            material fact or any omission of a material fact necessary in order to \n4            make the statements made, in light of the circumstances under which \n5            they were made, not misleading; or                           ",
+      "token_count": 671,
+      "embedding_first5": [
+        0.008804321,
+        0.0209198,
+        -0.04537964,
+        0.005355835,
+        -0.023025513
+      ],
+      "metadata": {
+        "court_id": "cacd",
+        "date_filed": "2022-06-17",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 9513780,
+        "cl_opinion_id": 9980393,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "f07440fc-d19d-410b-9eb5-2b1846e91009_2",
+      "document_id": "f07440fc-d19d-410b-9eb5-2b1846e91009",
+      "chunk_index": 2,
+      "total_chunks": 3,
+      "content_preview_500": "Securities and Exchange Commission v. Matthew J. Skinner | (2022-06-17) | C.D. Cal. | 100trialcourt\n\n1       Oklahoma City, OK 73169                                              \n2  and shall be accompanied by a letter identifying the case title, civil action number, \n3  and name of this Court; Bayside Equity, LP as a defendant in this action; and \n4  specifying that payment is made pursuant to this Judgment.                \n5       Defendant shall simultaneously transmit photocopies of evidence",
+      "token_count": 508,
+      "embedding_first5": [
+        -0.050079346,
+        -0.013626099,
+        -0.035369873,
+        -0.010574341,
+        -0.017364502
+      ],
+      "metadata": {
+        "court_id": "cacd",
+        "date_filed": "2022-06-17",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 9513780,
+        "cl_opinion_id": 9980393,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "ecb9d17c-6c1c-4266-b53b-c251d0aff926_0",
+      "document_id": "ecb9d17c-6c1c-4266-b53b-c251d0aff926",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Marin v. Holder | (2009-07-06) | 9th Cir. | Lead Opinion\n\nMEMORANDUM **\n\nFredic and Humberto Rene Moran Marin, brothers and natives and citizens of Mexico, petition pro se for review of the Board of Immigration Appeals\u2019 order dismissing their appeal from an immigration judge\u2019s decision denying their applications for cancellation of removal. We have jurisdiction under 8 U.S.C. \u00a7 1252. We review de novo constitutional claims, Ram v. INS, 243 F.3d 510, 516 (9th Cir.2001), and we deny the petition f",
+      "token_count": 207,
+      "embedding_first5": [
+        -0.019577026,
+        0.0047187805,
+        -0.020736694,
+        -0.0059051514,
+        -0.02029419
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2009-07-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 8492345,
+        "cl_opinion_id": 8464492,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "f07440fc-d19d-410b-9eb5-2b1846e91009_0",
+      "document_id": "f07440fc-d19d-410b-9eb5-2b1846e91009",
+      "chunk_index": 0,
+      "total_chunks": 3,
+      "content_preview_500": "Securities and Exchange Commission v. Matthew J. Skinner | (2022-06-17) | C.D. Cal. | 100trialcourt\n\nCase 2:21-cv-05273-SB-KS   Document 51   Filed 06/17/22   Page 1 of 6   Page ID #:2823\n\n1                                                                            \n\n2                                                                            \n3                                                                            \n4                                                                           ",
+      "token_count": 469,
+      "embedding_first5": [
+        -0.018325806,
+        0.014671326,
+        -0.037597656,
+        -0.001288414,
+        -0.02418518
+      ],
+      "metadata": {
+        "court_id": "cacd",
+        "date_filed": "2022-06-17",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 9513780,
+        "cl_opinion_id": 9980393,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "f1b7eda2-712f-4c42-b8b8-843101956fe8_0",
+      "document_id": "f1b7eda2-712f-4c42-b8b8-843101956fe8",
+      "chunk_index": 0,
+      "total_chunks": 2,
+      "content_preview_500": "Harry Sailer v. Retirement Fund Trust of the Plumbing, Heating and Piping Industry of Southern California | (1979-07-02) | 9th Cir. | Per Curiam\n\nSKOPIL, District Judge:\n \n\n Appellant, Harry Sailer, a participant in a union pension plan, challenges the denial of his application for a disability pension. He claims that the denial was arbitrary and capricious, in violation of Section 302(c)(5)\n \n *914\n \n of the Taft-Hartley Act, 29 U.S.C. \u00a7 186(c)(5). Mr. Sailer appeals from the district court\u2019s g",
+      "token_count": 932,
+      "embedding_first5": [
+        -0.02772522,
+        0.036590576,
+        -0.03933716,
+        0.0014877319,
+        0.015022278
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1979-07-02",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 366616,
+        "cl_opinion_id": 366616,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

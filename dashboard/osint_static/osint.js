@@ -52,7 +52,10 @@ async function loadOsintInvestigations() {
   osintCurrentView = 'inv-list';
   const el = osintEl('inv');
   el.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
-  el.dataset.currentRecordId = recId;
+  // Clear any stale record-id state from a prior openOsintCourtRecord(recId) call.
+  // This is the list view (no specific record). The reopen logic later in the
+  // file checks `el.dataset.currentRecordId` truthiness, so deleting is correct.
+  delete el.dataset.currentRecordId;
 
   try {
     const [stats, invs, sources] = await Promise.all([

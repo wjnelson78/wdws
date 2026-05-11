@@ -1,0 +1,210 @@
+{
+  "stage1": {
+    "documents_created": 0,
+    "chunks_created": 0,
+    "opinions_attempted": 0,
+    "opinions_skipped": 0,
+    "opinions_failed": 0,
+    "skip_reasons": {},
+    "wall_seconds": 0,
+    "per_opinion_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864_18",
+      "document_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864",
+      "chunk_index": 18,
+      "total_chunks": 21,
+      "content_preview_500": "Californians for Alternatives to Toxics v. United States Fish & Wildlife Service | (2011-09-06) | E.D. Cal. | Per Curiam\n\n . \u201cEIR/EIS\u201d denotes the Environmental Impact Report/Environmental Impact Statement jointly prepared in this case by the United States Fish and Wildlife Service and the California Department of Fish and Game.\n \n\n 3\n \n\n . Plaintiffs agreed to dismiss their ESA and Clean Water Act claims. (Pis.\u2019 Opp'n to Defs.' Mot. for Summ. J. [Docket # 57], filed May 19, 2011, at 25:14-16 [r",
+      "token_count": 830,
+      "embedding_first5": [
+        -0.022903442,
+        0.011520386,
+        -0.016143799,
+        0.0033607483,
+        0.008743286
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2011-09-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 2181475,
+        "cl_opinion_id": 2181475,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864_19",
+      "document_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864",
+      "chunk_index": 19,
+      "total_chunks": 21,
+      "content_preview_500": "Californians for Alternatives to Toxics v. United States Fish & Wildlife Service | (2011-09-06) | E.D. Cal. | Per Curiam\n\n . Plaintiffs seek to supplement the record with the expert declarations of Nancy Erman (addressing the feasibility of conducting a species-level study of aquatic invertebrates in the Silver King Creek watershed) (Docket # 57-1) and Dr. Don C. Erman (addressing barriers to upstream fish migration) (Docket # 46). Typically, \"[\u00a1judicial review of an agency decision ... focuses ",
+      "token_count": 848,
+      "embedding_first5": [
+        -0.044677734,
+        -0.0067977905,
+        -0.026153564,
+        0.04437256,
+        0.019638062
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2011-09-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 2181475,
+        "cl_opinion_id": 2181475,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864_16",
+      "document_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864",
+      "chunk_index": 16,
+      "total_chunks": 21,
+      "content_preview_500": "Californians for Alternatives to Toxics v. United States Fish & Wildlife Service | (2011-09-06) | E.D. Cal. | Per Curiam\n\n At bottom, instead of choosing one competing value (conservation of the PCT) over the other (preservation of the wilderness character), the Agencies left native species, including invertebrate, out of the balance, and thus, improperly concluded that authorization of motorized equipment will comply with the Act by achieving the purpose of preserving wilderness character.\n \n 3",
+      "token_count": 663,
+      "embedding_first5": [
+        -0.009681702,
+        0.0043640137,
+        -0.020187378,
+        0.018463135,
+        0.009185791
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2011-09-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 2181475,
+        "cl_opinion_id": 2181475,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864_17",
+      "document_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864",
+      "chunk_index": 17,
+      "total_chunks": 21,
+      "content_preview_500": "Californians for Alternatives to Toxics v. United States Fish & Wildlife Service | (2011-09-06) | E.D. Cal. | Per Curiam\n\n Here, the balance of equities tips in plaintiffs\u2019 favor and issuance of an injunction is in the public interest. First, as set forth above, there is no exigency. Defendants have not shown that the PCT is in imminent threat of extinction. Indeed, the PCT listing for recovery under the ESA indicates only a \u201cmoderate degree of threat for extinction.\u201d (UF # 62.) Moreover, while ",
+      "token_count": 902,
+      "embedding_first5": [
+        -0.03491211,
+        0.008377075,
+        -0.05819702,
+        0.035827637,
+        -0.0013246536
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2011-09-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 2181475,
+        "cl_opinion_id": 2181475,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864_2",
+      "document_id": "046cf1eb-8b8e-46eb-a711-0015d92bf864",
+      "chunk_index": 2,
+      "total_chunks": 21,
+      "content_preview_500": "Californians for Alternatives to Toxics v. United States Fish & Wildlife Service | (2011-09-06) | E.D. Cal. | Per Curiam\n\n On June 15, 2010, plaintiffs filed this case. By their instant motion for summary judgment, plaintiffs seek an order for declaratory and injunctive relief. Specifically, plaintiffs ask the court to find a violation of NEPA and/or the Wilderness Act and enjoin implementation of the Proposed Action Alternative under the EIR/ EIS. Defendants oppose plaintiffs\u2019 motion and cross-",
+      "token_count": 843,
+      "embedding_first5": [
+        -0.0075531006,
+        0.014877319,
+        -0.01737976,
+        0.0146484375,
+        0.020111084
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2011-09-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 2181475,
+        "cl_opinion_id": 2181475,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

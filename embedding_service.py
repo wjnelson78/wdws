@@ -61,11 +61,18 @@ EMBEDDING_MAX_LENGTH = int(os.getenv("EMBEDDING_MAX_SEQ_LENGTH", "8192"))
 HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
 HF_TIMEOUT = float(os.getenv("HF_EMBEDDING_TIMEOUT", "90"))
 HF_BATCH_SIZE = int(os.getenv("HF_EMBEDDING_BATCH_SIZE", "32"))
+# Read-path query embeddings cut over to CPU after this short wait so MCP
+# tools (semantic_search, rag_query) don't block behind bulk ingest batches
+# queued at the HF endpoint. CPU encode of one query is ~50-200ms.
+HF_QUERY_TIMEOUT = float(os.getenv("HF_QUERY_TIMEOUT", "8"))
+# Throttle ingest-side batch concurrency so a single process can't saturate
+# the HF endpoint and starve query traffic. 0 = unbounded (legacy).
+HF_BATCH_CONCURRENCY = int(os.getenv("HF_BATCH_CONCURRENCY", "3"))
 
 def _build_endpoint_pool(prefix: str) -> list[str]:
     """Collect HF_<prefix>_URL, HF_<prefix>_URL_FALLBACK, HF_<prefix>_URL_2, ..."""
     urls = []
-    for suffix in ("URL", "URL_FALLBACK", "URL_2", "URL_3"):
+    for suffix in ("URL", "URL_FALLBACK", "URL_2", "URL_3", "URL_4"):
         v = os.getenv(f"HF_{prefix}_{suffix}", "").rstrip("/")
         if v:
             urls.append(v)
@@ -342,11 +349,28 @@ def embed_query_sync(text: str) -> list[float]:
 
 # ── Async Public API ─────────────────────────────────────────
 
+_batch_sema: Optional[asyncio.Semaphore] = None
+
+
+def _get_batch_sema() -> Optional[asyncio.Semaphore]:
+    """Lazy-init the batch semaphore inside a running event loop.
+
+    Returns None if HF_BATCH_CONCURRENCY <= 0 (legacy unbounded behavior).
+    """
+    global _batch_sema
+    if HF_BATCH_CONCURRENCY <= 0:
+        return None
+    if _batch_sema is None:
+        _batch_sema = asyncio.Semaphore(HF_BATCH_CONCURRENCY)
+    return _batch_sema
+
+
 async def embed_texts(texts: list[str], batch_size: int = None) -> list[list[float]]:
     """Embed a list of texts asynchronously. Returns 1024-dim vectors.
 
     Uses true async HTTP for HF path (doesn't block event loop). CPU fallback
-    runs in the default thread pool executor.
+    runs in the default thread pool executor. Batch HF calls are throttled by
+    HF_BATCH_CONCURRENCY so a single ingest run can't starve query traffic.
     """
     if not texts:
         return []
@@ -354,6 +378,7 @@ async def embed_texts(texts: list[str], batch_size: int = None) -> list[list[flo
     bs = batch_size or (HF_BATCH_SIZE if HF_ENABLED else EMBEDDING_BATCH_SIZE)
     all_embeddings: list[list[float]] = []
     loop = asyncio.get_event_loop()
+    sema = _get_batch_sema()
 
     for i in range(0, len(texts), bs):
         batch = texts[i:i + bs]
@@ -361,7 +386,11 @@ async def embed_texts(texts: list[str], batch_size: int = None) -> list[list[flo
 
         if HF_ENABLED:
             try:
-                vecs = await _embed_hf_async(batch)
+                if sema is not None:
+                    async with sema:
+                        vecs = await _embed_hf_async(batch)
+                else:
+                    vecs = await _embed_hf_async(batch)
             except Exception as e:
                 log.warning(
                     "HF endpoint failed for async batch %d (%s: %s) — falling back to local CPU",
@@ -377,11 +406,24 @@ async def embed_texts(texts: list[str], batch_size: int = None) -> list[list[flo
 
 
 async def embed_query(text: str) -> list[float]:
-    """Embed a single query text asynchronously. Returns 1024-dim vector."""
+    """Embed a single query text asynchronously. Returns 1024-dim vector.
+
+    Read-path priority: short HF timeout (HF_QUERY_TIMEOUT, default 8s) and
+    fast CPU fallback on timeout/error so concurrent MCP query traffic isn't
+    blocked behind bulk ingest batches queued at the HF endpoint.
+    """
     if HF_ENABLED:
         try:
-            vecs = await _embed_hf_async([text])
+            vecs = await asyncio.wait_for(
+                _embed_hf_async([text]),
+                timeout=HF_QUERY_TIMEOUT,
+            )
             return vecs[0]
+        except asyncio.TimeoutError:
+            log.warning(
+                "HF query timeout (%.1fs) — falling back to local CPU",
+                HF_QUERY_TIMEOUT,
+            )
         except Exception as e:
             log.warning(
                 "HF endpoint failed for async query (%s: %s) — falling back to local CPU",

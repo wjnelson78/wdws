@@ -1,0 +1,210 @@
+{
+  "stage1": {
+    "documents_created": 200,
+    "chunks_created": 701,
+    "opinions_attempted": 200,
+    "opinions_skipped": 0,
+    "opinions_failed": 0,
+    "skip_reasons": {},
+    "wall_seconds": 108.6,
+    "per_opinion_ms": {
+      "n": 200,
+      "min_ms": 4.4,
+      "p50_ms": 59.8,
+      "p95_ms": 201.3,
+      "max_ms": 88018.0
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "efa2299e-b45d-4203-8ea4-7b16a1d5a323_0",
+      "document_id": "efa2299e-b45d-4203-8ea4-7b16a1d5a323",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Arthur v. Sussfield | (1878-04-15) | U.S. | Per Curiam\n\nMr. Justice Hunt\n \n\n delivered the opinion of the court.\n \n\n The question in this cas'e is as to the proper duty to be imposed.\n \n\n On the part of the. government, it is now insisted that the third and the ninth sections of the act of June 30, 1864, give a partial description of the articles taxed; but that neither is so complete \u25a0 as to exclude the other, and therefore neither description can be applicable: hence it is argued that spectacl",
+      "token_count": 613,
+      "embedding_first5": [
+        0.004966736,
+        0.008117676,
+        -0.02633667,
+        0.02067566,
+        -0.004673004
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "1878-04-15",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 89681,
+        "cl_opinion_id": 89681,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "f01719af-fc6a-41eb-98b3-ea2e93cff6e5_0",
+      "document_id": "f01719af-fc6a-41eb-98b3-ea2e93cff6e5",
+      "chunk_index": 0,
+      "total_chunks": 2,
+      "content_preview_500": "(SS) Sanchez v. Commissioner of Social Security | (2024-09-11) | E.D. Cal. | 100trialcourt\n\n1                                                                            \n\n2                                                                            \n\n3                                                                            \n\n4                                                                            \n\n5                                                                            \n\n6            ",
+      "token_count": 244,
+      "embedding_first5": [
+        -0.02470398,
+        0.014801025,
+        -0.026000977,
+        -0.00067281723,
+        -0.0018663406
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2024-09-11",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10170537,
+        "cl_opinion_id": 10637133,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "e814e9fa-f355-4ed4-9c3e-2496b7029d71_0",
+      "document_id": "e814e9fa-f355-4ed4-9c3e-2496b7029d71",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Young v. Stansberry | (2010-10-18) | U.S. | Lead Opinion\n\nC. A. 4th Cir. Motion of petitioner for leave to proceed in forma pauperis denied, and certiorari dismissed. See this Court\u2019s Rule 39.8.",
+      "token_count": 33,
+      "embedding_first5": [
+        -0.03515625,
+        0.052215576,
+        -0.069885254,
+        -0.0077705383,
+        -0.06359863
+      ],
+      "metadata": {
+        "court_id": "scotus",
+        "date_filed": "2010-10-18",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 9233428,
+        "cl_opinion_id": 9228241,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "ecb9d17c-6c1c-4266-b53b-c251d0aff926_0",
+      "document_id": "ecb9d17c-6c1c-4266-b53b-c251d0aff926",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Marin v. Holder | (2009-07-06) | 9th Cir. | Lead Opinion\n\nMEMORANDUM **\n\nFredic and Humberto Rene Moran Marin, brothers and natives and citizens of Mexico, petition pro se for review of the Board of Immigration Appeals\u2019 order dismissing their appeal from an immigration judge\u2019s decision denying their applications for cancellation of removal. We have jurisdiction under 8 U.S.C. \u00a7 1252. We review de novo constitutional claims, Ram v. INS, 243 F.3d 510, 516 (9th Cir.2001), and we deny the petition f",
+      "token_count": 207,
+      "embedding_first5": [
+        -0.019577026,
+        0.0047187805,
+        -0.020736694,
+        -0.0059051514,
+        -0.02029419
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2009-07-06",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 8492345,
+        "cl_opinion_id": 8464492,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "f01719af-fc6a-41eb-98b3-ea2e93cff6e5_1",
+      "document_id": "f01719af-fc6a-41eb-98b3-ea2e93cff6e5",
+      "chunk_index": 1,
+      "total_chunks": 2,
+      "content_preview_500": "(SS) Sanchez v. Commissioner of Social Security | (2024-09-11) | E.D. Cal. | 100trialcourt\n\n26      1 Martin O\u2019Malley became the Commissioner of Social Security on December 20, 2023. Pursuant to \n  Rule 25(d) of the Federal Rules of Civil Procedure, Martin O\u2019Malley should be substituted for Kilolo Kijakazi \n27                                                                           \n  as the defendant in this suit. No further action need be taken to continue this suit by reason of the last sent",
+      "token_count": 483,
+      "embedding_first5": [
+        -0.025772095,
+        0.02406311,
+        -0.053100586,
+        -0.016433716,
+        0.012901306
+      ],
+      "metadata": {
+        "court_id": "caed",
+        "date_filed": "2024-09-11",
+        "text_source": "plain_text",
+        "opinion_type": "100trialcourt",
+        "cl_cluster_id": 10170537,
+        "cl_opinion_id": 10637133,
+        "canonical_citation": null
+      }
+    }
+  ]
+}

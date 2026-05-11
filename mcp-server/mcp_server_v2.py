@@ -103,11 +103,44 @@ GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "")
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 GRAPH_TOKEN_URL = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token" if GRAPH_TENANT_ID else ""
+
+# Athena-Core Graph app — separate client_id/secret with Sites.ReadWrite.All +
+# Files.ReadWrite.All admin-consented. SharePoint/Files tools route through THIS
+# token; mail/calendar continue to use the default GRAPH_* app. The env file is
+# auto-loaded so the secret never appears in the systemd unit's EnvironmentFile.
+_athena_core_env_path = os.getenv("ATHENA_CORE_ENV_FILE", "/root/.athena/graph_app.env")
+if os.path.exists(_athena_core_env_path):
+    try:
+        with open(_athena_core_env_path, "r", encoding="utf-8") as _fh:
+            for _line in _fh:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
+    except OSError:
+        pass
+ATHENA_CORE_CLIENT_ID = os.getenv("ATHENA_CORE_CLIENT_ID", "")
+ATHENA_CORE_CLIENT_SECRET = os.getenv("ATHENA_CORE_CLIENT_SECRET", "")
+ATHENA_CORE_TENANT_ID = os.getenv("ATHENA_CORE_TENANT_ID", GRAPH_TENANT_ID)
+ATHENA_CORE_TOKEN_URL = (
+    f"https://login.microsoftonline.com/{ATHENA_CORE_TENANT_ID}/oauth2/v2.0/token"
+    if ATHENA_CORE_TENANT_ID else ""
+)
 DEFAULT_ATHENA_MAILBOX = (os.getenv("GRAPH_SENDER_EMAIL", "athena@seattleseahawks.me") or "athena@seattleseahawks.me").strip()
 ATHENA_ALERT_EMAIL = (os.getenv("ATHENA_ALERT_EMAIL", DEFAULT_ATHENA_MAILBOX) or DEFAULT_ATHENA_MAILBOX).strip()
 ATHENA_EMAIL_DRAFT_MODEL = os.getenv("ATHENA_EMAIL_DRAFT_MODEL", os.getenv("AGENT_LLM_MODEL_HIGH", "gpt-5.4"))
 GRAPH_ATTACHMENT_SIMPLE_LIMIT = 3 * 1024 * 1024
 GRAPH_ATTACHMENT_UPLOAD_CHUNK_SIZE = 320 * 1024 * 10
+
+# SharePoint / Files configuration
+# Limit for "simple" /content PUT uploads (Graph caps at 4MB; we leave headroom).
+SHAREPOINT_SIMPLE_UPLOAD_LIMIT = 3 * 1024 * 1024
+SHAREPOINT_UPLOAD_CHUNK_SIZE = 320 * 1024 * 10  # 3.2 MB
+# Public-records-request inbound share env files. Each file declares
+# <NAME>_SHARE_URL, <NAME>_SHARE_PASSWORD, <NAME>_SHARE_PERM_ID, <NAME>_SHARE_EXPIRES,
+# and (for shares that target a specific folder) <NAME>_FOLDER_ITEM_ID. The password
+# is for external recipients only and is NOT returned by the MCP.
+PRR_SHARE_DIR = os.getenv("PRR_SHARE_DIR", "/root/.athena")
 from embedding_service import (
     embed_query_sync, embed_texts_sync, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL,
     _vec_literal, rerank,
@@ -209,8 +242,11 @@ else:
 pool: Optional[asyncpg.Pool] = None
 _graph_access_token: Optional[str] = None
 _graph_token_expires_at: float = 0.0
+_athena_core_access_token: Optional[str] = None
+_athena_core_token_expires_at: float = 0.0
 _transfer_schema_ready = False
 _embedding_model_id_cache: dict[tuple[str, int], int] = {}
+_embedding_index_present_cache: Optional[bool] = None
 
 # ── Schema Alias Resolution ─────────────────────────────────
 # Transparently rewrites column name variations (filed_date → date_filed, etc.)
@@ -226,7 +262,10 @@ async def get_pool() -> asyncpg.Pool:
     global pool
     if pool is None:
         pool = await asyncpg.create_pool(
-            DATABASE_URL, min_size=2, max_size=10, command_timeout=30
+            DATABASE_URL,
+            min_size=int(os.getenv("MCP_POOL_MIN", "4")),
+            max_size=int(os.getenv("MCP_POOL_MAX", "30")),
+            command_timeout=float(os.getenv("MCP_POOL_TIMEOUT", "120")),
         )
         log.info("PostgreSQL pool created")
     return pool
@@ -268,6 +307,27 @@ def _ser(val: Any) -> Any:
     return str(val)
 
 
+def _err_payload(e: BaseException) -> dict:
+    """Build a non-empty error payload from any exception.
+
+    `str(e)` is empty for asyncio.CancelledError and several asyncpg errors
+    that carry detail in `.detail`/`.hint` instead of args — turning into
+    `{"error": ""}` at the wire and the matching `log.error("foo: %s", e)`
+    line into a useless `foo:` with no payload. This helper falls back to
+    repr → class name and exposes any asyncpg `.detail`/`.hint` so callers
+    can actually see what failed. Use with `log.error(..., exc_info=True)`.
+    """
+    msg = (str(e) or "").strip() or repr(e) or e.__class__.__name__
+    payload: dict = {"error": msg, "error_type": e.__class__.__name__}
+    detail = getattr(e, "detail", None)
+    if detail:
+        payload["detail"] = str(detail)
+    hint = getattr(e, "hint", None)
+    if hint:
+        payload["hint"] = str(hint)
+    return payload
+
+
 def _parse_date_param(s: str) -> datetime:
     # asyncpg infers param type from SQL casts ($1::timestamptz / $1::date) and
     # rejects str even though postgres would coerce. Pass a real datetime.
@@ -289,8 +349,39 @@ def _guess_mime_type(filename: Optional[str], fallback: str = "application/octet
     return fallback
 
 
-async def _get_graph_access_token() -> str:
+async def _get_graph_access_token(app: str = "default") -> str:
+    """Acquire a Graph token for one of the configured app registrations.
+
+    app:
+      • "default"     — GRAPH_CLIENT_* (Mail.ReadWrite, Calendars, Sites.Read.All).
+      • "athena_core" — ATHENA_CORE_CLIENT_* (Sites.ReadWrite.All + Files.ReadWrite.All).
+        Falls back to "default" when ATHENA_CORE_* is not configured (e.g. during
+        local dev) so callers degrade to a 403 from Graph rather than a config crash.
+    """
     global _graph_access_token, _graph_token_expires_at
+    global _athena_core_access_token, _athena_core_token_expires_at
+
+    if app == "athena_core":
+        if all([ATHENA_CORE_CLIENT_ID, ATHENA_CORE_CLIENT_SECRET, ATHENA_CORE_TENANT_ID]):
+            if _athena_core_access_token and time.time() < _athena_core_token_expires_at:
+                return _athena_core_access_token
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    ATHENA_CORE_TOKEN_URL,
+                    data={
+                        "client_id": ATHENA_CORE_CLIENT_ID,
+                        "client_secret": ATHENA_CORE_CLIENT_SECRET,
+                        "scope": "https://graph.microsoft.com/.default",
+                        "grant_type": "client_credentials",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                _athena_core_access_token = data["access_token"]
+                _athena_core_token_expires_at = time.time() + data.get("expires_in", 3600) - 300
+                return _athena_core_access_token
+        # Fall through to default when Athena-Core creds are absent.
+        log.warning("ATHENA_CORE_* not configured; SharePoint calls will use the default Graph app token")
 
     if not all([GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID, GRAPH_TOKEN_URL]):
         raise RuntimeError("Graph credentials are not configured for MCP downloads")
@@ -499,8 +590,9 @@ async def _graph_request(
     params: Optional[dict] = None,
     headers: Optional[dict] = None,
     timeout: float = 60.0,
+    app: str = "default",
 ) -> dict:
-    token = await _get_graph_access_token()
+    token = await _get_graph_access_token(app=app)
     request_headers = {"Authorization": f"Bearer {token}"}
     if headers:
         request_headers.update(headers)
@@ -539,6 +631,269 @@ async def _graph_patch_message(mailbox: str, message_id: str, payload: dict) -> 
         json_body=payload,
         headers={"Content-Type": "application/json"},
     )
+
+
+# Well-known Graph mail folder names. Graph accepts these literal strings as a
+# destinationId for /move (and as a path segment under /mailFolders/{id}/messages).
+# Ref: https://learn.microsoft.com/en-us/graph/api/resources/mailfolder
+WELL_KNOWN_MAIL_FOLDERS = frozenset({
+    "archive", "clutter", "conflicts", "conversationhistory", "deleteditems",
+    "drafts", "inbox", "junkemail", "localfailures", "msgfolderroot",
+    "outbox", "recoverableitemsdeletions", "scheduled", "searchfolders",
+    "sentitems", "serverfailures", "syncissues",
+})
+
+
+def _looks_like_graph_folder_id(value: str) -> bool:
+    """Heuristic for Graph mail folder ids: opaque base64url-ish strings ≥80 chars,
+    no path separators or spaces. Avoids misclassifying long display-name paths."""
+    if not value or len(value) < 80:
+        return False
+    if "/" in value or " " in value:
+        return False
+    return all(c.isalnum() or c in "-_=+" for c in value)
+
+
+async def _resolve_mail_folder_id(mailbox: str, folder: str) -> tuple[str, str]:
+    """Resolve a folder reference to (folder_id, display_path).
+
+    Accepts:
+      • A well-known folder name (e.g. "inbox", "archive", "sentitems") — passed
+        through verbatim; Graph treats those literally as destinationIds.
+      • A raw Graph folder id — passed through.
+      • A display-name path with "/" separators (e.g. "Cases/Smith v. Acme/Discovery").
+        Each segment is matched case-sensitively against displayName via $filter and
+        traversed through childFolders in order.
+    """
+    if not folder:
+        raise ValueError("folder is required")
+    folder = folder.strip()
+    lower = folder.lower()
+    if lower in WELL_KNOWN_MAIL_FOLDERS:
+        return lower, lower
+    if _looks_like_graph_folder_id(folder):
+        return folder, folder
+
+    segments = [s.strip() for s in folder.split("/") if s.strip()]
+    if not segments:
+        raise ValueError(f"folder is empty after normalization: {folder!r}")
+
+    parent_id: Optional[str] = None
+    resolved_path: list[str] = []
+    for segment in segments:
+        safe = segment.replace("'", "''")
+        if parent_id is None:
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders"
+        else:
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{parent_id}/childFolders"
+        data = await _graph_request(
+            "GET",
+            url,
+            params={
+                "$filter": f"displayName eq '{safe}'",
+                "$select": "id,displayName",
+                "$top": "1",
+            },
+        )
+        matches = data.get("value") or []
+        if not matches:
+            raise ValueError(
+                f"Mail folder not found: {'/'.join(resolved_path + [segment])!r} in {mailbox}"
+            )
+        parent_id = matches[0]["id"]
+        resolved_path.append(matches[0].get("displayName") or segment)
+
+    assert parent_id is not None
+    return parent_id, "/".join(resolved_path)
+
+
+async def _graph_move_message(mailbox: str, graph_message_id: str, destination_id: str) -> dict:
+    return await _graph_request(
+        "POST",
+        f"{GRAPH_BASE_URL}/users/{mailbox}/messages/{graph_message_id}/move",
+        json_body={"destinationId": destination_id},
+        headers={"Content-Type": "application/json"},
+    )
+
+
+# ─────────────────────────── SharePoint / Files helpers ────────────────────────────
+# All SharePoint reads/writes route through the existing Graph app token (single auth
+# path). The app's tenant-level grants (Sites.ReadWrite.All, Files.ReadWrite.All)
+# bound what these tools can reach.
+
+async def _sp_request(method: str, url: str, **kwargs) -> dict:
+    """SharePoint-scoped Graph request — uses the Athena-Core app token
+    (Sites.ReadWrite.All + Files.ReadWrite.All)."""
+    return await _graph_request(method, url, app="athena_core", **kwargs)
+
+
+async def _get_sp_access_token() -> str:
+    """Acquire an Athena-Core token for direct httpx PUT/POST in SP upload/copy paths."""
+    return await _get_graph_access_token(app="athena_core")
+
+
+def _encode_sharing_url(url: str) -> str:
+    """Encode a sharing URL for the Graph /shares/{id} endpoint.
+
+    Format: 'u!' + unpadded-urlsafe-base64(url). Works for any SharePoint or
+    OneDrive sharing link, including anonymous + password-protected links — the
+    encoded form lets the app token resolve the underlying driveItem regardless
+    of share state, provided the app has tenant-wide Sites/Files perms.
+    """
+    encoded = base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"u!{encoded}"
+
+
+_SHAREPOINT_DRIVEITEM_FIELDS = (
+    "id,name,webUrl,size,createdDateTime,lastModifiedDateTime,"
+    "parentReference,file,folder,@microsoft.graph.downloadUrl"
+)
+
+
+def _sharepoint_item_summary(item: dict) -> dict:
+    """Compact, JSON-stable summary of a Graph driveItem."""
+    parent = item.get("parentReference") or {}
+    folder = item.get("folder") or {}
+    file_meta = item.get("file") or {}
+    return {
+        "id": item.get("id"),
+        "name": item.get("name"),
+        "web_url": item.get("webUrl"),
+        "size": item.get("size"),
+        "created_at": item.get("createdDateTime"),
+        "modified_at": item.get("lastModifiedDateTime"),
+        "drive_id": parent.get("driveId"),
+        "parent_item_id": parent.get("id"),
+        "parent_path": parent.get("path"),
+        "is_folder": bool(folder),
+        "child_count": folder.get("childCount") if folder else None,
+        "mime_type": file_meta.get("mimeType") if file_meta else None,
+        # Pre-authenticated short-lived URL for direct binary download (no token needed).
+        # Available on file items only; missing on folders.
+        "download_url": item.get("@microsoft.graph.downloadUrl"),
+    }
+
+
+async def _sharepoint_resolve_share_to_item(share_url: str) -> dict:
+    """Resolve a sharing URL to its driveItem JSON via /shares/{encoded}/driveItem."""
+    encoded = _encode_sharing_url(share_url)
+    return await _sp_request(
+        "GET",
+        f"{GRAPH_BASE_URL}/shares/{encoded}/driveItem",
+        params={"$select": _SHAREPOINT_DRIVEITEM_FIELDS, "$expand": "thumbnails($select=id)"},
+        headers={"Prefer": "redeemSharingLink"},
+    )
+
+
+async def _sharepoint_resolve_item(
+    *,
+    drive_id: Optional[str] = None,
+    item_id: Optional[str] = None,
+    path: Optional[str] = None,
+    share_url: Optional[str] = None,
+) -> dict:
+    """Flexible driveItem lookup. Exactly one of:
+      (a) drive_id + item_id  — direct lookup
+      (b) drive_id + path     — path is server-relative under drive root (no leading slash)
+      (c) share_url           — sharing link resolved via /shares
+    """
+    if share_url:
+        return await _sharepoint_resolve_share_to_item(share_url)
+    if not drive_id:
+        raise ValueError("drive_id is required when share_url is not provided")
+    if item_id:
+        return await _sp_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}",
+            params={"$select": _SHAREPOINT_DRIVEITEM_FIELDS},
+        )
+    if path is not None:
+        clean = path.strip().lstrip("/")
+        url = (
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/root"
+            if clean == ""
+            else f"{GRAPH_BASE_URL}/drives/{drive_id}/root:/{quote(clean)}"
+        )
+        return await _sp_request("GET", url, params={"$select": _SHAREPOINT_DRIVEITEM_FIELDS})
+    raise ValueError("Provide item_id or path with drive_id, or a share_url")
+
+
+def _read_prr_share_file(filepath: str) -> dict:
+    """Parse a *_share.env file into a dict; ignore malformed lines."""
+    out: dict[str, str] = {}
+    try:
+        with open(filepath, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                out[key.strip()] = value.strip()
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read PRR share file {filepath}: {exc}") from exc
+    return out
+
+
+def _sharepoint_permission_summary(perm: dict) -> dict:
+    """Compact projection of a Graph permission object (driveItem permission)."""
+    link = perm.get("link") or {}
+    granted_to = perm.get("grantedToV2") or perm.get("grantedTo") or {}
+    granted_to_identities = perm.get("grantedToIdentitiesV2") or perm.get("grantedToIdentities") or []
+    invitation = perm.get("invitation") or {}
+    return {
+        "id": perm.get("id"),
+        "roles": perm.get("roles") or [],
+        "expiration": perm.get("expirationDateTime"),
+        "has_password": bool(perm.get("hasPassword")),
+        "share_link_type": link.get("type"),
+        "share_link_scope": link.get("scope"),
+        "share_link_url": link.get("webUrl"),
+        "share_link_app": (link.get("application") or {}).get("displayName"),
+        "granted_to": granted_to,
+        "granted_to_identities": granted_to_identities,
+        "invitation": {
+            "email": invitation.get("email"),
+            "redeemed_by": invitation.get("redeemedBy"),
+            "send_invitation": invitation.get("sendInvitation"),
+            "sign_in_required": invitation.get("signInRequired"),
+        } if invitation else None,
+        "inherited_from": perm.get("inheritedFrom"),
+    }
+
+
+def _validate_prr_name(name: str) -> str:
+    """PRR share names must be filesystem-safe slugs (lowercase, alnum/underscore)."""
+    name = (name or "").strip().lower()
+    if not name:
+        raise ValueError("PRR share name is required")
+    if not all(c.isalnum() or c == "_" for c in name):
+        raise ValueError(f"PRR share name must be alphanumeric/underscore only: {name!r}")
+    return name
+
+
+def _summarize_prr_share(filename: str, raw: dict) -> dict:
+    """Build a redacted summary of a PRR share env file (no password in output)."""
+    # Derive prefix from filename: e.g. 'snoco_clerk_share.env' → 'SNOCO_CLERK'
+    stem = filename.replace(".env", "")
+    if stem.endswith("_share"):
+        stem = stem[: -len("_share")]
+    prefix = stem.upper()
+
+    def _val(suffix: str) -> Optional[str]:
+        for key in (f"{prefix}_SHARE_{suffix}", f"{prefix}_{suffix}"):
+            if key in raw:
+                return raw[key]
+        return None
+
+    return {
+        "name": prefix.lower(),
+        "share_url": _val("URL"),
+        "permission_id": _val("PERM_ID"),
+        "expires_at": _val("EXPIRES"),
+        "folder_item_id": _val("FOLDER_ITEM_ID"),  # may be None for share-link-only entries
+        "has_password": bool(_val("PASSWORD")),    # password itself is never returned
+        "source_file": filename,
+    }
 
 
 async def _graph_send_draft(mailbox: str, message_id: str) -> None:
@@ -1362,6 +1717,37 @@ async def _embed_query(text: str) -> list[float]:
     return embedding
 
 
+async def _has_chunks_embedding_index(conn: asyncpg.Connection) -> bool:
+    """Whether core.document_chunks currently has a vector ANN index.
+
+    Broad semantic/RAG scans over ~millions of embedded chunks are only viable
+    within interactive MCP time budgets when an HNSW/IVFFlat index exists.
+    Cache the result for the process lifetime; index churn here is rare and a
+    restart accompanies operational changes anyway.
+    """
+    global _embedding_index_present_cache
+    if _embedding_index_present_cache is not None:
+        return _embedding_index_present_cache
+
+    present = await conn.fetchval(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'core'
+              AND tablename = 'document_chunks'
+              AND indexdef ILIKE '%embedding%'
+              AND (
+                    indexdef ILIKE '%USING hnsw%'
+                 OR indexdef ILIKE '%USING ivfflat%'
+              )
+        )
+        """
+    )
+    _embedding_index_present_cache = bool(present)
+    return _embedding_index_present_cache
+
+
 async def _get_current_embedding_model_id() -> int:
     """Resolve the current embedding model ID, creating/updating the registry row if needed."""
     cache_key = (EMBEDDING_MODEL, EMBEDDING_DIMS)
@@ -1590,6 +1976,12 @@ class PostgresOAuthProvider:
         if self._schema_ready:
             return
         p = await get_pool()
+        already = await p.fetchval(
+            "SELECT to_regclass('ops.oauth_clients') IS NOT NULL"
+        )
+        if already:
+            self._schema_ready = True
+            return
         await p.execute(OAUTH_SCHEMA_SQL)
         self._schema_ready = True
         log.info("OAuth schema ensured")
@@ -1866,9 +2258,25 @@ class PostgresOAuthProvider:
 async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
     log.info("Athena MCP Server v2 starting up...")
     p = await get_pool()
-    await p.execute(OAUTH_SCHEMA_SQL)
+    schema_present = await p.fetchval(
+        "SELECT to_regclass('ops.oauth_clients') IS NOT NULL"
+    )
+    if not schema_present:
+        await p.execute(OAUTH_SCHEMA_SQL)
+        log.info("OAuth schema created")
     await _ensure_transfer_schema()
     log.info("OAuth schema ready, pool connected")
+
+    # Pre-warm BGE-M3 so the first semantic_search / rag_query doesn't pay the
+    # full model-load cost (~6s on CPU). Safe to call even if HF endpoints are
+    # configured — embed_query_sync will use them or fall back.
+    try:
+        from embedding_service import embed_query_sync
+        _ = embed_query_sync("athena cognitive engine warmup")
+        log.info("BGE-M3 embedding model pre-warmed for RAG/semantic tools")
+    except Exception as e:
+        log.warning("Embedding pre-warm skipped (will lazy-load on first query): %s", e)
+
     try:
         yield {}
     finally:
@@ -2034,6 +2442,134 @@ Recommended retrieval workflow:
     2. If it is an email with attachments, call `fetch_attachments`.
     3. Call `create_document_download_session` and `GET` the returned `download_url`
        (use `Range: bytes=...` for partial reads or resume).
+
+═══════════════════════════════════════════════════════════════════════════════════════════
+MAILBOX TRIAGE (move / file / archive)
+═══════════════════════════════════════════════════════════════════════════════════════════
+Athena can read AND organize her mailbox through Microsoft Graph. The triage surface:
+
+• `list_mailbox_messages(folder=...)` — read messages from a folder.
+• `list_mail_folders(parent=...)` — discover folder ids and child folders. Pass `parent`
+    to drill into subfolders ('Cases/Smith v. Acme'); omit it for the mailbox root.
+• `create_mail_folder(name, parent=...)` — create a folder/subfolder. Folders are not
+    auto-created on move; create first, then move.
+• `move_mail_message(message_id, destination_folder)` — relocate a message. The
+    `destination_folder` argument accepts three forms:
+        1. Well-known names: inbox, archive, sentitems, drafts, deleteditems, junkemail,
+           outbox, conversationhistory, etc.
+        2. Display-name paths: 'Cases/Smith v. Acme/Discovery' (case-sensitive segments).
+        3. Raw Graph folder ids returned by list_mail_folders.
+• `update_mail_message(...)` — flip isRead, importance, categories, receipt flags. Does
+    NOT move the message.
+
+⚠️ Id reissue on move: Graph assigns a NEW message id when a message is moved. The
+move_mail_message response surfaces the new id under `message.message_id` and the dead
+prior id under `previous_message_id`. The `internet_message_id` (RFC 5322) is stable
+across moves and is the safest persistent lookup key when you store references.
+
+Typical triage pattern:
+    1. list_mailbox_messages(folder='inbox', unread_only=True) → identify candidates.
+    2. list_mail_folders() (or list_mail_folders(parent='Cases')) → confirm destination exists.
+    3. create_mail_folder(name='Smith v. Acme', parent='Cases') if missing.
+    4. move_mail_message(message_id, destination_folder='Cases/Smith v. Acme').
+    5. (optional) update_mail_message(..., is_read=True, categories='triaged').
+
+═══════════════════════════════════════════════════════════════════════════════════════════
+SHAREPOINT / FILES (Microsoft Graph)
+═══════════════════════════════════════════════════════════════════════════════════════════
+Athena has tenant-wide SharePoint access through the Graph app token (Sites.ReadWrite.All
++ Files.ReadWrite.All). She is NOT limited to specific shares — every site and library
+the app has rights to is reachable through these tools.
+
+Discovery → operate flow:
+    sharepoint_list_sites(query=...)              → find a site
+    sharepoint_list_drives(site=...)              → list document libraries on it
+    sharepoint_list_items(drive_id=..., path=...) → walk into folders
+    sharepoint_get_item(...)                       → metadata + a short-lived download_url
+                                                     (file items only; GET it directly,
+                                                     no auth header needed)
+    sharepoint_search(query=..., drive_id=..., site=...) — Graph search across the chosen scope.
+
+Working with a sharing link (anonymous URL, agency-shared, etc.):
+    sharepoint_resolve_share(share_url) → driveItem (drive_id + item_id + parent path).
+    Once resolved you can pass drive_id+item_id to any other SP tool.
+    Athena's app token bypasses the share's password gate when tenant-wide
+    Sites/Files perms are present, so she can ALSO use share_url= directly on
+    sharepoint_list_items / sharepoint_get_item without resolving manually.
+
+Athena has FULL CONTROL — read, write, share, version, revoke. Not just browse.
+
+Item lifecycle (writes):
+    sharepoint_create_folder(drive_id, parent_item_id, name)
+    sharepoint_upload_file(drive_id, parent_item_id, name,
+        content_text=... | content_b64=... | document_id=...)
+        — pick exactly one source. document_id loads bytes from Athena's document
+        store and writes them to SP as-is. Files ≤3 MB go via simple PUT;
+        larger files use a chunked upload session automatically.
+    sharepoint_move_item(drive_id, item_id, new_parent_item_id=..., new_parent_drive_id=..., new_name=...)
+        — move and/or rename within or across drives.
+    sharepoint_copy_item(drive_id, item_id, destination_parent_item_id, destination_drive_id=..., new_name=...)
+        — async copy; response has `monitor_url` to poll progress.
+    sharepoint_update_item(drive_id, item_id, new_name=..., list_fields_json=...)
+        — rename and/or PATCH listItem custom column fields.
+    sharepoint_delete_item(drive_id, item_id) — DESTRUCTIVE; goes to the SP recycle bin.
+
+Sharing / permissions (full control of who can access what):
+    sharepoint_create_sharing_link(drive_id, item_id,
+        link_type='view'|'edit'|'embed', scope='anonymous'|'organization'|'users',
+        password=..., expiration_date_time=..., retain_inherited_permissions=True)
+        — generate a shareable link. This is how the existing PRR shares were built.
+    sharepoint_invite(drive_id, item_id, recipients='a@x,b@y', roles='read|write|owner',
+        message=..., require_sign_in=True, send_invitation=True, expiration_date_time=..., password=...)
+        — direct invite to specific users (sends an invitation email by default).
+    sharepoint_list_permissions(drive_id, item_id) — see every link/invite on an item.
+    sharepoint_revoke_permission(drive_id, item_id, permission_id) — DESTRUCTIVE; deletes the permission.
+    sharepoint_update_permission(drive_id, item_id, permission_id,
+        expiration_date_time=..., password=..., roles=...)
+        — extend expiration, change roles, set/rotate the password.
+
+Versions:
+    sharepoint_list_versions(drive_id, item_id)
+    sharepoint_restore_version(drive_id, item_id, version_id) — restore a prior version
+        (current state is preserved as a new version on top — non-destructive of history).
+
+Public-records-request (PRR) inbound shares — Athena has anonymous-link drop folders
+configured for each receiving agency (Snoco Clerk, Snoco Court Admin, Snoco Sheriff,
+DSHS, HCA, AOC, COA Div 1, WBE, …). The full lifecycle:
+    prr_list_inbound_shares() → list registered shares {name, share_url, permission_id,
+        expires_at, folder_item_id, has_password}. Password is NEVER returned — it's
+        an external-recipient secret stored on disk for the agency to use; Athena
+        bypasses it via her app token.
+    prr_register_inbound_share(name='snoco_assessor', share_url=..., permission_id=...,
+        expires_at=..., folder_item_id=..., password=..., replace=False)
+        → persist a new share (or update one with replace=True) to PRR_SHARE_DIR.
+        The file is written 0600 because it carries a password.
+
+Building a NEW PRR share end-to-end (composes the above tools):
+    1. sharepoint_list_drives(site=...) → pick the Inbound Records library.
+    2. sharepoint_create_folder(drive_id=..., parent_item_id='root', name='Snoco Assessor')
+       → produces folder_item_id.
+    3. sharepoint_create_sharing_link(drive_id, item_id=folder_item_id,
+       link_type='edit', scope='anonymous', password='...', expiration_date_time='...')
+       → produces share_link_url + permission id.
+    4. prr_register_inbound_share(name='snoco_assessor', share_url=...,
+       permission_id=..., expires_at=..., folder_item_id=..., password=...)
+       → persists for future runs.
+    5. (out-of-band) email the agency the share URL + password.
+
+Typical PRR check-in pattern (agency has uploaded responsive records):
+    1. prr_list_inbound_shares() → grab share_url for an agency.
+    2. sharepoint_list_items(share_url=...) → see what they've deposited.
+    3. sharepoint_get_item(drive_id, item_id) → inspect each file's download_url.
+    4. GET the download_url → ingest the bytes into Athena
+       (create_document_upload_session for searchable storage).
+    5. sharepoint_move_item(...) → file the original SP copy into a case folder.
+
+Revoking / extending a share:
+    sharepoint_list_permissions(drive_id, folder_item_id) → find the permission_id.
+    sharepoint_update_permission(..., expiration_date_time='2026-12-01T00:00:00Z')
+        — extend a deadline.
+    sharepoint_revoke_permission(...) → kill the link entirely.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════
 DOCX → PDF CONVERSION
@@ -2736,7 +3272,11 @@ async def semantic_search(query: str, domain: Optional[str] = None,
     limit = min(max(limit, 1), 50)
     p = await get_pool()
     try:
-        vec = await _embed_query(query)
+        t0 = time.time()
+        query = _normalize_query(query)
+        # Light timeout only around embedding (most common cold-start / HF latency source).
+        # Safety filter, fetch, rerank, and 5x oversampling remain fully protected.
+        vec = await asyncio.wait_for(_embed_query(query), timeout=12.0)
         vec_str = "[" + ",".join(str(v) for v in vec) + "]"
 
         # Build dynamic WHERE clause
@@ -2758,6 +3298,8 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             idx += 1
 
         async with p.acquire() as conn:
+            vector_index_present = await _has_chunks_embedding_index(conn)
+
             # Safety filter: pass the domain filter directly so we use the
             # domain-specific filter branch (legal→privilege, medical→phi) or
             # cross-domain strict. Caller's explicit domain takes precedence.
@@ -2776,10 +3318,79 @@ async def semantic_search(query: str, domain: Optional[str] = None,
             conditions.append(safety_clause)
 
             where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-            # Oversample 5x so the reranker has a useful candidate pool.
+            # Oversample 5x so the reranker has a useful candidate pool. (kept at 5x per request)
             fetch_n = max(limit * 5, 50)
+
+            ft_elapsed = 0.0
+            candidate_doc_ids: list[Any] = []
+            # Without an ANN vector index, broad semantic scans over millions of
+            # chunks can exceed the MCP timeout. For broad legal/medical searches,
+            # use the indexed full-text path to generate a candidate document set,
+            # then run semantic ordering within that much smaller slice.
+            if not vector_index_present and not case_number and (domain is None or domain in ('legal', 'medical')):
+                ft_conditions = ["c.content_tsv @@ websearch_to_tsquery('english', $1)"]
+                ft_params: list[Any] = [query]
+                ft_idx = 2
+
+                if domain:
+                    ft_conditions.append(f"d.domain = ${ft_idx}")
+                    ft_params.append(domain)
+                    ft_idx += 1
+
+                ft_safety_clause, ft_safety_params, _ = await build_document_safety_filter(
+                    conn=conn,
+                    domain=safety_domain,
+                    caller_context=_mcp_caller_context(
+                        'semantic_search',
+                        {'query_domain': domain, 'case_number': case_number},
+                    ),
+                    include_privileged=_default_include_privileged(),
+                    table_alias='d', next_param_index=ft_idx,
+                )
+                ft_idx += len(ft_safety_params)
+                ft_params.extend(ft_safety_params)
+                ft_conditions.append(ft_safety_clause)
+
+                ft_fetch_n = max(fetch_n * 6, 300)
+                ft_params.append(ft_fetch_n)
+                ft_where = "WHERE " + " AND ".join(ft_conditions)
+
+                ft_t0 = time.time()
+                ft_rows = await conn.fetch(f"""
+                    SELECT d.id AS doc_id,
+                           max(ts_rank(c.content_tsv, websearch_to_tsquery('english', $1))) AS best_rank
+                    FROM core.document_chunks c
+                    JOIN core.documents d ON c.document_id = d.id
+                    {ft_where}
+                    GROUP BY d.id
+                    ORDER BY best_rank DESC
+                    LIMIT ${ft_idx}
+                """, *ft_params)
+                ft_elapsed = time.time() - ft_t0
+
+                candidate_doc_ids = [r["doc_id"] for r in ft_rows]
+                if candidate_doc_ids:
+                    conditions.append(f"d.id = ANY(${idx}::uuid[])")
+                    params.append(candidate_doc_ids)
+                    idx += 1
+                    where = "WHERE " + " AND ".join(conditions)
+                else:
+                    elapsed = time.time() - t0
+                    log.info(
+                        "semantic_search completed in %.2fs with no lexical candidates (query=%r, vector_index=%s)",
+                        elapsed,
+                        query[:80],
+                        vector_index_present,
+                    )
+                    return json.dumps({
+                        "query": query,
+                        "results": [],
+                        "count": 0,
+                    })
+
             params.append(fetch_n)
 
+            sem_t0 = time.time()
             rows = await conn.fetch(f"""
                 SELECT c.id AS chunk_id, d.id AS doc_id, d.id, d.title, d.filename,
                        d.domain, d.document_type, d.source_path, d.phi_status,
@@ -2793,7 +3404,18 @@ async def semantic_search(query: str, domain: Optional[str] = None,
                 ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
                 LIMIT ${idx}
             """, *params)
+            sem_elapsed = time.time() - sem_t0
             await log_cb(rows)
+
+            log.info(
+                "semantic_search retrieval stages in %.2fs (sem=%.2fs, ft=%.2fs, vector_index=%s, rows=%d, candidate_docs=%d)",
+                time.time() - t0,
+                sem_elapsed,
+                ft_elapsed,
+                vector_index_present,
+                len(rows),
+                len(candidate_doc_ids),
+            )
 
         # Rerank the dense-retrieval candidates with bge-reranker-v2-m3.
         # On CPU this is ~50ms per pair; with fetch_n=50 that's ~2.5s total.
@@ -2838,10 +3460,21 @@ async def semantic_search(query: str, domain: Optional[str] = None,
                     break
 
         results = list(seen_docs.values())
+        elapsed = time.time() - t0
+        log.info("semantic_search completed in %.2fs (query=%r, results=%d)", elapsed, query[:80], len(results))
         return json.dumps({"query": query, "results": results, "count": len(results)})
+    except asyncio.TimeoutError:
+        elapsed = time.time() - t0 if 't0' in locals() else 0
+        log.warning("semantic_search embedding timed out after %.2fs", elapsed)
+        return json.dumps({
+            "query": query,
+            "error": "timeout",
+            "error_type": "TimeoutError",
+            "note": "Embedding timed out; safety filter not reached"
+        })
     except Exception as e:
-        log.error("semantic_search error: %s", e)
-        return json.dumps({"error": str(e)})
+        log.error("semantic_search error: %s", e, exc_info=True)
+        return json.dumps({"query": query, **_err_payload(e)})
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -4375,6 +5008,1129 @@ async def update_mail_message(
         return json.dumps({"error": str(e)})
 
 
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def list_mail_folders(
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+    parent: Optional[str] = None,
+    top: int = 100,
+) -> str:
+    """List Outlook mail folders so you can pick a destination for move_mail_message.
+
+    Returns id, displayName, parent id, child count, unread count, and total count
+    for each folder. Use the returned id (or a display-name path like 'Cases/Smith
+    v. Acme') as `destination_folder` for move_mail_message.
+
+    Args:
+        mailbox: Mailbox to inspect (default Athena's).
+        parent: Optional parent folder reference — well-known name (e.g. 'inbox'),
+            display-name path ('Cases/Smith v. Acme'), or raw Graph folder id.
+            When omitted, top-level folders directly under the mailbox root are returned.
+        top: Max folders to return (1-200, default 100).
+    """
+    try:
+        mailbox = _normalize_mailbox(mailbox)
+        top = min(max(int(top), 1), 200)
+        if parent:
+            parent_id, parent_path = await _resolve_mail_folder_id(mailbox, parent)
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{parent_id}/childFolders"
+        else:
+            parent_path = ""
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders"
+        data = await _graph_request(
+            "GET",
+            url,
+            params={
+                "$top": str(top),
+                "$select": "id,displayName,parentFolderId,childFolderCount,unreadItemCount,totalItemCount",
+                "$orderby": "displayName",
+            },
+        )
+        folders = []
+        for f in (data.get("value") or []):
+            folders.append({
+                "id": f.get("id"),
+                "name": f.get("displayName"),
+                "parent_folder_id": f.get("parentFolderId"),
+                "child_folder_count": f.get("childFolderCount"),
+                "unread_count": f.get("unreadItemCount"),
+                "total_count": f.get("totalItemCount"),
+            })
+        return json.dumps({
+            "mailbox": mailbox,
+            "parent": parent_path or "<root>",
+            "count": len(folders),
+            "folders": folders,
+        })
+    except Exception as e:
+        log.error("list_mail_folders error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def create_mail_folder(
+    name: str,
+    parent: Optional[str] = None,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Create an Outlook mail folder (or subfolder).
+
+    Common pattern: list_mail_folders to confirm it doesn't already exist, then
+    create_mail_folder, then move_mail_message into it.
+
+    Args:
+        name: New folder display name.
+        parent: Optional parent folder reference (well-known name, display-name
+            path, or Graph folder id). Omit to create a top-level folder under
+            the mailbox root.
+        mailbox: Mailbox in which to create the folder (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("name is required")
+
+        if parent:
+            parent_id, parent_path = await _resolve_mail_folder_id(mailbox, parent)
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders/{parent_id}/childFolders"
+        else:
+            parent_path = ""
+            url = f"{GRAPH_BASE_URL}/users/{mailbox}/mailFolders"
+
+        created = await _graph_request(
+            "POST",
+            url,
+            json_body={"displayName": name},
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({
+            "mailbox": mailbox,
+            "parent": parent_path or "<root>",
+            "folder": {
+                "id": created.get("id"),
+                "name": created.get("displayName"),
+                "parent_folder_id": created.get("parentFolderId"),
+                "child_folder_count": created.get("childFolderCount"),
+                "total_count": created.get("totalItemCount"),
+            },
+        })
+    except Exception as e:
+        log.error("create_mail_folder error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def move_mail_message(
+    message_id: str,
+    destination_folder: str,
+    mailbox: str = DEFAULT_ATHENA_MAILBOX,
+) -> str:
+    """Move a mailbox message to a different folder via Graph.
+
+    Use this for triage workflows — file inbox messages into case folders,
+    archive completed threads, route spam to junkemail, etc.
+
+    IMPORTANT — id reissue: Graph reissues the message id on move. The response's
+    `message.message_id` is the NEW id; the prior id (returned as
+    `previous_message_id`) is dead after this call. The `internet_message_id` is
+    stable across moves and is the safest long-term lookup key.
+
+    Args:
+        message_id: Graph message id or RFC internet message id of the message to move.
+        destination_folder: Where to move it. Accepts:
+            • A well-known folder name: inbox, archive, sentitems, drafts, deleteditems,
+              junkemail, outbox, conversationhistory, etc.
+            • A display-name path with '/' separators, e.g. 'Cases/Smith v. Acme/Discovery'.
+              Each segment is matched case-sensitively against existing folders. Create
+              missing folders first with create_mail_folder — move will not auto-create.
+            • A raw Graph folder id (e.g. one returned by list_mail_folders).
+        mailbox: Mailbox containing the message (default Athena's).
+    """
+    try:
+        _require_scope("write")
+        mailbox = _normalize_mailbox(mailbox)
+        graph_message_id = await _graph_resolve_message_graph_id(mailbox, message_id)
+        destination_id, destination_path = await _resolve_mail_folder_id(mailbox, destination_folder)
+
+        moved = await _graph_move_message(mailbox, graph_message_id, destination_id)
+        result = _message_summary(moved)
+        result["mailbox"] = mailbox
+        return json.dumps({
+            "mailbox": mailbox,
+            "destination": destination_path,
+            "destination_folder_id": destination_id,
+            "previous_message_id": graph_message_id,
+            "message": result,
+            "note": (
+                "Graph reissues the message id on move — use the new message_id "
+                "(or internet_message_id, which is stable) for subsequent operations."
+            ),
+        })
+    except Exception as e:
+        log.error("move_mail_message error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                    SHAREPOINT / FILES (Graph)                ║
+# ║  Generic browse + read/write surface for any site or drive   ║
+# ║  the Graph app has perms to. Plus a PRR-share registry that  ║
+# ║  enumerates the public-records-request inbound shares.       ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_list_sites(
+    query: Optional[str] = None,
+    top: int = 25,
+) -> str:
+    """List or search SharePoint sites the Graph app can see.
+
+    Args:
+        query: Optional search term (matches displayName, description, web URL, etc).
+            Omit to list root-level sites.
+        top: Max sites to return (1-100, default 25).
+    """
+    try:
+        top = min(max(int(top), 1), 100)
+        params = {
+            "$top": str(top),
+            "$select": "id,name,displayName,webUrl,description,siteCollection",
+        }
+        if query:
+            params["search"] = query
+        data = await _sp_request("GET", f"{GRAPH_BASE_URL}/sites", params=params)
+        sites = []
+        for s in (data.get("value") or []):
+            sites.append({
+                "id": s.get("id"),
+                "name": s.get("name") or s.get("displayName"),
+                "display_name": s.get("displayName"),
+                "web_url": s.get("webUrl"),
+                "description": s.get("description"),
+                "site_collection_hostname": (s.get("siteCollection") or {}).get("hostname"),
+            })
+        return json.dumps({"count": len(sites), "sites": sites})
+    except Exception as e:
+        log.error("sharepoint_list_sites error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_list_drives(site: str) -> str:
+    """List document libraries (drives) on a SharePoint site.
+
+    Args:
+        site: Site reference. Accepts:
+            • A Graph site id (e.g. 'contoso.sharepoint.com,abc-...,def-...').
+            • A 'hostname:/sites/path' form (e.g. 'contoso.sharepoint.com:/sites/Legal').
+            • The literal string 'root' for the tenant's root site.
+    """
+    try:
+        site = site.strip()
+        if site == "root":
+            site_path = "root"
+        elif ":" in site and not site.startswith("https://"):
+            # hostname:/sites/path → /sites/{hostname}:{/path}:
+            host, _, path = site.partition(":")
+            site_path = f"{host}:{path}:"
+        else:
+            site_path = site
+        data = await _sp_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/sites/{site_path}/drives",
+            params={"$select": "id,name,description,driveType,webUrl,createdDateTime,quota"},
+        )
+        drives = []
+        for d in (data.get("value") or []):
+            drives.append({
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "description": d.get("description"),
+                "drive_type": d.get("driveType"),
+                "web_url": d.get("webUrl"),
+                "created_at": d.get("createdDateTime"),
+                "quota": d.get("quota"),
+            })
+        return json.dumps({"site": site, "count": len(drives), "drives": drives})
+    except Exception as e:
+        log.error("sharepoint_list_drives error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_list_items(
+    drive_id: Optional[str] = None,
+    item_id: Optional[str] = None,
+    path: Optional[str] = None,
+    share_url: Optional[str] = None,
+    top: int = 100,
+) -> str:
+    """List children of a SharePoint folder.
+
+    Provide one of:
+      • drive_id + item_id  — list children of a specific folder.
+      • drive_id (alone)    — list children of the drive root.
+      • drive_id + path     — list children at a server-relative path.
+      • share_url           — resolve a sharing link first, then list its children.
+
+    Args:
+        drive_id: Graph drive id.
+        item_id: Folder item id to list children of (omit for drive root).
+        path: Folder path under drive root (e.g. 'PRR Inbound/Snoco Clerk').
+        share_url: A SharePoint/OneDrive sharing link.
+        top: Max children to return (1-500, default 100).
+    """
+    try:
+        top = min(max(int(top), 1), 500)
+        if share_url:
+            item = await _sharepoint_resolve_share_to_item(share_url)
+            resolved_drive = (item.get("parentReference") or {}).get("driveId")
+            resolved_id = item.get("id")
+            list_url = f"{GRAPH_BASE_URL}/drives/{resolved_drive}/items/{resolved_id}/children"
+            context = {"resolved_from_share": share_url, "drive_id": resolved_drive, "item_id": resolved_id}
+        elif drive_id and item_id:
+            list_url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/children"
+            context = {"drive_id": drive_id, "item_id": item_id}
+        elif drive_id and path is not None:
+            clean = path.strip().lstrip("/")
+            if clean == "":
+                list_url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root/children"
+            else:
+                list_url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root:/{quote(clean)}:/children"
+            context = {"drive_id": drive_id, "path": clean or "/"}
+        elif drive_id:
+            list_url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root/children"
+            context = {"drive_id": drive_id, "path": "/"}
+        else:
+            raise ValueError("Provide drive_id (with optional item_id/path) or share_url")
+
+        data = await _sp_request(
+            "GET",
+            list_url,
+            params={"$top": str(top), "$select": _SHAREPOINT_DRIVEITEM_FIELDS},
+        )
+        items = [_sharepoint_item_summary(i) for i in (data.get("value") or [])]
+        return json.dumps({"context": context, "count": len(items), "items": items})
+    except Exception as e:
+        log.error("sharepoint_list_items error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_get_item(
+    drive_id: Optional[str] = None,
+    item_id: Optional[str] = None,
+    path: Optional[str] = None,
+    share_url: Optional[str] = None,
+) -> str:
+    """Fetch metadata for a single SharePoint item (file or folder).
+
+    For files, the response includes a short-lived `download_url` that can be
+    fetched directly with GET (no auth header needed) to retrieve the bytes.
+
+    Provide one of:
+      • drive_id + item_id
+      • drive_id + path  (server-relative, no leading slash)
+      • share_url
+    """
+    try:
+        item = await _sharepoint_resolve_item(
+            drive_id=drive_id, item_id=item_id, path=path, share_url=share_url,
+        )
+        return json.dumps({"item": _sharepoint_item_summary(item)})
+    except Exception as e:
+        log.error("sharepoint_get_item error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_search(
+    query: str,
+    drive_id: Optional[str] = None,
+    site: Optional[str] = None,
+    top: int = 25,
+) -> str:
+    """Search SharePoint items.
+
+    Scope precedence: drive_id > site > tenant-wide.
+
+    Args:
+        query: Search query (Graph search syntax — keywords, KQL, etc.).
+        drive_id: Optional — restrict search to a specific drive.
+        site: Optional — restrict search to a site (id or 'hostname:/sites/path').
+        top: Max results (1-100, default 25).
+    """
+    try:
+        top = min(max(int(top), 1), 100)
+        if drive_id:
+            search_url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root/search(q='{quote(query)}')"
+        elif site:
+            site = site.strip()
+            if ":" in site and not site.startswith("https://"):
+                host, _, p = site.partition(":")
+                site_path = f"{host}:{p}:"
+            else:
+                site_path = site
+            # Site-level search uses /sites/{id}/drive/root/search for the default lib.
+            search_url = f"{GRAPH_BASE_URL}/sites/{site_path}/drive/root/search(q='{quote(query)}')"
+        else:
+            # Tenant-wide via Microsoft Search API.
+            search_payload = {
+                "requests": [{
+                    "entityTypes": ["driveItem"],
+                    "query": {"queryString": query},
+                    "from": 0,
+                    "size": top,
+                }]
+            }
+            data = await _sp_request(
+                "POST",
+                f"{GRAPH_BASE_URL}/search/query",
+                json_body=search_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            hits = []
+            for resp in (data.get("value") or []):
+                for hits_container in (resp.get("hitsContainers") or []):
+                    for hit in (hits_container.get("hits") or []):
+                        resource = hit.get("resource") or {}
+                        hits.append({
+                            "summary": hit.get("summary"),
+                            "rank": hit.get("rank"),
+                            "item": _sharepoint_item_summary(resource),
+                        })
+            return json.dumps({"scope": "tenant", "query": query, "count": len(hits), "results": hits})
+
+        data = await _sp_request(
+            "GET",
+            search_url,
+            params={"$top": str(top), "$select": _SHAREPOINT_DRIVEITEM_FIELDS},
+        )
+        items = [_sharepoint_item_summary(i) for i in (data.get("value") or [])]
+        return json.dumps({
+            "scope": "drive" if drive_id else "site",
+            "query": query,
+            "count": len(items),
+            "items": items,
+        })
+    except Exception as e:
+        log.error("sharepoint_search error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_resolve_share(share_url: str) -> str:
+    """Resolve a SharePoint/OneDrive sharing URL to its driveItem.
+
+    Useful when you have a share link (anonymous or otherwise) and need the
+    drive_id + item_id for follow-up operations. The Graph app token bypasses
+    the share's password gate when it has tenant-wide Sites/Files perms.
+    """
+    try:
+        item = await _sharepoint_resolve_share_to_item(share_url)
+        return json.dumps({
+            "share_url": share_url,
+            "item": _sharepoint_item_summary(item),
+        })
+    except Exception as e:
+        log.error("sharepoint_resolve_share error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_create_folder(
+    drive_id: str,
+    parent_item_id: str,
+    name: str,
+    conflict_behavior: str = "rename",
+) -> str:
+    """Create a folder under a SharePoint parent.
+
+    Args:
+        drive_id: Drive containing the parent folder.
+        parent_item_id: Parent folder's item id (use 'root' for drive root).
+        name: New folder display name.
+        conflict_behavior: 'rename' (default), 'replace', or 'fail'.
+    """
+    try:
+        _require_scope("write")
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("name is required")
+        payload = {
+            "name": name,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": conflict_behavior,
+        }
+        url = (
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/root/children"
+            if parent_item_id == "root"
+            else f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{parent_item_id}/children"
+        )
+        created = await _sp_request(
+            "POST",
+            url,
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"folder": _sharepoint_item_summary(created)})
+    except Exception as e:
+        log.error("sharepoint_create_folder error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_upload_file(
+    drive_id: str,
+    parent_item_id: str,
+    name: str,
+    content_text: Optional[str] = None,
+    content_b64: Optional[str] = None,
+    document_id: Optional[str] = None,
+    conflict_behavior: str = "rename",
+) -> str:
+    """Upload a file to a SharePoint folder.
+
+    Source precedence: document_id > content_b64 > content_text. Provide exactly one.
+    Files ≤3 MB go via simple PUT; larger files use a chunked upload session.
+
+    Args:
+        drive_id: Destination drive.
+        parent_item_id: Destination folder item id (use 'root' for drive root).
+        name: File name to write (extension included).
+        content_text: UTF-8 text body (for small text files).
+        content_b64: Base64-encoded binary body.
+        document_id: Athena document id; the original bytes are loaded from
+            Athena's document store and uploaded as-is.
+        conflict_behavior: 'rename' (default), 'replace', or 'fail'.
+    """
+    try:
+        _require_scope("write")
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("name is required")
+
+        sources_provided = sum(x is not None for x in (document_id, content_b64, content_text))
+        if sources_provided != 1:
+            raise ValueError("Provide exactly one of: document_id, content_b64, content_text")
+
+        if document_id:
+            info, payload = await _load_original_document_bytes(document_id)
+            data = payload
+        elif content_b64 is not None:
+            data = base64.b64decode(content_b64)
+        else:
+            data = (content_text or "").encode("utf-8")
+
+        # Build path-based upload target so conflict_behavior works on first PUT.
+        # Graph: PUT /drives/{drive}/items/{parent}:/{name}:/content
+        if parent_item_id == "root":
+            base = f"{GRAPH_BASE_URL}/drives/{drive_id}/root:/{quote(name)}"
+        else:
+            base = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{parent_item_id}:/{quote(name)}"
+
+        if len(data) <= SHAREPOINT_SIMPLE_UPLOAD_LIMIT:
+            token = await _get_sp_access_token()
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.put(
+                    f"{base}:/content",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/octet-stream",
+                    },
+                    params={"@microsoft.graph.conflictBehavior": conflict_behavior},
+                    content=data,
+                )
+                resp.raise_for_status()
+                created = resp.json()
+        else:
+            # Chunked upload session for files > 3 MB.
+            session = await _sp_request(
+                "POST",
+                f"{base}:/createUploadSession",
+                json_body={
+                    "item": {
+                        "@microsoft.graph.conflictBehavior": conflict_behavior,
+                        "name": name,
+                    }
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=120.0,
+            )
+            upload_url = session.get("uploadUrl")
+            if not upload_url:
+                raise RuntimeError("Graph did not return an uploadUrl for chunked SP upload")
+            total = len(data)
+            final_response = None
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                start = 0
+                while start < total:
+                    end = min(start + SHAREPOINT_UPLOAD_CHUNK_SIZE, total) - 1
+                    chunk = data[start:end + 1]
+                    final_response = await client.put(
+                        upload_url,
+                        headers={
+                            "Content-Type": "application/octet-stream",
+                            "Content-Length": str(len(chunk)),
+                            "Content-Range": f"bytes {start}-{end}/{total}",
+                        },
+                        content=chunk,
+                    )
+                    if final_response.status_code not in (200, 201, 202):
+                        raise RuntimeError(
+                            f"SP chunked upload failed at bytes {start}-{end}: "
+                            f"HTTP {final_response.status_code} {final_response.text[:300]}"
+                        )
+                    start = end + 1
+            created = final_response.json() if final_response is not None else {}
+
+        return json.dumps({
+            "drive_id": drive_id,
+            "parent_item_id": parent_item_id,
+            "size": len(data),
+            "item": _sharepoint_item_summary(created),
+        })
+    except Exception as e:
+        log.error("sharepoint_upload_file error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+@logged_tool
+async def sharepoint_delete_item(drive_id: str, item_id: str) -> str:
+    """Delete a SharePoint file or folder. Goes to recycle bin (recoverable).
+
+    Args:
+        drive_id: Drive containing the item.
+        item_id: Item id to delete.
+    """
+    try:
+        _require_scope("write")
+        await _sp_request(
+            "DELETE",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}",
+        )
+        return json.dumps({"deleted": True, "drive_id": drive_id, "item_id": item_id})
+    except Exception as e:
+        log.error("sharepoint_delete_item error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def prr_list_inbound_shares() -> str:
+    """List the public-records-request inbound shares Athena has configured.
+
+    Reads /root/.athena/*_share.env files (override with the PRR_SHARE_DIR env var).
+    Returns share URL, permission id, expiration, optional folder item id, and a
+    boolean has_password — the password itself is NEVER returned by this tool
+    because it is meant only for external recipients (agencies). Use
+    sharepoint_resolve_share(share_url) or sharepoint_list_items(share_url=...)
+    to walk the underlying folder with Athena's app token.
+    """
+    try:
+        share_dir = PRR_SHARE_DIR
+        if not os.path.isdir(share_dir):
+            return json.dumps({"share_dir": share_dir, "count": 0, "shares": [],
+                               "warning": "PRR share directory does not exist"})
+
+        shares = []
+        for entry in sorted(os.listdir(share_dir)):
+            if not entry.endswith("_share.env"):
+                continue
+            try:
+                raw = _read_prr_share_file(os.path.join(share_dir, entry))
+                shares.append(_summarize_prr_share(entry, raw))
+            except Exception as e:
+                shares.append({"source_file": entry, "error": str(e)})
+        return json.dumps({"share_dir": share_dir, "count": len(shares), "shares": shares})
+    except Exception as e:
+        log.error("prr_list_inbound_shares error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+# ─────────────── SharePoint full-control: items, sharing, versions ────────────────
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_move_item(
+    drive_id: str,
+    item_id: str,
+    new_parent_item_id: Optional[str] = None,
+    new_parent_drive_id: Optional[str] = None,
+    new_name: Optional[str] = None,
+) -> str:
+    """Move and/or rename a SharePoint item. Cross-drive moves supported.
+
+    Args:
+        drive_id: Source drive id.
+        item_id: Item id to move.
+        new_parent_item_id: New parent folder's item id (omit to keep current parent).
+            Use 'root' for the destination drive's root.
+        new_parent_drive_id: Destination drive id (omit to stay in the same drive).
+        new_name: Optional new file/folder name (rename only or rename-on-move).
+
+    At least one of new_parent_item_id, new_parent_drive_id, new_name must be provided.
+    """
+    try:
+        _require_scope("write")
+        if not (new_parent_item_id or new_parent_drive_id or new_name):
+            raise ValueError("Provide new_parent_item_id, new_parent_drive_id, or new_name")
+        payload: dict[str, Any] = {}
+        parent_ref: dict[str, Any] = {}
+        if new_parent_item_id:
+            parent_ref["id"] = "root" if new_parent_item_id == "root" else new_parent_item_id
+        if new_parent_drive_id:
+            parent_ref["driveId"] = new_parent_drive_id
+        if parent_ref:
+            payload["parentReference"] = parent_ref
+        if new_name:
+            payload["name"] = new_name
+        moved = await _sp_request(
+            "PATCH",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}",
+            json_body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"item": _sharepoint_item_summary(moved)})
+    except Exception as e:
+        log.error("sharepoint_move_item error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_copy_item(
+    drive_id: str,
+    item_id: str,
+    destination_parent_item_id: str,
+    destination_drive_id: Optional[str] = None,
+    new_name: Optional[str] = None,
+) -> str:
+    """Copy a SharePoint item to a destination folder (async on Graph's side).
+
+    Graph returns 202 Accepted with a Location header pointing at a monitor URL;
+    the response surfaces that URL as `monitor_url` so the agent can poll status.
+
+    Args:
+        drive_id: Source drive id.
+        item_id: Source item id.
+        destination_parent_item_id: Target parent folder item id ('root' allowed).
+        destination_drive_id: Target drive id (omit to copy within the same drive).
+        new_name: Optional new name for the copy.
+    """
+    try:
+        _require_scope("write")
+        parent_ref: dict[str, Any] = {
+            "id": "root" if destination_parent_item_id == "root" else destination_parent_item_id,
+        }
+        if destination_drive_id:
+            parent_ref["driveId"] = destination_drive_id
+        body: dict[str, Any] = {"parentReference": parent_ref}
+        if new_name:
+            body["name"] = new_name
+
+        token = await _get_sp_access_token()
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/copy",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            resp.raise_for_status()
+            return json.dumps({
+                "status_code": resp.status_code,
+                "monitor_url": resp.headers.get("Location"),
+                "note": "Copy is async; GET monitor_url to track progress.",
+            })
+    except Exception as e:
+        log.error("sharepoint_copy_item error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_update_item(
+    drive_id: str,
+    item_id: str,
+    new_name: Optional[str] = None,
+    list_fields_json: Optional[str] = None,
+) -> str:
+    """Rename a SharePoint item and/or update its listItem (column) fields.
+
+    Args:
+        drive_id: Drive containing the item.
+        item_id: Item id to update.
+        new_name: Optional new display name (rename).
+        list_fields_json: Optional JSON object string of listItem field updates,
+            e.g. '{"Status":"Reviewed","CaseNumber":"24-2-12345-1"}'. Applied via
+            PATCH /items/{id}/listItem/fields. Only valid for items in libraries
+            that expose custom columns.
+
+    Provide at least one of new_name or list_fields_json.
+    """
+    try:
+        _require_scope("write")
+        if not new_name and not list_fields_json:
+            raise ValueError("Provide new_name or list_fields_json")
+        results: dict[str, Any] = {}
+        if new_name:
+            updated = await _sp_request(
+                "PATCH",
+                f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}",
+                json_body={"name": new_name},
+                headers={"Content-Type": "application/json"},
+            )
+            results["item"] = _sharepoint_item_summary(updated)
+        if list_fields_json:
+            try:
+                fields = json.loads(list_fields_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"list_fields_json must be valid JSON: {exc}") from exc
+            if not isinstance(fields, dict):
+                raise ValueError("list_fields_json must decode to a JSON object")
+            updated_fields = await _sp_request(
+                "PATCH",
+                f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/listItem/fields",
+                json_body=fields,
+                headers={"Content-Type": "application/json"},
+            )
+            results["list_fields"] = updated_fields
+        return json.dumps(results)
+    except Exception as e:
+        log.error("sharepoint_update_item error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_create_sharing_link(
+    drive_id: str,
+    item_id: str,
+    link_type: str = "view",
+    scope: str = "anonymous",
+    password: Optional[str] = None,
+    expiration_date_time: Optional[str] = None,
+    retain_inherited_permissions: bool = True,
+) -> str:
+    """Create or reuse a sharing link on a SharePoint item.
+
+    Args:
+        drive_id: Drive containing the item.
+        item_id: Item to share.
+        link_type: 'view', 'edit', or 'embed'.
+        scope: 'anonymous' (link works for anyone), 'organization' (tenant
+            members only), or 'users' (named recipients — use sharepoint_invite
+            for that flow instead).
+        password: Optional password for the link (anonymous links only).
+        expiration_date_time: Optional ISO-8601 expiration (e.g. '2026-08-01T00:00:00Z').
+        retain_inherited_permissions: If False, removes existing permissions on
+            the item when the link is created. Default True (additive).
+    """
+    try:
+        _require_scope("write")
+        body: dict[str, Any] = {"type": link_type, "scope": scope}
+        if password:
+            body["password"] = password
+        if expiration_date_time:
+            body["expirationDateTime"] = expiration_date_time
+        if retain_inherited_permissions is False:
+            body["retainInheritedPermissions"] = False
+        perm = await _sp_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/createLink",
+            json_body=body,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"permission": _sharepoint_permission_summary(perm)})
+    except Exception as e:
+        log.error("sharepoint_create_sharing_link error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_invite(
+    drive_id: str,
+    item_id: str,
+    recipients: str,
+    roles: str = "read",
+    message: Optional[str] = None,
+    require_sign_in: bool = True,
+    send_invitation: bool = True,
+    expiration_date_time: Optional[str] = None,
+    password: Optional[str] = None,
+) -> str:
+    """Invite specific users to a SharePoint item (sends email if send_invitation=True).
+
+    Args:
+        drive_id: Drive containing the item.
+        item_id: Item to share.
+        recipients: Comma-separated email addresses.
+        roles: Comma-separated roles ('read', 'write', 'owner'). Default 'read'.
+        message: Optional message included in the invitation email.
+        require_sign_in: Recipients must sign in (default True).
+        send_invitation: Email the invitation (default True).
+        expiration_date_time: Optional ISO-8601 expiration.
+        password: Optional password (only valid when require_sign_in=False).
+    """
+    try:
+        _require_scope("write")
+        recipients_list = [{"email": e} for e in _split_csv_list(recipients)]
+        if not recipients_list:
+            raise ValueError("At least one recipient is required")
+        roles_list = _split_csv_list(roles) or ["read"]
+        body: dict[str, Any] = {
+            "recipients": recipients_list,
+            "roles": roles_list,
+            "requireSignIn": require_sign_in,
+            "sendInvitation": send_invitation,
+        }
+        if message:
+            body["message"] = message
+        if expiration_date_time:
+            body["expirationDateTime"] = expiration_date_time
+        if password:
+            body["password"] = password
+        data = await _sp_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/invite",
+            json_body=body,
+            headers={"Content-Type": "application/json"},
+        )
+        perms = [_sharepoint_permission_summary(p) for p in (data.get("value") or [])]
+        return json.dumps({"count": len(perms), "permissions": perms})
+    except Exception as e:
+        log.error("sharepoint_invite error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_list_permissions(drive_id: str, item_id: str) -> str:
+    """List all permissions (sharing links + invites) on a SharePoint item."""
+    try:
+        data = await _sp_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions",
+        )
+        perms = [_sharepoint_permission_summary(p) for p in (data.get("value") or [])]
+        return json.dumps({
+            "drive_id": drive_id,
+            "item_id": item_id,
+            "count": len(perms),
+            "permissions": perms,
+        })
+    except Exception as e:
+        log.error("sharepoint_list_permissions error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+@logged_tool
+async def sharepoint_revoke_permission(
+    drive_id: str,
+    item_id: str,
+    permission_id: str,
+) -> str:
+    """Revoke a sharing link or invite by deleting the permission record."""
+    try:
+        _require_scope("write")
+        await _sp_request(
+            "DELETE",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions/{permission_id}",
+        )
+        return json.dumps({
+            "revoked": True,
+            "drive_id": drive_id,
+            "item_id": item_id,
+            "permission_id": permission_id,
+        })
+    except Exception as e:
+        log.error("sharepoint_revoke_permission error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_update_permission(
+    drive_id: str,
+    item_id: str,
+    permission_id: str,
+    expiration_date_time: Optional[str] = None,
+    password: Optional[str] = None,
+    roles: Optional[str] = None,
+) -> str:
+    """Update an existing permission (extend expiration, change roles, set password)."""
+    try:
+        _require_scope("write")
+        body: dict[str, Any] = {}
+        if expiration_date_time is not None:
+            body["expirationDateTime"] = expiration_date_time
+        if password is not None:
+            body["password"] = password
+        if roles is not None:
+            body["roles"] = _split_csv_list(roles)
+        if not body:
+            raise ValueError("Provide at least one of expiration_date_time, password, roles")
+        updated = await _sp_request(
+            "PATCH",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions/{permission_id}",
+            json_body=body,
+            headers={"Content-Type": "application/json"},
+        )
+        return json.dumps({"permission": _sharepoint_permission_summary(updated)})
+    except Exception as e:
+        log.error("sharepoint_update_permission error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=READ_ONLY)
+@logged_tool
+async def sharepoint_list_versions(
+    drive_id: str,
+    item_id: str,
+    top: int = 50,
+) -> str:
+    """List the version history of a SharePoint file."""
+    try:
+        top = min(max(int(top), 1), 200)
+        data = await _sp_request(
+            "GET",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/versions",
+            params={"$top": str(top)},
+        )
+        versions = []
+        for v in (data.get("value") or []):
+            modified_by = v.get("lastModifiedBy") or {}
+            versions.append({
+                "id": v.get("id"),
+                "size": v.get("size"),
+                "modified_at": v.get("lastModifiedDateTime"),
+                "modified_by": (modified_by.get("user") or {}).get("displayName")
+                                or (modified_by.get("application") or {}).get("displayName"),
+                "publication_state": (v.get("publication") or {}).get("level"),
+            })
+        return json.dumps({
+            "drive_id": drive_id,
+            "item_id": item_id,
+            "count": len(versions),
+            "versions": versions,
+        })
+    except Exception as e:
+        log.error("sharepoint_list_versions error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def sharepoint_restore_version(
+    drive_id: str,
+    item_id: str,
+    version_id: str,
+) -> str:
+    """Restore a SharePoint file to one of its prior versions.
+
+    The current state is preserved as a new version on top — restoration is
+    additive, not destructive of intermediate history.
+    """
+    try:
+        _require_scope("write")
+        await _sp_request(
+            "POST",
+            f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/versions/{version_id}/restoreVersion",
+            headers={"Content-Length": "0"},
+        )
+        return json.dumps({
+            "restored": True,
+            "drive_id": drive_id,
+            "item_id": item_id,
+            "version_id": version_id,
+        })
+    except Exception as e:
+        log.error("sharepoint_restore_version error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool(annotations=WRITE_OP)
+@logged_tool
+async def prr_register_inbound_share(
+    name: str,
+    share_url: str,
+    permission_id: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    folder_item_id: Optional[str] = None,
+    password: Optional[str] = None,
+    replace: bool = False,
+) -> str:
+    """Persist a PRR inbound share to the on-disk registry (PRR_SHARE_DIR).
+
+    Writes /root/.athena/{name}_share.env in the standard format so subsequent
+    prr_list_inbound_shares calls surface it. The password is stored on disk for
+    external recipients but is NEVER returned by prr_list_inbound_shares.
+
+    Args:
+        name: Slug for the share (lowercase alnum/underscore, e.g. 'snoco_clerk').
+        share_url: The Graph-issued sharing URL (createLink result).
+        permission_id: Graph permission id (for revocation/expiry updates).
+        expires_at: ISO-8601 expiration timestamp.
+        folder_item_id: driveItem id of the dropoff folder (for direct app-token access).
+        password: Optional password to store for external recipients.
+        replace: If True, overwrite an existing registry file with the same name.
+    """
+    try:
+        _require_scope("write")
+        slug = _validate_prr_name(name)
+        target = os.path.join(PRR_SHARE_DIR, f"{slug}_share.env")
+        if os.path.exists(target) and not replace:
+            raise FileExistsError(
+                f"PRR share already registered: {target}. Pass replace=true to overwrite."
+            )
+        os.makedirs(PRR_SHARE_DIR, exist_ok=True)
+        prefix = slug.upper()
+        lines = [f"{prefix}_SHARE_URL={share_url}"]
+        if password:
+            lines.append(f"{prefix}_SHARE_PASSWORD={password}")
+        if permission_id:
+            lines.append(f"{prefix}_SHARE_PERM_ID={permission_id}")
+        if expires_at:
+            lines.append(f"{prefix}_SHARE_EXPIRES={expires_at}")
+        if folder_item_id:
+            lines.append(f"{prefix}_FOLDER_ITEM_ID={folder_item_id}")
+        # Write atomically with restrictive perms (0600) — file holds an external secret.
+        tmp = target + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, target)
+        return json.dumps({
+            "registered": True,
+            "name": slug,
+            "path": target,
+            "has_password": bool(password),
+        })
+    except Exception as e:
+        log.error("prr_register_inbound_share error: %s", e)
+        return json.dumps({"error": str(e)})
+
+
 # ╔══════════════════════════════════════════════════════════════╗
 # ║           DOCUMENT CREATION (text) & UPLOAD (binary)         ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -5427,6 +7183,7 @@ async def rag_query(
     top_k = min(max(top_k, 1), 30)
     p = await get_pool()
     try:
+        t0 = time.time()
         question = _normalize_query(question)
         auto_case = _extract_case_number(question)
         if not case_number and auto_case:
@@ -5435,71 +7192,147 @@ async def rag_query(
         semantic_weight, fulltext_weight = _coerce_weights(semantic_weight, fulltext_weight)
         neighbor_window = _coerce_neighbor_window(expand_neighbors)
 
-        vec = await _embed_query(question)
+        # Light timeout only around embedding (cold start / HF latency). Full hybrid RRF + rerank + 5x path remains protected.
+        vec = await asyncio.wait_for(_embed_query(question), timeout=12.0)
         vec_str = "[" + ",".join(str(v) for v in vec) + "]"
+        fetch_count = max(top_k * 5, 50)  # kept at 5x per request
 
-        # Build WHERE clauses
-        sem_conditions = []
-        ft_conditions = []
-        sem_params: list[Any] = [vec_str]
-        ft_params: list[Any] = [question]
-        sem_idx = 2
-        ft_idx = 2
+        async with p.acquire() as conn:
+            vector_index_present = await _has_chunks_embedding_index(conn)
 
-        if domain:
-            sem_conditions.append(f"d.domain = ${sem_idx}")
-            sem_params.append(domain)
-            sem_idx += 1
-            ft_conditions.append(f"d.domain = ${ft_idx}")
-            ft_params.append(domain)
-            ft_idx += 1
-        if case_number:
-            case_filter = """d.id IN (
-                SELECT cd.document_id FROM legal.case_documents cd
-                JOIN legal.cases lc ON cd.case_id = lc.id
-                WHERE lc.case_number ILIKE ${idx}
-            )"""
-            sem_conditions.append(case_filter.replace("${idx}", f"${sem_idx}"))
-            sem_params.append(f"%{case_number}%")
-            sem_idx += 1
-            ft_conditions.append(case_filter.replace("${idx}", f"${ft_idx}"))
-            ft_params.append(f"%{case_number}%")
-            ft_idx += 1
+            # Build WHERE clauses
+            sem_conditions = ["c.embedding IS NOT NULL"]
+            ft_conditions = ["c.content_tsv @@ websearch_to_tsquery('english', $1)"]
+            sem_params: list[Any] = [vec_str]
+            ft_params: list[Any] = [question]
+            sem_idx = 2
+            ft_idx = 2
 
-        sem_where = (" AND " + " AND ".join(sem_conditions)) if sem_conditions else ""
-        ft_where = (" AND " + " AND ".join(ft_conditions)) if ft_conditions else ""
-        fetch_count = top_k * 3  # over-fetch for merging
+            if domain:
+                sem_conditions.append(f"d.domain = ${sem_idx}")
+                sem_params.append(domain)
+                sem_idx += 1
+                ft_conditions.append(f"d.domain = ${ft_idx}")
+                ft_params.append(domain)
+                ft_idx += 1
+            if case_number:
+                case_filter = """d.id IN (
+                    SELECT cd.document_id FROM legal.case_documents cd
+                    JOIN legal.cases lc ON cd.case_id = lc.id
+                    WHERE lc.case_number ILIKE ${idx}
+                )"""
+                sem_conditions.append(case_filter.replace("${idx}", f"${sem_idx}"))
+                sem_params.append(f"%{case_number}%")
+                sem_idx += 1
+                ft_conditions.append(case_filter.replace("${idx}", f"${ft_idx}"))
+                ft_params.append(f"%{case_number}%")
+                ft_idx += 1
 
-        sem_params.append(fetch_count)
-        ft_params.append(fetch_count)
+            safety_domain = domain if domain in ('legal', 'medical') else None
+            sem_safety_clause, sem_safety_params, log_cb = await build_document_safety_filter(
+                conn=conn,
+                domain=safety_domain,
+                caller_context=_mcp_caller_context(
+                    'rag_query',
+                    {'query_domain': domain, 'case_number': case_number},
+                ),
+                include_privileged=_default_include_privileged(),
+                table_alias='d',
+                next_param_index=sem_idx,
+            )
+            sem_idx += len(sem_safety_params)
+            sem_params.extend(sem_safety_params)
+            sem_conditions.append(sem_safety_clause)
 
-        # 1) Semantic search
-        sem_rows = await p.fetch(f"""
-            SELECT c.id AS chunk_id, c.document_id, c.content, c.chunk_index,
-                   d.title, d.filename, d.document_type, d.domain,
-                   (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
-                   em.sender, em.date_sent, em.subject
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE c.embedding IS NOT NULL {sem_where}
-            ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
-            LIMIT ${sem_idx}
-        """, *sem_params)
+            ft_safety_clause, ft_safety_params, _ = await build_document_safety_filter(
+                conn=conn,
+                domain=safety_domain,
+                caller_context=_mcp_caller_context(
+                    'rag_query',
+                    {'query_domain': domain, 'case_number': case_number},
+                ),
+                include_privileged=_default_include_privileged(),
+                table_alias='d',
+                next_param_index=ft_idx,
+            )
+            ft_idx += len(ft_safety_params)
+            ft_params.extend(ft_safety_params)
+            ft_conditions.append(ft_safety_clause)
 
-        # 2) Full-text search on chunks
-        ft_rows = await p.fetch(f"""
-            SELECT c.id AS chunk_id, c.document_id, c.content, c.chunk_index,
-                   d.title, d.filename, d.document_type, d.domain,
-                   ts_rank(c.content_tsv, websearch_to_tsquery('english', $1)) AS ft_rank,
-                   em.sender, em.date_sent, em.subject
-            FROM core.document_chunks c
-            JOIN core.documents d ON c.document_id = d.id
-            LEFT JOIN legal.email_metadata em ON d.id = em.document_id
-            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1) {ft_where}
-            ORDER BY ft_rank DESC
-            LIMIT ${ft_idx}
-        """, *ft_params)
+            sem_where = "WHERE " + " AND ".join(sem_conditions)
+            ft_where = "WHERE " + " AND ".join(ft_conditions)
+
+            # 1) Full-text search on chunks (GIN-backed; cheap candidate generator)
+            ft_fetch_count = max(fetch_count * 6, 300)
+            ft_params.append(ft_fetch_count)
+            ft_t0 = time.time()
+            ft_rows = await conn.fetch(f"""
+                SELECT c.id AS chunk_id, d.id AS doc_id, c.document_id, c.content, c.chunk_index,
+                       d.title, d.filename, d.document_type, d.domain, d.phi_status,
+                       ts_rank(c.content_tsv, websearch_to_tsquery('english', $1)) AS ft_rank,
+                       em.sender, em.date_sent, em.subject
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                {ft_where}
+                ORDER BY ft_rank DESC
+                LIMIT ${ft_idx}
+            """, *ft_params)
+            ft_elapsed = time.time() - ft_t0
+
+            # When the vector ANN index is missing, broad semantic scans across all
+            # embedded chunks time out. For RAG, use the indexed full-text results as
+            # the semantic candidate generator unless the caller already narrowed the
+            # corpus with a case filter.
+            candidate_doc_ids: list[Any] = []
+            if not vector_index_present and not case_number and ft_rows:
+                doc_best_rank: dict[Any, float] = {}
+                for row in ft_rows:
+                    doc_id = row["doc_id"]
+                    rank = float(row["ft_rank"] or 0.0)
+                    prev = doc_best_rank.get(doc_id)
+                    if prev is None or rank > prev:
+                        doc_best_rank[doc_id] = rank
+                candidate_doc_ids = [
+                    doc_id for doc_id, _ in sorted(
+                        doc_best_rank.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )[:max(fetch_count * 2, 100)]
+                ]
+                sem_conditions.append(f"d.id = ANY(${sem_idx}::uuid[])")
+                sem_params.append(candidate_doc_ids)
+                sem_idx += 1
+                sem_where = "WHERE " + " AND ".join(sem_conditions)
+
+            sem_params.append(fetch_count)
+
+            # 2) Semantic search
+            sem_t0 = time.time()
+            sem_rows = await conn.fetch(f"""
+                SELECT c.id AS chunk_id, d.id AS doc_id, c.document_id, c.content, c.chunk_index,
+                       d.title, d.filename, d.document_type, d.domain, d.phi_status,
+                       (c.embedding::halfvec(1024) <=> $1::halfvec(1024)) AS distance,
+                       em.sender, em.date_sent, em.subject
+                FROM core.document_chunks c
+                JOIN core.documents d ON c.document_id = d.id
+                LEFT JOIN legal.email_metadata em ON d.id = em.document_id
+                {sem_where}
+                ORDER BY c.embedding::halfvec(1024) <=> $1::halfvec(1024)
+                LIMIT ${sem_idx}
+            """, *sem_params)
+            sem_elapsed = time.time() - sem_t0
+
+            log.info(
+                "rag_query retrieval stages in %.2fs (ft=%.2fs, sem=%.2fs, vector_index=%s, ft_rows=%d, sem_rows=%d, candidate_docs=%d)",
+                time.time() - t0,
+                ft_elapsed,
+                sem_elapsed,
+                vector_index_present,
+                len(ft_rows),
+                len(sem_rows),
+                len(candidate_doc_ids),
+            )
 
         # 3) Reciprocal Rank Fusion (RRF) with k=60
         rrf_k = 60
@@ -5524,7 +7357,7 @@ async def rag_query(
         # bounded (CPU path: ~50ms/pair, so 50 candidates ≈ 2.5s).
         sorted_chunks = sorted(chunk_scores.items(), key=lambda x: x[1], reverse=True)
 
-        rerank_pool = min(len(sorted_chunks), max(top_k * 4, 50))
+        rerank_pool = min(len(sorted_chunks), max(top_k * 5, 50))
         rerank_candidates = sorted_chunks[:rerank_pool]
 
         rerank_scores: dict[str, float] = {}
@@ -5547,7 +7380,6 @@ async def rag_query(
             return rerank_scores.get(cid, -1e9), rrf
         sorted_chunks = sorted(sorted_chunks, key=_final_score, reverse=True)
 
-        seen_docs: set[str] = set()
         contexts = []
         for cid, score in sorted_chunks:
             if len(contexts) >= top_k:
@@ -5598,12 +7430,42 @@ async def rag_query(
             for c in contexts:
                 c["text"] = f"{c['_header']}\n\n{c['text']}"
 
+        # Safety logging should reflect the actually surfaced rows, not the
+        # larger candidate pool used for fusion/reranking.
+        surfaced_chunk_ids = {
+            str(c.get("_doc_id", "")) + ":" + str(c.get("_chunk_index", ""))
+            for c in contexts
+        }
+        context_rows = []
+        for row in chunk_data.values():
+            row_key = str(row["document_id"]) + ":" + str(row["chunk_index"])
+            if row_key in surfaced_chunk_ids:
+                context_rows.append(row)
+
+        if context_rows:
+            async with p.acquire() as conn:
+                _, _, final_log_cb = await build_document_safety_filter(
+                    conn=conn,
+                    domain=(domain if domain in ('legal', 'medical') else None),
+                    caller_context=_mcp_caller_context(
+                        'rag_query',
+                        {'query_domain': domain, 'case_number': case_number},
+                    ),
+                    include_privileged=_default_include_privileged(),
+                    table_alias='d',
+                    next_param_index=1,
+                )
+                await final_log_cb(context_rows)
+
         # Remove internal fields
         for c in contexts:
             c.pop("_doc_id", None)
             c.pop("_chunk_index", None)
             c.pop("_header", None)
 
+        elapsed = time.time() - t0
+        log.info("rag_query completed in %.2fs (question=%r, chunks=%d, method=%s)",
+                 elapsed, question[:80], len(contexts), "hybrid_rrf")
         return json.dumps({
             "question": question,
             "context_chunks": contexts,
@@ -5615,9 +7477,19 @@ async def rag_query(
             "case_number": case_number,
             "instruction": "Use the above context chunks to answer the question. Cite sources. Pay close attention to email sender, date, and subject to distinguish replies from original messages.",
         })
+    except asyncio.TimeoutError:
+        elapsed = time.time() - t0 if 't0' in locals() else 0
+        log.warning("rag_query embedding timed out after %.2fs", elapsed)
+        return json.dumps({
+            "question": question,
+            "error": "timeout",
+            "error_type": "TimeoutError",
+            "note": "Embedding timed out; hybrid RRF + rerank not reached"
+        })
     except Exception as e:
-        log.error("rag_query error: %s", e)
-        return json.dumps({"error": str(e)})
+        elapsed = time.time() - t0 if 't0' in locals() else 0
+        log.error("rag_query error after %.2fs: %s", elapsed, e, exc_info=True)
+        return json.dumps({"question": question, **_err_payload(e)})
 
 
 # ══════════════════════════════════════════════════════════════

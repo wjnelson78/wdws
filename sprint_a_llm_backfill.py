@@ -506,6 +506,12 @@ async def fetch_next_document(
     processes every document; only the progression of
     privilege_classified_at timestamps changes, which is cosmetic.
     """
+    # Public-record document types are excluded from privilege/PHI classification:
+    # statutes, case-opinions, and constitution-sections are public legal text
+    # by definition — they cannot be privileged communications. Loaders should
+    # set privilege='none' at insert time (rule:public_record / rule:statute_is_public),
+    # but this filter defends against any rows that slipped through with NULL.
+    PUBLIC_RECORD_TYPES = ('statute', 'case-opinion', 'constitution-section')
     if domain == 'legal':
         cond = "d.privilege IS NULL"
     else:
@@ -517,13 +523,14 @@ async def fetch_next_document(
          WHERE d.domain = $1
            AND {cond}
            AND d.full_content IS NOT NULL
+           AND d.document_type <> ALL($2::text[])
            AND NOT EXISTS (
                SELECT 1 FROM core.documents_backfill_staging s
                 WHERE s.document_id = d.id AND s.status = 'pending'
            )
          ORDER BY random()
          LIMIT 1
-    """, domain)
+    """, domain, list(PUBLIC_RECORD_TYPES))
     return row
 
 

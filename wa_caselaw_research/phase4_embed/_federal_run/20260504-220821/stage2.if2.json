@@ -1,0 +1,210 @@
+{
+  "stage1": {
+    "documents_created": 0,
+    "chunks_created": 0,
+    "opinions_attempted": 0,
+    "opinions_skipped": 0,
+    "opinions_failed": 0,
+    "skip_reasons": {},
+    "wall_seconds": 0,
+    "per_opinion_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    }
+  },
+  "stage2": {
+    "chunks_embedded": 0,
+    "chunks_failed": 0,
+    "wall_seconds": 0,
+    "pool_size": 4,
+    "per_pool": {
+      "http://172.16.81.187:9098": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9099": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9100": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      },
+      "http://172.16.81.187:9101": {
+        "dispatches": 0,
+        "latency_ms": {
+          "n": 0,
+          "min_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null
+        }
+      }
+    },
+    "fetch_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pool_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "pg_update_round_latency_ms": {
+      "n": 0,
+      "min_ms": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null
+    },
+    "rounds_completed": 0
+  },
+  "sample_chunks": [
+    {
+      "chunk_id": "ec632ae6-c235-4f31-9aba-03d9ac3a0972_0",
+      "document_id": "ec632ae6-c235-4f31-9aba-03d9ac3a0972",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Robles Tzunun v. Mukasey | (2009-01-20) | 9th Cir. | Lead Opinion\n\nMEMORANDUM **\n\nJuan Paulino Robles Tzunun, a native and citizen of Guatemala, petitions for review of the Board of Immigration Appeals\u2019 (\u201cBIA\u201d) order dismissing his appeal from an immigration judge\u2019s order denying his application for cancellation of removal. We have jurisdiction pursuant to 8 U.S.C. \u00a7 1252. We review de novo claims of constitutional violations in immigration proceedings. Ram v. INS, 243 F.3d 510, 516 (9th Cir.200",
+      "token_count": 212,
+      "embedding_first5": [
+        -0.022521973,
+        0.017333984,
+        -0.02746582,
+        0.013183594,
+        -0.0059280396
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2009-01-20",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 8480478,
+        "cl_opinion_id": 8452474,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "ede97561-6a54-4dd8-931d-252f542c472b_0",
+      "document_id": "ede97561-6a54-4dd8-931d-252f542c472b",
+      "chunk_index": 0,
+      "total_chunks": 4,
+      "content_preview_500": "United States v. Alfred Darnell Ford | (2004-06-08) | 9th Cir. | Per Curiam\n\nO\u2019SCANNLAIN, Circuit Judge:\n \n\n We must decide whether the United States is barred by double jeopardy or collateral estoppel from prosecuting an owner for \u201cmanaging and controlling\u201d real estate for the purpose of distributing cocaine when he was previously acquitted of \u201cknowingly opening\u201d the same place for such purpose.\n \n\n I\n \n\n . In March 2001, a joint federal and local law enforcement sting operation targeted a piec",
+      "token_count": 868,
+      "embedding_first5": [
+        -0.020874023,
+        -0.0020122528,
+        -0.012672424,
+        0.016464233,
+        -0.028015137
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2004-06-08",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 786532,
+        "cl_opinion_id": 786532,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "e78f9651-ecb4-4ab5-b9b2-d7327893ed03_0",
+      "document_id": "e78f9651-ecb4-4ab5-b9b2-d7327893ed03",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "Irwin Koff Darline Ruth Koff v. United States | (1993-09-01) | 9th Cir. | Lead Opinion\n\nPER CURIAM:\n\nUpon rehearing, we contemplate the extent to which 28 U.S.C. \u00a7 2410 waives the United States\u2019 sovereign immunity from suit in tax cases. Our previous unpublished memorandum, 978 F.2d 715, filed October 23, 1992, is withdrawn.,\n\n*1298I\n\nIrwin and Darline Koff (\u201cthe Koffs\u201d), acting pro se, brought suit pursuant to 28 U.S.C. \u00a7 2410(a) to quiet title to certain of their property on which the IRS had ",
+      "token_count": 617,
+      "embedding_first5": [
+        -0.015808105,
+        0.02293396,
+        -0.04043579,
+        0.0045166016,
+        0.025512695
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "1993-09-01",
+        "text_source": "html_with_citations",
+        "opinion_type": "020lead",
+        "cl_cluster_id": 629066,
+        "cl_opinion_id": 9485836,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "e8497433-4dab-4bef-8d0d-3460e99f72d1_0",
+      "document_id": "e8497433-4dab-4bef-8d0d-3460e99f72d1",
+      "chunk_index": 0,
+      "total_chunks": 1,
+      "content_preview_500": "United States v. Alexander Monzoni | (2018-12-21) | 9th Cir. | Per Curiam\n\nNOT FOR PUBLICATION                           FILED\n                    UNITED STATES COURT OF APPEALS                       DEC 21 2018\n                                                                      MOLLY C. DWYER, CLERK\n                                                                       U.S. COURT OF APPEALS\n                           FOR THE NINTH CIRCUIT\n\nUNITED STATES OF AMERICA,                       No.  ",
+      "token_count": 527,
+      "embedding_first5": [
+        -0.0028743744,
+        0.011291504,
+        -0.032043457,
+        0.004234314,
+        -0.00207901
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2018-12-21",
+        "text_source": "plain_text",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 4576330,
+        "cl_opinion_id": 4353583,
+        "canonical_citation": null
+      }
+    },
+    {
+      "chunk_id": "ede97561-6a54-4dd8-931d-252f542c472b_1",
+      "document_id": "ede97561-6a54-4dd8-931d-252f542c472b",
+      "chunk_index": 1,
+      "total_chunks": 4,
+      "content_preview_500": "United States v. Alfred Darnell Ford | (2004-06-08) | 9th Cir. | Per Curiam\n\n The Government counters Ford\u2019s claim of double jeopardy by arguing that the\n \n Blockburger\n \n test is met here. The\n \n Block-burger\n \n test asks \u201cwhether each offense contains an element not contained in the other; if not, they are the \u2018same offense\u2019 and double jeopardy bars additional punishment and successive prosecution.\u201d\n \n United States v. Dixon,\n \n 509 U.S. 688, 696, 113 S.Ct. 2849, 125 L.Ed.2d 556 (1993);\n \n see",
+      "token_count": 855,
+      "embedding_first5": [
+        -0.023101807,
+        0.009155273,
+        -0.024749756,
+        0.023513794,
+        -0.01864624
+      ],
+      "metadata": {
+        "court_id": "ca9",
+        "date_filed": "2004-06-08",
+        "text_source": "html_with_citations",
+        "opinion_type": "010combined",
+        "cl_cluster_id": 786532,
+        "cl_opinion_id": 786532,
+        "canonical_citation": null
+      }
+    }
+  ]
+}
